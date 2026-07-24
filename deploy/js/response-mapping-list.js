@@ -9,6 +9,19 @@
   let fieldsReadyPromise = null;
   let targetSelector = DEFAULT_TARGET_SELECTOR;
 
+  function normalizeDataName(value) {
+    return String(value || "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function normalizeDataKey(value) {
+    return String(value || "")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/\s+/g, "")
+      .trim();
+  }
+
   function normalizeFields(rows) {
     if (!Array.isArray(rows)) {
       return [];
@@ -16,8 +29,8 @@
 
     return rows
       .map((row) => ({
-        dataName: String(row.dataName || row.itemName || row.name || "").trim(),
-        dataKey: String(row.dataKey || row.itemKey || row.key || "").trim(),
+        dataName: normalizeDataName(row.dataName || row.itemName || row.name),
+        dataKey: normalizeDataKey(row.dataKey || row.itemKey || row.key),
       }))
       .filter((row) => row.dataName && row.dataKey);
   }
@@ -25,11 +38,15 @@
   function parseFieldsFromTableHtml(tableHtml) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(tableHtml, "text/html");
+    const table = doc.querySelector("table");
+
+    if (!table) {
+      return [];
+    }
 
     return normalizeFields(
-      [...doc.querySelectorAll("table tbody tr")].map((row) => {
-        const cells = row.querySelectorAll("td");
-
+      [...table.rows].map((row) => {
+        const cells = [...row.cells].filter((cell) => cell.tagName.toLowerCase() === "td");
         return {
           dataName: cells[0]?.textContent || "",
           dataKey: cells[1]?.textContent || "",
