@@ -1,6 +1,9 @@
 (() => {
   const DEFAULT_FIELD_TABLE_URL = "./data/response-fields.html";
   const DEFAULT_TARGET_SELECTOR = "#responseMappingList";
+  const MESSAGE_READY = "response-mapping-list-ready";
+  const MESSAGE_RENDER = "response-mapping-list-render";
+  const MESSAGE_RENDERED = "response-mapping-list-rendered";
 
   let fields = [];
   let fieldsReadyPromise = null;
@@ -222,6 +225,37 @@
     return renderAnalysis(analyze(responseJson), target);
   }
 
+  function getAllowedMessageOrigin() {
+    return window.location.origin === "null" ? "*" : window.location.origin;
+  }
+
+  function postMessageToOpener(type, payload = {}) {
+    if (!window.opener || window.opener.closed) {
+      return;
+    }
+
+    window.opener.postMessage(
+      {
+        type,
+        ...payload,
+      },
+      getAllowedMessageOrigin(),
+    );
+  }
+
+  async function handleMessage(event) {
+    if (window.location.origin !== "null" && event.origin !== window.location.origin) {
+      return;
+    }
+
+    if (!event.data || event.data.type !== MESSAGE_RENDER) {
+      return;
+    }
+
+    await render(event.data.responseJson);
+    postMessageToOpener(MESSAGE_RENDERED);
+  }
+
   function setFields(rows) {
     fields = normalizeFields(rows);
     return getFields();
@@ -237,7 +271,32 @@
     return fieldsReadyPromise;
   }
 
+  window.addEventListener("message", handleMessage);
+
   fieldsReadyPromise = init();
+  fieldsReadyPromise
+    .then(() => postMessageToOpener(MESSAGE_READY))
+    .catch((error) => {
+      renderAnalysis(
+        {
+          rows: [],
+          exceptions: [
+            {
+              dataName: "오류",
+              dataKey: "fieldTable",
+              valueGroups: [
+                {
+                  value: error.message,
+                  paths: ["deploy.data"],
+                },
+              ],
+            },
+          ],
+        },
+        targetSelector,
+      );
+      postMessageToOpener(MESSAGE_READY);
+    });
 
   window.ResponseMappingList = {
     analyze,

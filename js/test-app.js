@@ -1,6 +1,9 @@
 (() => {
   const FIELD_TABLE_URL = "./data/response-fields.html";
   const DUMMY_RESPONSE_URL = "./dummy/response.json";
+  const DEPLOY_READY_MESSAGE = "response-mapping-list-ready";
+  const DEPLOY_RENDER_MESSAGE = "response-mapping-list-render";
+  const DEPLOY_RENDERED_MESSAGE = "response-mapping-list-rendered";
 
   const requestButton = document.querySelector("#requestButton");
   const deployPopupButton = document.querySelector("#deployPopupButton");
@@ -12,6 +15,8 @@
 
   let fields = [];
   let lastResponseJson = null;
+  let deployPopup = null;
+  let pendingDeployResponseJson = null;
 
   function setStatus(text) {
     statusBadge.textContent = text;
@@ -66,18 +71,38 @@
     }
   }
 
-  function renderDeployPopup(popup, responseJson) {
-    if (!popup || popup.closed) {
+  function postResponseToDeployPopup() {
+    if (!deployPopup || deployPopup.closed || !pendingDeployResponseJson) {
       return;
     }
 
-    if (popup.ResponseMappingList) {
-      popup.ResponseMappingList.render(responseJson);
-      popup.focus();
+    deployPopup.postMessage(
+      {
+        type: DEPLOY_RENDER_MESSAGE,
+        responseJson: pendingDeployResponseJson,
+      },
+      window.location.origin,
+    );
+    deployPopup.focus();
+  }
+
+  function handleDeployPopupMessage(event) {
+    if (event.origin !== window.location.origin) {
       return;
     }
 
-    window.setTimeout(() => renderDeployPopup(popup, responseJson), 80);
+    if (!event.data || event.source !== deployPopup) {
+      return;
+    }
+
+    if (event.data.type === DEPLOY_READY_MESSAGE) {
+      postResponseToDeployPopup();
+    }
+
+    if (event.data.type === DEPLOY_RENDERED_MESSAGE) {
+      pendingDeployResponseJson = null;
+      setStatus("배포팝업 완료");
+    }
   }
 
   async function openDeployPopup() {
@@ -86,19 +111,20 @@
 
     try {
       const responseJson = lastResponseJson || (await fetchDummyResponse());
-      const popup = window.open(
+      deployPopup = window.open(
         "./deploy/index.html",
         "responseMappingDeployPopup",
         "popup=yes,width=720,height=760,left=140,top=80",
       );
 
-      if (!popup) {
+      if (!deployPopup) {
         throw new Error("팝업이 차단되었습니다.");
       }
 
       lastResponseJson = responseJson;
+      pendingDeployResponseJson = responseJson;
       rawResponse.textContent = JSON.stringify(responseJson, null, 2);
-      renderDeployPopup(popup, responseJson);
+      postResponseToDeployPopup();
     } catch (error) {
       mappingList.innerHTML = `<div class="empty">${ResponseMapper.escapeHtml(error.message)}</div>`;
       setStatus("오류");
@@ -116,4 +142,5 @@
 
   requestButton.addEventListener("click", requestDummyResponse);
   deployPopupButton.addEventListener("click", openDeployPopup);
+  window.addEventListener("message", handleDeployPopupMessage);
 })();
