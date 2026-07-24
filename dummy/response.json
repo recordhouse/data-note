@@ -1,0 +1,30 @@
+{
+  "header": {
+    "transactionId": "TX-20260724-47291",
+    "processedAt": "2026-07-24T14:32:18+09:00"
+  },
+  "result": {
+    "resultCode": "0000",
+    "resultMessage": "정상 처리"
+  },
+  "payment": {
+    "approvalNumber": "A9321845",
+    "amount": 128500,
+    "currency": "KRW",
+    "method": {
+      "paymentMethod": "CARD",
+      "issuerName": "테스트카드"
+    }
+  },
+  "customer": {
+    "customerName": "홍길동"
+  },
+  "details": [
+    {
+      "memo": "테스트용 더미 응답입니다."
+    }
+  ],
+  "debug": {
+    "unmappedDebugId": "DBG-7740"
+  }
+}

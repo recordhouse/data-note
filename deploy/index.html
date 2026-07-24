@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>응답 매핑 리스트</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: #ffffff;
+        color: #17202a;
+        font-family:
+          Pretendard, "Noto Sans KR", system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      .response-mapping-wrap {
+        width: 100%;
+        padding: 16px;
+      }
+
+      .response-mapping-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .mapping-row {
+        display: grid;
+        grid-template-columns: 160px minmax(0, 1fr);
+        gap: 12px;
+        padding: 10px 12px;
+        border: 1px solid #d9e1ea;
+        border-radius: 8px;
+        background: #fbfdff;
+      }
+
+      .mapping-name {
+        color: #667385;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .mapping-value {
+        margin: 0;
+        color: #17202a;
+        font-size: 14px;
+        line-height: 1.5;
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
+      }
+
+      .exception {
+        border-color: #f0c0b8;
+        background: #fff9f8;
+      }
+
+      .empty {
+        min-height: 120px;
+        display: grid;
+        place-items: center;
+        border: 1px dashed #b8c5d5;
+        border-radius: 8px;
+        color: #667385;
+        text-align: center;
+      }
+
+      @media (max-width: 520px) {
+        .mapping-row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <section class="response-mapping-wrap">
+      <div id="responseMappingList" class="response-mapping-list">
+        <div class="empty">통신 응답을 전달하면 매핑 리스트가 표시됩니다.</div>
+      </div>
+    </section>
+
+    <script src="./js/response-mapping-list.js"></script>
+  </body>
+</html>
