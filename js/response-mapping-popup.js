@@ -166,6 +166,49 @@
     return matches;
   }
 
+  function getValueSignature(value, visited = new WeakSet()) {
+    if (value === null) {
+      return "null";
+    }
+
+    if (typeof value !== "object") {
+      return `${typeof value}:${String(value)}`;
+    }
+
+    if (visited.has(value)) {
+      return "[순환 참조]";
+    }
+
+    visited.add(value);
+
+    if (Array.isArray(value)) {
+      const signature = `[${value.map((item) => getValueSignature(item, visited)).join(",")}]`;
+      visited.delete(value);
+      return signature;
+    }
+
+    const signature = `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${getValueSignature(value[key], visited)}`)
+      .join(",")}}`;
+    visited.delete(value);
+    return signature;
+  }
+
+  function getUniqueValues(values) {
+    const uniqueMap = new Map();
+
+    values.forEach((value) => {
+      const signature = getValueSignature(value);
+
+      if (!uniqueMap.has(signature)) {
+        uniqueMap.set(signature, value);
+      }
+    });
+
+    return [...uniqueMap.values()];
+  }
+
   function mapResponse(responseJson, mappingRows) {
     return normalizeMappingRows(mappingRows).reduce((list, row) => {
       const matches = collectMatchesByKey(responseJson, row.itemKey);
@@ -174,7 +217,7 @@
         return list;
       }
 
-      const values = matches.map((match) => match.value);
+      const values = getUniqueValues(matches.map((match) => match.value));
 
       list.push({
         itemName: row.itemName,
