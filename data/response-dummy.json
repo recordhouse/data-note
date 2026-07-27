@@ -72,6 +72,14 @@
       "changedAt": "2026-07-27T09:15:12+09:00"
     }
   ],
+  "calculation": {
+    "계산객체": [
+      {
+        "객체1": {},
+        "객체2": {}
+      }
+    ]
+  },
   "metadata": {
     "emptyObject": {},
     "emptyArray": [],

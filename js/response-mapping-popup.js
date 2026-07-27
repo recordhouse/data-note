@@ -93,10 +93,6 @@
     return String(value);
   }
 
-  function isDisplayValue(value) {
-    return value === null || typeof value !== "object";
-  }
-
   function collectMatchesByKey(source, targetKey) {
     const matches = [];
     const visited = new WeakSet();
@@ -141,20 +137,95 @@
   function mapResponse(responseJson, mappingRows) {
     return normalizeMappingRows(mappingRows).reduce((list, row) => {
       const matches = collectMatchesByKey(responseJson, row.itemKey);
-      const firstMatch = matches.find((match) => isDisplayValue(match.value));
 
-      if (!firstMatch) {
+      if (!matches.length) {
         return list;
       }
+
+      const values = matches.map((match) => match.value);
 
       list.push({
         itemName: row.itemName,
         itemKey: row.itemKey,
-        value: firstMatch.value,
+        value: values.length === 1 ? values[0] : values,
+        values,
         exception: false,
       });
       return list;
     }, []);
+  }
+
+  function renderTreeRow(label, value, depth, hasValue) {
+    return `
+      <div class="tree-row" style="--depth: ${depth}">
+        <span class="tree-prefix">${depth > 0 ? "-" : ""}</span>
+        <span class="tree-name">${escapeHtml(label)}</span>
+        ${
+          hasValue
+            ? `<span class="tree-separator">:</span><span class="tree-value">${escapeHtml(value)}</span>`
+            : ""
+        }
+      </div>
+    `;
+  }
+
+  function renderArrayChildren(items, depth, visited) {
+    return items
+      .map((item) => {
+        if (!item || typeof item !== "object") {
+          return renderTreeRow(formatValue(item), "", depth + 1, false);
+        }
+
+        if (visited.has(item)) {
+          return renderTreeRow("[순환 참조]", "", depth + 1, false);
+        }
+
+        if (Array.isArray(item)) {
+          return renderTreeValue("배열", item, depth + 1, visited);
+        }
+
+        const entries = Object.entries(item);
+
+        if (!entries.length) {
+          return renderTreeRow("{}", "", depth + 1, false);
+        }
+
+        visited.add(item);
+        return entries.map(([key, childValue]) => renderTreeValue(key, childValue, depth + 1, visited)).join("");
+      })
+      .join("");
+  }
+
+  function renderObjectChildren(value, depth, visited) {
+    const entries = Object.entries(value);
+
+    if (!entries.length) {
+      return "";
+    }
+
+    return entries.map(([key, childValue]) => renderTreeValue(key, childValue, depth + 1, visited)).join("");
+  }
+
+  function renderTreeValue(label, value, depth = 0, visited = new WeakSet()) {
+    if (!value || typeof value !== "object") {
+      return renderTreeRow(label, formatValue(value), depth, true);
+    }
+
+    if (visited.has(value)) {
+      return renderTreeRow(label, "[순환 참조]", depth, true);
+    }
+
+    visited.add(value);
+
+    const children = Array.isArray(value)
+      ? renderArrayChildren(value, depth, visited)
+      : renderObjectChildren(value, depth, visited);
+
+    if (!children) {
+      return renderTreeRow(label, "", depth, false);
+    }
+
+    return renderTreeRow(label, "", depth, false) + children;
   }
 
   function renderList(target, mappedList) {
@@ -170,15 +241,7 @@
     }
 
     container.innerHTML = mappedList
-      .map(
-        (row) => `
-          <section class="row${row.exception ? " exception" : ""}">
-            <span class="name">${escapeHtml(row.itemName)} :</span>
-            <p class="value">${escapeHtml(formatValue(row.value))}
-            </p>
-          </section>
-        `,
-      )
+      .map((row) => `<section class="row">${renderTreeValue(row.itemName, row.value)}</section>`)
       .join("");
   }
 

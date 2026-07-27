@@ -29,34 +29,42 @@
       }
 
       .row {
-        display: grid;
-        grid-template-columns: 168px minmax(0, 1fr);
-        gap: 12px;
         padding: 11px 12px;
         border: 1px solid #d9e1ea;
         border-radius: 8px;
         background: #fbfdff;
       }
 
-      .name {
-        color: #667385;
-        font-size: 13px;
-        font-weight: 800;
-        line-height: 1.5;
-      }
-
-      .value {
-        margin: 0;
+      .tree-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+        min-height: 24px;
+        padding-left: calc(var(--depth) * 18px);
         color: #17202a;
         font-size: 14px;
         line-height: 1.55;
         overflow-wrap: anywhere;
-        white-space: pre-wrap;
       }
 
-      .exception {
-        border-color: #f0c0b8;
-        background: #fff9f8;
+      .tree-prefix {
+        flex: 0 0 10px;
+        color: #8a97a8;
+      }
+
+      .tree-name {
+        color: #667385;
+        font-weight: 800;
+      }
+
+      .tree-separator {
+        color: #667385;
+        font-weight: 800;
+      }
+
+      .tree-value {
+        color: #17202a;
+        white-space: pre-wrap;
       }
 
       .empty {
@@ -70,8 +78,8 @@
       }
 
       @media (max-width: 560px) {
-        .row {
-          grid-template-columns: 1fr;
+        .tree-row {
+          padding-left: calc(var(--depth) * 14px);
         }
       }
     </style>
