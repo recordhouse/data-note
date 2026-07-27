@@ -12,6 +12,24 @@
   let popupOrigin = window.location.origin;
   let pendingPayload = null;
   let renderResolvers = [];
+  let readyResolvers = [];
+  let activePopupOptions = {
+    popupUrl: DEFAULT_POPUP_URL,
+    mappingUrl: DEFAULT_MAPPING_URL,
+    popupName: DEFAULT_POPUP_NAME,
+    popupFeatures: DEFAULT_POPUP_FEATURES,
+  };
+
+  function getPopupOptions(options = {}) {
+    activePopupOptions = {
+      popupUrl: options.popupUrl || activePopupOptions.popupUrl,
+      mappingUrl: options.mappingUrl || activePopupOptions.mappingUrl,
+      popupName: options.popupName || activePopupOptions.popupName,
+      popupFeatures: options.popupFeatures || activePopupOptions.popupFeatures,
+    };
+
+    return activePopupOptions;
+  }
 
   function normalizeMappingRows(source) {
     if (Array.isArray(source)) {
@@ -173,12 +191,28 @@
     return `
       <div class="tree-row" style="--depth: ${depth}">
         <span class="tree-prefix">${depth > 0 ? "-" : ""}</span>
+        <span class="tree-toggle-placeholder"></span>
         <span class="tree-name">${escapeHtml(label)}</span>
         ${
           hasValue
             ? `<span class="tree-separator">:</span><span class="tree-value">${escapeHtml(value)}</span>`
             : ""
         }
+      </div>
+    `;
+  }
+
+  function renderTreeBranch(label, children, depth) {
+    return `
+      <div class="tree-branch">
+        <div class="tree-row has-children" style="--depth: ${depth}">
+          <span class="tree-prefix">${depth > 0 ? "-" : ""}</span>
+          <button class="tree-toggle" type="button" aria-expanded="true" title="접기/펼치기" data-tree-toggle></button>
+          <span class="tree-name">${escapeHtml(label)}</span>
+        </div>
+        <div class="tree-children">
+          ${children}
+        </div>
       </div>
     `;
   }
@@ -205,9 +239,11 @@
         }
 
         visited.add(item);
-        return entries
+        const children = entries
           .map(([key, childValue]) => renderTreeValue(key, childValue, depth + 1, visited, labelMap))
           .join("");
+        visited.delete(item);
+        return children;
       })
       .join("");
   }
@@ -240,12 +276,13 @@
     const children = Array.isArray(value)
       ? renderArrayChildren(value, depth, visited, labelMap)
       : renderObjectChildren(value, depth, visited, labelMap);
+    visited.delete(value);
 
     if (!children) {
       return renderTreeRow(displayLabel, "", depth, false);
     }
 
-    return renderTreeRow(displayLabel, "", depth, false) + children;
+    return renderTreeBranch(displayLabel, children, depth);
   }
 
   function renderList(target, mappedList, mappingRows) {
@@ -265,6 +302,30 @@
     container.innerHTML = mappedList
       .map((row) => `<section class="row">${renderTreeValue(row.itemName, row.value, 0, new WeakSet(), labelMap)}</section>`)
       .join("");
+  }
+
+  function handleTreeToggle(event) {
+    const toggleButton = event.target.closest("[data-tree-toggle]");
+
+    if (!toggleButton) {
+      return;
+    }
+
+    const branch = toggleButton.closest(".tree-branch");
+
+    if (!branch) {
+      return;
+    }
+
+    const children = Array.from(branch.children).find((child) => child.classList.contains("tree-children"));
+
+    if (!children) {
+      return;
+    }
+
+    const isExpanded = toggleButton.getAttribute("aria-expanded") === "true";
+    toggleButton.setAttribute("aria-expanded", String(!isExpanded));
+    children.hidden = isExpanded;
   }
 
   async function loadMapping(mappingUrl = DEFAULT_MAPPING_URL) {
@@ -315,6 +376,7 @@
 
     if (event.data.type === MESSAGE_READY && event.source === popupWindow) {
       popupReady = true;
+      readyResolvers.splice(0).forEach((resolve) => resolve(popupWindow));
       sendPendingPayload();
       return;
     }
@@ -342,31 +404,59 @@
     }
   }
 
-  function openWithResponse(responseJson, options = {}) {
-    const popupUrl = options.popupUrl || DEFAULT_POPUP_URL;
-    const popupName = options.popupName || DEFAULT_POPUP_NAME;
-    const popupFeatures = options.popupFeatures || DEFAULT_POPUP_FEATURES;
-    const alreadyOpen = isPopupOpen();
+  function openPopup(options = {}) {
+    const popupOptions = getPopupOptions(options);
+    popupOrigin = getTargetOrigin(popupOptions.popupUrl);
 
-    popupOrigin = getTargetOrigin(popupUrl);
-    popupReady = alreadyOpen;
-    pendingPayload = {
-      responseJson,
-      mappingUrl: options.mappingUrl || DEFAULT_MAPPING_URL,
-      mappingRows: options.mappingRows,
-    };
+    if (isPopupOpen()) {
+      popupWindow.focus();
+      return popupReady ? Promise.resolve(popupWindow) : new Promise((resolve) => readyResolvers.push(resolve));
+    }
 
-    popupWindow = window.open(popupUrl, popupName, popupFeatures);
+    popupReady = false;
+    pendingPayload = null;
+    popupWindow = window.open(popupOptions.popupUrl, popupOptions.popupName, popupOptions.popupFeatures);
 
     if (!popupWindow) {
       return Promise.reject(new Error("팝업이 차단되었습니다."));
     }
 
-    sendPendingPayload();
-
     return new Promise((resolve) => {
+      readyResolvers.push(resolve);
+    });
+  }
+
+  function renderResponse(responseJson, options = {}) {
+    const popupOptions = getPopupOptions(options);
+
+    popupOrigin = getTargetOrigin(popupOptions.popupUrl);
+    pendingPayload = {
+      responseJson,
+      mappingUrl: popupOptions.mappingUrl,
+      mappingRows: options.mappingRows,
+    };
+
+    if (!isPopupOpen()) {
+      popupReady = false;
+      popupWindow = window.open(popupOptions.popupUrl, popupOptions.popupName, popupOptions.popupFeatures);
+
+      if (!popupWindow) {
+        return Promise.reject(new Error("팝업이 차단되었습니다."));
+      }
+    } else {
+      popupWindow.focus();
+    }
+
+    const renderPromise = new Promise((resolve) => {
       renderResolvers.push(resolve);
     });
+
+    sendPendingPayload();
+    return renderPromise;
+  }
+
+  function openWithResponse(responseJson, options = {}) {
+    return renderResponse(responseJson, options);
   }
 
   function announceReady() {
@@ -384,6 +474,7 @@
 
   window.addEventListener("message", handleParentMessage);
   window.addEventListener("message", handlePopupMessage);
+  document.addEventListener("click", handleTreeToggle);
 
   if (document.querySelector("#mappingList")) {
     if (document.readyState === "loading") {
@@ -400,7 +491,9 @@
     loadMapping,
     mapResponse,
     normalizeMappingRows,
+    openPopup,
     openWithResponse,
+    renderResponse,
     renderList,
   };
 })();

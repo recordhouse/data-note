@@ -52,6 +52,37 @@
         color: #8a97a8;
       }
 
+      .tree-toggle,
+      .tree-toggle-placeholder {
+        flex: 0 0 20px;
+        width: 20px;
+        height: 20px;
+        margin-top: 1px;
+      }
+
+      .tree-toggle {
+        display: inline-grid;
+        place-items: center;
+        border: 1px solid #c9d3df;
+        border-radius: 4px;
+        background: #ffffff;
+        color: #334155;
+        cursor: pointer;
+      }
+
+      .tree-toggle::before {
+        content: "";
+        width: 0;
+        height: 0;
+        border-left: 4px solid transparent;
+        border-right: 4px solid transparent;
+        border-top: 6px solid currentColor;
+      }
+
+      .tree-toggle[aria-expanded="false"]::before {
+        transform: rotate(-90deg);
+      }
+
       .tree-name {
         color: #667385;
         font-weight: 800;

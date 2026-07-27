@@ -138,16 +138,33 @@
           <span class="badge" id="statusBadge">대기중</span>
         </div>
         <div class="content">
-          <pre><code>// 1. 원하는 시점에 한 번만 실행: response-mapping-popup.js 로드
-const mappingScript = document.createElement("script");
-mappingScript.src = "/js/response-mapping-popup.js";
-document.head.appendChild(mappingScript);
+          <pre><code>// 1. 원하는 시점에 실행: 스크립트 로드 + 빈 팝업 열기
+function openResponseMappingPopup() {
+  if (window.ResponseMappingPopup) {
+    window.ResponseMappingPopup.openPopup({
+      popupUrl: "/popup.html",
+      mappingUrl: "/data/mapping.json"
+    });
+    return;
+  }
 
-// 2. 서버 응답을 받은 시점에 실행: 팝업 열기
-window.ResponseMappingPopup.openWithResponse(responseJson, {
-  popupUrl: "/popup.html",
-  mappingUrl: "/data/mapping.json"
-});</code></pre>
+  const script = document.createElement("script");
+  script.src = "/js/response-mapping-popup.js";
+  script.onload = () => {
+    window.ResponseMappingPopup.openPopup({
+      popupUrl: "/popup.html",
+      mappingUrl: "/data/mapping.json"
+    });
+  };
+  document.head.appendChild(script);
+}
+
+// 2. 서버 응답을 받은 시점에 실행: 떠있는 팝업에 리스트 추가
+function renderResponseMappingPopup(responseJson) {
+  window.ResponseMappingPopup.renderResponse(responseJson, {
+    mappingUrl: "/data/mapping.json"
+  });
+}</code></pre>
         </div>
       </section>
 
@@ -169,9 +186,16 @@ window.ResponseMappingPopup.openWithResponse(responseJson, {
 
       async function requestDummyResponse() {
         requestButton.disabled = true;
-        statusBadge.textContent = "통신중";
+        statusBadge.textContent = "팝업 여는중";
 
         try {
+          await ResponseMappingPopup.openPopup({
+            popupUrl: "./popup.html",
+            mappingUrl: "./data/mapping.json",
+          });
+
+          statusBadge.textContent = "통신중";
+
           const response = await fetch("./data/response-dummy.json");
 
           if (!response.ok) {
@@ -181,8 +205,7 @@ window.ResponseMappingPopup.openWithResponse(responseJson, {
           const responseJson = await response.json();
           rawResponse.textContent = JSON.stringify(responseJson, null, 2);
 
-          await ResponseMappingPopup.openWithResponse(responseJson, {
-            popupUrl: "./popup.html",
+          await ResponseMappingPopup.renderResponse(responseJson, {
             mappingUrl: "./data/mapping.json",
           });
 
