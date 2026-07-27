@@ -55,6 +55,20 @@
     return row.itemName && row.itemKey;
   }
 
+  function createLabelMap(mappingRows) {
+    return normalizeMappingRows(mappingRows).reduce((labelMap, row) => {
+      if (!labelMap.has(row.itemKey)) {
+        labelMap.set(row.itemKey, row.itemName);
+      }
+
+      return labelMap;
+    }, new Map());
+  }
+
+  function getDisplayLabel(label, labelMap) {
+    return labelMap.get(normalizeKey(label)) || label;
+  }
+
   function normalizeName(value) {
     return String(value || "")
       .replace(/\s+/g, " ")
@@ -169,7 +183,7 @@
     `;
   }
 
-  function renderArrayChildren(items, depth, visited) {
+  function renderArrayChildren(items, depth, visited, labelMap) {
     return items
       .map((item) => {
         if (!item || typeof item !== "object") {
@@ -181,7 +195,7 @@
         }
 
         if (Array.isArray(item)) {
-          return renderTreeValue("배열", item, depth + 1, visited);
+          return renderTreeValue("배열", item, depth + 1, visited, labelMap);
         }
 
         const entries = Object.entries(item);
@@ -191,44 +205,50 @@
         }
 
         visited.add(item);
-        return entries.map(([key, childValue]) => renderTreeValue(key, childValue, depth + 1, visited)).join("");
+        return entries
+          .map(([key, childValue]) => renderTreeValue(key, childValue, depth + 1, visited, labelMap))
+          .join("");
       })
       .join("");
   }
 
-  function renderObjectChildren(value, depth, visited) {
+  function renderObjectChildren(value, depth, visited, labelMap) {
     const entries = Object.entries(value);
 
     if (!entries.length) {
       return "";
     }
 
-    return entries.map(([key, childValue]) => renderTreeValue(key, childValue, depth + 1, visited)).join("");
+    return entries
+      .map(([key, childValue]) => renderTreeValue(key, childValue, depth + 1, visited, labelMap))
+      .join("");
   }
 
-  function renderTreeValue(label, value, depth = 0, visited = new WeakSet()) {
+  function renderTreeValue(label, value, depth = 0, visited = new WeakSet(), labelMap = new Map()) {
+    const displayLabel = getDisplayLabel(label, labelMap);
+
     if (!value || typeof value !== "object") {
-      return renderTreeRow(label, formatValue(value), depth, true);
+      return renderTreeRow(displayLabel, formatValue(value), depth, true);
     }
 
     if (visited.has(value)) {
-      return renderTreeRow(label, "[순환 참조]", depth, true);
+      return renderTreeRow(displayLabel, "[순환 참조]", depth, true);
     }
 
     visited.add(value);
 
     const children = Array.isArray(value)
-      ? renderArrayChildren(value, depth, visited)
-      : renderObjectChildren(value, depth, visited);
+      ? renderArrayChildren(value, depth, visited, labelMap)
+      : renderObjectChildren(value, depth, visited, labelMap);
 
     if (!children) {
-      return renderTreeRow(label, "", depth, false);
+      return renderTreeRow(displayLabel, "", depth, false);
     }
 
-    return renderTreeRow(label, "", depth, false) + children;
+    return renderTreeRow(displayLabel, "", depth, false) + children;
   }
 
-  function renderList(target, mappedList) {
+  function renderList(target, mappedList, mappingRows) {
     const container = typeof target === "string" ? document.querySelector(target) : target;
 
     if (!container) {
@@ -240,8 +260,10 @@
       return;
     }
 
+    const labelMap = createLabelMap(mappingRows || mappedList);
+
     container.innerHTML = mappedList
-      .map((row) => `<section class="row">${renderTreeValue(row.itemName, row.value)}</section>`)
+      .map((row) => `<section class="row">${renderTreeValue(row.itemName, row.value, 0, new WeakSet(), labelMap)}</section>`)
       .join("");
   }
 
@@ -258,7 +280,7 @@
   async function renderPopupPayload(payload) {
     const mappingRows = payload.mappingRows || (await loadMapping(payload.mappingUrl));
     const mappedList = mapResponse(payload.responseJson, mappingRows);
-    renderList("#mappingList", mappedList);
+    renderList("#mappingList", mappedList, mappingRows);
     return mappedList;
   }
 
@@ -373,6 +395,7 @@
 
   window.ResponseMappingPopup = {
     collectMatchesByKey,
+    createLabelMap,
     formatValue,
     loadMapping,
     mapResponse,
