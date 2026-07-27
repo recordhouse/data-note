@@ -93,8 +93,8 @@
     return String(value);
   }
 
-  function isComplexValue(value) {
-    return value !== null && typeof value === "object";
+  function isDisplayValue(value) {
+    return value === null || typeof value !== "object";
   }
 
   function collectMatchesByKey(source, targetKey) {
@@ -138,70 +138,20 @@
     return matches;
   }
 
-  function getValueSignature(value) {
-    if (value === null) {
-      return "null";
-    }
-
-    if (Array.isArray(value)) {
-      return `[${value.map((item) => getValueSignature(item)).join(",")}]`;
-    }
-
-    if (value && typeof value === "object") {
-      return `{${Object.keys(value)
-        .sort()
-        .map((key) => `${JSON.stringify(key)}:${getValueSignature(value[key])}`)
-        .join(",")}}`;
-    }
-
-    return `${typeof value}:${String(value)}`;
-  }
-
-  function groupMatchesByValue(matches) {
-    const groups = new Map();
-
-    matches.forEach((match) => {
-      const signature = getValueSignature(match.value);
-      const group = groups.get(signature) || {
-        value: match.value,
-        count: 0,
-      };
-
-      group.count += 1;
-      groups.set(signature, group);
-    });
-
-    return [...groups.values()];
-  }
-
   function mapResponse(responseJson, mappingRows) {
     return normalizeMappingRows(mappingRows).reduce((list, row) => {
       const matches = collectMatchesByKey(responseJson, row.itemKey);
-      const displayMatches = matches.filter((match) => !isComplexValue(match.value));
+      const firstMatch = matches.find((match) => isDisplayValue(match.value));
 
-      if (!displayMatches.length) {
-        return list;
-      }
-
-      const valueGroups = groupMatchesByValue(displayMatches);
-
-      if (valueGroups.length === 1) {
-        list.push({
-          itemName: row.itemName,
-          itemKey: row.itemKey,
-          value: valueGroups[0].value,
-          exception: false,
-        });
+      if (!firstMatch) {
         return list;
       }
 
       list.push({
         itemName: row.itemName,
         itemKey: row.itemKey,
-        value: valueGroups
-          .map((group) => formatValue(group.value))
-          .join("\n\n"),
-        exception: true,
+        value: firstMatch.value,
+        exception: false,
       });
       return list;
     }, []);
