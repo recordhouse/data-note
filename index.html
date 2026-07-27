@@ -138,10 +138,41 @@
           <span class="badge" id="statusBadge">대기중</span>
         </div>
         <div class="content">
-          <pre><code>ResponseMappingPopup.openWithResponse(responseJson, {
-  popupUrl: "./popup.html",
-  mappingUrl: "./data/mapping.json"
-});</code></pre>
+          <pre><code>async function openResponseMappingPopup(responseJson) {
+  await loadResponseMappingPopupScript("/js/response-mapping-popup.js");
+
+  return window.ResponseMappingPopup.openWithResponse(responseJson, {
+    popupUrl: "/popup.html",
+    mappingUrl: "/data/mapping.json"
+  });
+}
+
+function loadResponseMappingPopupScript(src) {
+  if (window.ResponseMappingPopup) {
+    return Promise.resolve(window.ResponseMappingPopup);
+  }
+
+  if (window.__responseMappingPopupScriptPromise) {
+    return window.__responseMappingPopupScriptPromise;
+  }
+
+  window.__responseMappingPopupScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.onload = () => {
+      if (!window.ResponseMappingPopup) {
+        reject(new Error("ResponseMappingPopup 초기화 실패"));
+        return;
+      }
+
+      resolve(window.ResponseMappingPopup);
+    };
+    script.onerror = () => reject(new Error("response-mapping-popup.js 로드 실패"));
+    document.head.appendChild(script);
+  });
+
+  return window.__responseMappingPopupScriptPromise;
+}</code></pre>
         </div>
       </section>
 
