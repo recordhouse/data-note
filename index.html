@@ -138,41 +138,16 @@
           <span class="badge" id="statusBadge">대기중</span>
         </div>
         <div class="content">
-          <pre><code>async function openResponseMappingPopup(responseJson) {
-  await loadResponseMappingPopupScript("/js/response-mapping-popup.js");
+          <pre><code>// 1. 원하는 시점에 한 번만 실행: response-mapping-popup.js 로드
+const mappingScript = document.createElement("script");
+mappingScript.src = "/js/response-mapping-popup.js";
+document.head.appendChild(mappingScript);
 
-  return window.ResponseMappingPopup.openWithResponse(responseJson, {
-    popupUrl: "/popup.html",
-    mappingUrl: "/data/mapping.json"
-  });
-}
-
-function loadResponseMappingPopupScript(src) {
-  if (window.ResponseMappingPopup) {
-    return Promise.resolve(window.ResponseMappingPopup);
-  }
-
-  if (window.__responseMappingPopupScriptPromise) {
-    return window.__responseMappingPopupScriptPromise;
-  }
-
-  window.__responseMappingPopupScriptPromise = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = src;
-    script.onload = () => {
-      if (!window.ResponseMappingPopup) {
-        reject(new Error("ResponseMappingPopup 초기화 실패"));
-        return;
-      }
-
-      resolve(window.ResponseMappingPopup);
-    };
-    script.onerror = () => reject(new Error("response-mapping-popup.js 로드 실패"));
-    document.head.appendChild(script);
-  });
-
-  return window.__responseMappingPopupScriptPromise;
-}</code></pre>
+// 2. 서버 응답을 받은 시점에 실행: 팝업 열기
+window.ResponseMappingPopup.openWithResponse(responseJson, {
+  popupUrl: "/popup.html",
+  mappingUrl: "/data/mapping.json"
+});</code></pre>
         </div>
       </section>
 
