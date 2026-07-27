@@ -93,6 +93,10 @@
     return String(value);
   }
 
+  function isComplexValue(value) {
+    return value !== null && typeof value === "object";
+  }
+
   function collectMatchesByKey(source, targetKey) {
     const matches = [];
     const visited = new WeakSet();
@@ -173,12 +177,13 @@
   function mapResponse(responseJson, mappingRows) {
     return normalizeMappingRows(mappingRows).reduce((list, row) => {
       const matches = collectMatchesByKey(responseJson, row.itemKey);
+      const displayMatches = matches.filter((match) => !isComplexValue(match.value));
 
-      if (!matches.length) {
+      if (!displayMatches.length) {
         return list;
       }
 
-      const valueGroups = groupMatchesByValue(matches);
+      const valueGroups = groupMatchesByValue(displayMatches);
 
       if (valueGroups.length === 1) {
         list.push({
