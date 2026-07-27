@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>응답 매핑 리스트</title>
+    <title>통신 응답 매핑 리스트</title>
     <style>
       * {
         box-sizing: border-box;
@@ -18,37 +18,38 @@
           "Segoe UI", sans-serif;
       }
 
-      .response-mapping-wrap {
-        width: 100%;
+      .wrap {
+        min-height: 100vh;
         padding: 16px;
       }
 
-      .response-mapping-list {
+      .list {
         display: grid;
         gap: 8px;
       }
 
-      .mapping-row {
+      .row {
         display: grid;
-        grid-template-columns: 160px minmax(0, 1fr);
+        grid-template-columns: 168px minmax(0, 1fr);
         gap: 12px;
-        padding: 10px 12px;
+        padding: 11px 12px;
         border: 1px solid #d9e1ea;
         border-radius: 8px;
         background: #fbfdff;
       }
 
-      .mapping-name {
+      .name {
         color: #667385;
         font-size: 13px;
         font-weight: 800;
+        line-height: 1.5;
       }
 
-      .mapping-value {
+      .value {
         margin: 0;
         color: #17202a;
         font-size: 14px;
-        line-height: 1.5;
+        line-height: 1.55;
         overflow-wrap: anywhere;
         white-space: pre-wrap;
       }
@@ -59,7 +60,7 @@
       }
 
       .empty {
-        min-height: 120px;
+        min-height: 160px;
         display: grid;
         place-items: center;
         border: 1px dashed #b8c5d5;
@@ -68,20 +69,20 @@
         text-align: center;
       }
 
-      @media (max-width: 520px) {
-        .mapping-row {
+      @media (max-width: 560px) {
+        .row {
           grid-template-columns: 1fr;
         }
       }
     </style>
   </head>
   <body>
-    <section class="response-mapping-wrap">
-      <div id="responseMappingList" class="response-mapping-list">
-        <div class="empty">통신 응답을 전달하면 매핑 리스트가 표시됩니다.</div>
+    <main class="wrap">
+      <div class="list" id="mappingList">
+        <div class="empty">통신 응답을 기다리는 중입니다.</div>
       </div>
-    </section>
+    </main>
 
-    <script src="./js/response-mapping-list.js"></script>
+    <script src="./js/response-mapping-popup.js"></script>
   </body>
 </html>

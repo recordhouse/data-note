@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>응답 매핑 테스트</title>
+    <title>통신 응답 매핑 테스트</title>
     <style>
       * {
         box-sizing: border-box;
@@ -20,12 +20,12 @@
       }
 
       main {
-        width: min(1080px, calc(100% - 32px));
+        width: min(1000px, calc(100% - 32px));
         margin: 0 auto;
         padding: 32px 0;
       }
 
-      header {
+      .top {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -57,26 +57,15 @@
         opacity: 0.62;
       }
 
-      .button-group {
-        display: flex;
-        gap: 8px;
-      }
-
-      .secondary-button {
-        background: #2f3f53;
-      }
-
-      .layout {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 360px;
-        gap: 16px;
-      }
-
       .panel {
         background: #ffffff;
         border: 1px solid #d9e1ea;
         border-radius: 8px;
         box-shadow: 0 14px 36px rgba(23, 32, 42, 0.1);
+      }
+
+      .panel + .panel {
+        margin-top: 16px;
       }
 
       .panel-header {
@@ -91,7 +80,6 @@
       h2 {
         margin: 0;
         font-size: 16px;
-        line-height: 1.3;
       }
 
       .badge {
@@ -108,95 +96,25 @@
         padding: 16px 18px 18px;
       }
 
-      .mapping-list {
-        display: grid;
-        gap: 10px;
-      }
-
-      .mapping-row {
-        display: grid;
-        grid-template-columns: 160px minmax(0, 1fr);
-        gap: 12px;
-        padding: 12px;
-        border: 1px solid #d9e1ea;
-        border-radius: 8px;
-        background: #fbfdff;
-      }
-
-      .mapping-name {
-        color: #667385;
-        font-size: 13px;
-        font-weight: 800;
-      }
-
-      .mapping-value {
-        margin: 0;
-        color: #17202a;
-        font-size: 14px;
-        line-height: 1.5;
-        overflow-wrap: anywhere;
-        white-space: pre-wrap;
-      }
-
-      .exception {
-        border-color: #f0c0b8;
-        background: #fff9f8;
-      }
-
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 13px;
-      }
-
-      th,
-      td {
-        padding: 10px;
-        border-bottom: 1px solid #d9e1ea;
-        text-align: left;
-        vertical-align: top;
-      }
-
-      th {
-        background: #f8fafc;
-        color: #667385;
-        font-size: 12px;
-      }
-
-      tr:last-child td {
-        border-bottom: 0;
-      }
-
-      code,
       pre {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      }
-
-      pre {
-        min-height: 180px;
         margin: 0;
-        padding: 12px;
+        padding: 14px;
         border-radius: 8px;
         background: #101820;
         color: #d8f0ff;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         font-size: 12px;
         line-height: 1.6;
         overflow: auto;
         white-space: pre-wrap;
       }
 
-      .empty {
-        min-height: 220px;
-        display: grid;
-        place-items: center;
-        border: 1px dashed #b8c5d5;
-        border-radius: 8px;
-        color: #667385;
-        text-align: center;
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       }
 
-      @media (max-width: 820px) {
-        header {
+      @media (max-width: 680px) {
+        .top {
           align-items: stretch;
           flex-direction: column;
         }
@@ -204,66 +122,32 @@
         button {
           width: 100%;
         }
-
-        .button-group {
-          flex-direction: column;
-        }
-
-        .layout {
-          grid-template-columns: 1fr;
-        }
-
-        .mapping-row {
-          grid-template-columns: 1fr;
-        }
       }
     </style>
   </head>
   <body>
     <main>
-      <header>
-        <h1>응답 매핑 테스트</h1>
-        <div class="button-group">
-          <button id="requestButton" type="button">통신</button>
-          <button class="secondary-button" id="deployPopupButton" type="button">배포팝업</button>
-        </div>
-      </header>
-
-      <section class="layout">
-        <article class="panel">
-          <div class="panel-header">
-            <h2>매핑 리스트</h2>
-            <span class="badge" id="statusBadge">대기중</span>
-          </div>
-          <div class="content">
-            <div id="mappingList" class="mapping-list">
-              <div class="empty">통신 버튼을 누르면 응답 JSON이 데이터명: 값 형태로 표시됩니다.</div>
-            </div>
-          </div>
-        </article>
-
-        <aside class="panel">
-          <div class="panel-header">
-            <h2>등록 테이블</h2>
-            <span class="badge" id="fieldCount">0개</span>
-          </div>
-          <div class="content">
-            <table>
-              <thead>
-                <tr>
-                  <th>데이터명</th>
-                  <th>데이터키값</th>
-                </tr>
-              </thead>
-              <tbody id="fieldTableBody"></tbody>
-            </table>
-          </div>
-        </aside>
+      <section class="top">
+        <h1>통신 응답 매핑 테스트</h1>
+        <button id="requestButton" type="button">통신</button>
       </section>
 
-      <section class="panel" style="margin-top: 16px">
+      <section class="panel">
         <div class="panel-header">
-          <h2>응답 원문</h2>
+          <h2>가져다 쓸 호출 코드</h2>
+          <span class="badge" id="statusBadge">대기중</span>
+        </div>
+        <div class="content">
+          <pre><code>ResponseMappingPopup.openWithResponse(responseJson, {
+  popupUrl: "./popup.html",
+  mappingUrl: "./data/mapping.json"
+});</code></pre>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>테스트 응답 원문</h2>
         </div>
         <div class="content">
           <pre id="rawResponse">{}</pre>
@@ -271,8 +155,41 @@
       </section>
     </main>
 
-    <script src="./js/response-mapper.js"></script>
-    <script src="./deploy/js/response-mapping-popup-opener.js"></script>
-    <script src="./js/test-app.js"></script>
+    <script src="./js/response-mapping-popup.js"></script>
+    <script>
+      const requestButton = document.querySelector("#requestButton");
+      const statusBadge = document.querySelector("#statusBadge");
+      const rawResponse = document.querySelector("#rawResponse");
+
+      async function requestDummyResponse() {
+        requestButton.disabled = true;
+        statusBadge.textContent = "통신중";
+
+        try {
+          const response = await fetch("./data/response-dummy.json");
+
+          if (!response.ok) {
+            throw new Error(`더미 응답을 불러오지 못했습니다. (${response.status})`);
+          }
+
+          const responseJson = await response.json();
+          rawResponse.textContent = JSON.stringify(responseJson, null, 2);
+
+          await ResponseMappingPopup.openWithResponse(responseJson, {
+            popupUrl: "./popup.html",
+            mappingUrl: "./data/mapping.json",
+          });
+
+          statusBadge.textContent = "팝업 표시";
+        } catch (error) {
+          rawResponse.textContent = error.message;
+          statusBadge.textContent = "오류";
+        } finally {
+          requestButton.disabled = false;
+        }
+      }
+
+      requestButton.addEventListener("click", requestDummyResponse);
+    </script>
   </body>
 </html>

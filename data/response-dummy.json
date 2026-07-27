@@ -1,0 +1,119 @@
+{
+  "header": {
+    "transactionId": "TX-20260727-000183",
+    "requestId": "REQ-20260727-091512",
+    "receivedAt": "2026-07-27T09:15:12+09:00",
+    "channel": "WEB",
+    "approved": true
+  },
+  "result": {
+    "resultCode": "0000",
+    "resultMessage": "정상 처리",
+    "nullableField": null
+  },
+  "payment": {
+    "amount": 128500,
+    "currency": "KRW",
+    "fee": 3500,
+    "method": {
+      "paymentMethod": "CARD",
+      "issuerName": "테스트카드",
+      "installmentMonths": 0
+    },
+    "flags": {
+      "taxFree": false,
+      "partialCancelable": true
+    }
+  },
+  "customer": {
+    "customerName": "홍길동",
+    "customerNo": 348291,
+    "contacts": {
+      "email": "hong@example.com",
+      "phone": "010-1234-5678"
+    }
+  },
+  "shipping": {
+    "shippingAddress": {
+      "zipCode": "04524",
+      "address1": "서울특별시 중구 세종대로 110",
+      "address2": "테스트빌딩 12층"
+    },
+    "deliveryMessages": [
+      "문 앞에 놓아주세요.",
+      "배송 전 연락 부탁드립니다."
+    ]
+  },
+  "items": [
+    {
+      "productId": "P-10001",
+      "productName": "테스트 상품 A",
+      "quantity": 2,
+      "unitPrice": 45000,
+      "options": ["블랙", "XL"],
+      "gift": false
+    },
+    {
+      "productId": "P-10002",
+      "productName": "테스트 상품 B",
+      "quantity": 1,
+      "unitPrice": 38500,
+      "options": [],
+      "gift": true
+    }
+  ],
+  "history": [
+    {
+      "status": "REQUESTED",
+      "changedAt": "2026-07-27T09:14:20+09:00"
+    },
+    {
+      "status": "APPROVED",
+      "changedAt": "2026-07-27T09:15:12+09:00"
+    }
+  ],
+  "metadata": {
+    "emptyObject": {},
+    "emptyArray": [],
+    "mixedArray": ["문자열", 100, true, null, { "innerKey": "innerValue" }],
+    "depth01": {
+      "depth02": {
+        "depth03": {
+          "depth04": {
+            "depth05": {
+              "depth06": {
+                "depth07": {
+                  "depth08": {
+                    "depth09": {
+                      "depth10": {
+                        "depth11": {
+                          "depth12": {
+                            "depth13": {
+                              "depth14": {
+                                "depth15": {
+                                  "depth16": {
+                                    "depth17": {
+                                      "depth18": {
+                                        "depth19": {
+                                          "depth20Key": "20뎁스 값"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
