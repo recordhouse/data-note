@@ -1,5 +1,5 @@
 
-
+```js
 function loadResponseMappingPopupScript(src) {
   if (window.ResponseMappingPopup) {
     return Promise.resolve(window.ResponseMappingPopup);
@@ -22,7 +22,7 @@ function loadResponseMappingPopupScript(src) {
 
 
 
-그리고 서버 응답 받은 뒤:
+// 그리고 서버 응답 받은 뒤:
 
 
 async function handleResponse(responseJson) {
@@ -33,4 +33,6 @@ async function handleResponse(responseJson) {
     mappingUrl: "/data/mapping.json"
   });
 }
+
+```
 
