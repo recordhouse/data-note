@@ -403,6 +403,34 @@
     toggle.setAttribute("aria-expanded", String(isExpanded));
     toggle.title = isExpanded ? "표시 항목 닫기" : "표시 항목 열기";
     panel.hidden = !isExpanded;
+
+    if (isExpanded) {
+      setItemFilterFullHeight();
+    }
+  }
+
+  function setItemFilterFullHeight() {
+    const panel = document.querySelector("#mappingItemFilterPanel");
+    const search = document.querySelector("#mappingItemFilterSearch");
+    const optionLabels = Array.from(document.querySelectorAll("[data-mapping-filter-option]"));
+    const noResults = document.querySelector("#mappingItemFilterNoResults");
+
+    if (!panel || panel.hidden) {
+      return;
+    }
+
+    panel.style.height = "auto";
+    optionLabels.forEach((label) => {
+      label.hidden = false;
+    });
+
+    if (noResults) {
+      noResults.hidden = true;
+    }
+
+    const borderHeight = panel.offsetHeight - panel.clientHeight;
+    panel.style.height = `${panel.scrollHeight + borderHeight}px`;
+    filterItemOptions(search?.value || "");
   }
 
   function filterItemOptions(keyword) {
@@ -455,7 +483,14 @@
       .join("");
 
     updateItemFilterState();
-    filterItemOptions(document.querySelector("#mappingItemFilterSearch")?.value || "");
+
+    const panel = document.querySelector("#mappingItemFilterPanel");
+
+    if (panel && !panel.hidden) {
+      setItemFilterFullHeight();
+    } else {
+      filterItemOptions(document.querySelector("#mappingItemFilterSearch")?.value || "");
+    }
   }
 
   function renderList(target, mappedList, mappingRows) {
@@ -703,6 +738,7 @@
 
   window.addEventListener("message", handleParentMessage);
   window.addEventListener("message", handlePopupMessage);
+  window.addEventListener("resize", setItemFilterFullHeight);
   document.addEventListener("click", handleTreeToggle);
   document.addEventListener("click", handleItemFilterToggle);
   document.addEventListener("change", handleItemFilterChange);
