@@ -11,6 +11,9 @@
 
       body {
         margin: 0;
+        height: 100vh;
+        height: 100dvh;
+        overflow: hidden;
         background: #ffffff;
         color: #17202a;
         font-family:
@@ -19,13 +22,19 @@
       }
 
       .wrap {
-        min-height: 100vh;
-        padding: 16px;
+        display: grid;
+        grid-template-rows: minmax(0, 1fr) auto;
+        gap: 8px;
+        height: 100%;
+        padding: 12px;
       }
 
       .list {
         display: grid;
+        align-content: start;
         gap: 8px;
+        min-height: 0;
+        overflow: auto;
       }
 
       .row {
@@ -33,6 +42,10 @@
         border: 1px solid #d9e1ea;
         border-radius: 8px;
         background: #fbfdff;
+      }
+
+      .row[hidden] {
+        display: none;
       }
 
       .tree-row {
@@ -108,6 +121,71 @@
         text-align: center;
       }
 
+      .item-filter {
+        border: 1px solid #d9e1ea;
+        border-radius: 6px;
+        background: #ffffff;
+        box-shadow: 0 -4px 14px rgba(23, 32, 42, 0.06);
+      }
+
+      .item-filter[hidden] {
+        display: none;
+      }
+
+      .item-filter summary {
+        min-height: 34px;
+        padding: 7px 10px;
+        color: #475569;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .item-filter-panel {
+        max-height: 160px;
+        padding: 8px 10px 10px;
+        border-top: 1px solid #e5eaf0;
+        overflow: auto;
+      }
+
+      .item-filter-all {
+        padding-bottom: 7px;
+        border-bottom: 1px solid #edf1f5;
+      }
+
+      .item-filter-options {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 6px 12px;
+        padding-top: 7px;
+      }
+
+      .item-filter-label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        color: #334155;
+        font-size: 12px;
+        line-height: 1.4;
+        cursor: pointer;
+      }
+
+      .item-filter-label input {
+        flex: 0 0 auto;
+        width: 14px;
+        height: 14px;
+        margin: 0;
+        accent-color: #1266d6;
+      }
+
+      .item-filter-label span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
       @media (max-width: 560px) {
         .tree-row {
           padding-left: calc(var(--depth) * 14px);
@@ -120,6 +198,17 @@
       <div class="list" id="mappingList">
         <div class="empty">통신 응답을 기다리는 중입니다.</div>
       </div>
+
+      <details class="item-filter" id="mappingItemFilter" hidden>
+        <summary id="mappingItemFilterSummary">표시 항목 0/0</summary>
+        <div class="item-filter-panel">
+          <label class="item-filter-label item-filter-all">
+            <input id="mappingItemFilterAll" type="checkbox" checked />
+            <span>전체</span>
+          </label>
+          <div class="item-filter-options" id="mappingItemFilterOptions"></div>
+        </div>
+      </details>
     </main>
 
     <script src="./js/response-mapping-popup.js"></script>

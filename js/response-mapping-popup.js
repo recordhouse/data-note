@@ -13,6 +13,8 @@
   let pendingPayload = null;
   let renderResolvers = [];
   let readyResolvers = [];
+  let currentMappedList = [];
+  const hiddenItemIds = new Set();
   let activePopupOptions = {
     popupUrl: DEFAULT_POPUP_URL,
     mappingUrl: DEFAULT_MAPPING_URL,
@@ -328,6 +330,61 @@
     return renderTreeBranch(displayLabel, children, depth);
   }
 
+  function getMappedItemId(row) {
+    return `${row.itemKey}\u0000${row.itemName}`;
+  }
+
+  function updateItemFilterState() {
+    const filter = document.querySelector("#mappingItemFilter");
+    const summary = document.querySelector("#mappingItemFilterSummary");
+    const allCheckbox = document.querySelector("#mappingItemFilterAll");
+    const checkboxes = Array.from(document.querySelectorAll("[data-mapping-filter-index]"));
+
+    if (!filter || !summary || !allCheckbox) {
+      return;
+    }
+
+    const checkedCount = checkboxes.filter((checkbox) => checkbox.checked).length;
+    summary.textContent = `표시 항목 ${checkedCount}/${checkboxes.length}`;
+    allCheckbox.checked = checkboxes.length > 0 && checkedCount === checkboxes.length;
+    allCheckbox.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
+
+    checkboxes.forEach((checkbox) => {
+      const index = Number(checkbox.dataset.mappingFilterIndex);
+      const row = document.querySelector(`[data-mapping-row-index="${index}"]`);
+
+      if (row) {
+        row.hidden = !checkbox.checked;
+      }
+    });
+  }
+
+  function renderItemFilter(mappedList) {
+    const filter = document.querySelector("#mappingItemFilter");
+    const options = document.querySelector("#mappingItemFilterOptions");
+
+    if (!filter || !options) {
+      return;
+    }
+
+    currentMappedList = mappedList;
+    filter.hidden = mappedList.length === 0;
+    options.innerHTML = mappedList
+      .map((row, index) => {
+        const checked = !hiddenItemIds.has(getMappedItemId(row));
+
+        return `
+          <label class="item-filter-label" title="${escapeHtml(row.itemName)}">
+            <input type="checkbox" data-mapping-filter-index="${index}" ${checked ? "checked" : ""} />
+            <span>${escapeHtml(row.itemName)}</span>
+          </label>
+        `;
+      })
+      .join("");
+
+    updateItemFilterState();
+  }
+
   function renderList(target, mappedList, mappingRows) {
     const container = typeof target === "string" ? document.querySelector(target) : target;
 
@@ -337,14 +394,49 @@
 
     if (!mappedList.length) {
       container.innerHTML = `<div class="empty">매핑되는 응답값이 없습니다.</div>`;
+      renderItemFilter([]);
       return;
     }
 
     const labelMap = createLabelMap(mappingRows || mappedList);
 
     container.innerHTML = mappedList
-      .map((row) => `<section class="row">${renderTreeValue(row.itemName, row.value, 0, new WeakSet(), labelMap)}</section>`)
+      .map(
+        (row, index) =>
+          `<section class="row" data-mapping-row-index="${index}">${renderTreeValue(row.itemName, row.value, 0, new WeakSet(), labelMap)}</section>`,
+      )
       .join("");
+    renderItemFilter(mappedList);
+  }
+
+  function handleItemFilterChange(event) {
+    const allCheckbox = event.target.closest("#mappingItemFilterAll");
+    const itemCheckbox = event.target.closest("[data-mapping-filter-index]");
+
+    if (!allCheckbox && !itemCheckbox) {
+      return;
+    }
+
+    if (allCheckbox) {
+      document.querySelectorAll("[data-mapping-filter-index]").forEach((checkbox) => {
+        const index = Number(checkbox.dataset.mappingFilterIndex);
+        const row = currentMappedList[index];
+        checkbox.checked = allCheckbox.checked;
+
+        if (row) {
+          hiddenItemIds[allCheckbox.checked ? "delete" : "add"](getMappedItemId(row));
+        }
+      });
+    } else {
+      const index = Number(itemCheckbox.dataset.mappingFilterIndex);
+      const row = currentMappedList[index];
+
+      if (row) {
+        hiddenItemIds[itemCheckbox.checked ? "delete" : "add"](getMappedItemId(row));
+      }
+    }
+
+    updateItemFilterState();
   }
 
   function handleTreeToggle(event) {
@@ -518,6 +610,7 @@
   window.addEventListener("message", handleParentMessage);
   window.addEventListener("message", handlePopupMessage);
   document.addEventListener("click", handleTreeToggle);
+  document.addEventListener("change", handleItemFilterChange);
 
   if (document.querySelector("#mappingList")) {
     if (document.readyState === "loading") {
