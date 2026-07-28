@@ -36,7 +36,7 @@
 
   function normalizeMappingRows(source) {
     if (Array.isArray(source)) {
-      return source.map(normalizeMappingRow).filter(hasMappingValue);
+      return getUniqueMappingRows(source.map(normalizeMappingRow).filter(hasMappingValue));
     }
 
     if (!source || typeof source !== "object") {
@@ -47,15 +47,17 @@
       (source["이름"] || source["항목명"] || source["항목이름"]) &&
       (source["코드"] || source["항목키"] || source["값"] || source["항목키값"] || source.itemKey || source.key)
     ) {
-      return [normalizeMappingRow(source)].filter(hasMappingValue);
+      return getUniqueMappingRows([normalizeMappingRow(source)].filter(hasMappingValue));
     }
 
-    return Object.entries(source)
-      .map(([itemName, itemKey]) => ({
-        itemName: normalizeName(itemName),
-        itemKey: normalizeKey(itemKey),
-      }))
-      .filter(hasMappingValue);
+    return getUniqueMappingRows(
+      Object.entries(source)
+        .map(([itemName, itemKey]) => ({
+          itemName: normalizeName(itemName),
+          itemKey: normalizeKey(itemKey),
+        }))
+        .filter(hasMappingValue),
+    );
   }
 
   function normalizeMappingRow(row) {
@@ -74,6 +76,19 @@
 
   function hasMappingValue(row) {
     return row.itemName && row.itemKey;
+  }
+
+  function getUniqueMappingRows(rows) {
+    const itemKeys = new Set();
+
+    return rows.filter((row) => {
+      if (itemKeys.has(row.itemKey)) {
+        return false;
+      }
+
+      itemKeys.add(row.itemKey);
+      return true;
+    });
   }
 
   function createLabelMap(mappingRows) {
