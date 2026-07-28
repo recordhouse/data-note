@@ -87,8 +87,7 @@
         display: none;
       }
 
-      .detail-title,
-      .detail-group-title {
+      .detail-title {
         color: #475569;
         font-size: 12px;
         font-weight: 800;
@@ -99,14 +98,47 @@
       }
 
       .detail-group-title {
-        margin-bottom: 4px;
-        padding-left: 36px;
+        display: grid;
+        grid-template-columns: 22px auto minmax(0, 1fr);
+        align-items: center;
+        gap: 7px;
+        min-height: 30px;
+        margin-bottom: 7px;
+        padding: 4px 8px;
+        border-left: 3px solid #1266d6;
+        background: #eef3f8;
+        color: #475569;
+        font-size: 12px;
+      }
+
+      .detail-group-number {
+        display: inline-grid;
+        place-items: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #1266d6;
+        color: #ffffff;
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .detail-group-label {
+        font-weight: 800;
+        white-space: nowrap;
+      }
+
+      .detail-group-value {
+        min-width: 0;
+        color: #17202a;
+        font-weight: 700;
+        overflow-wrap: anywhere;
       }
 
       .detail-group + .detail-group {
-        margin-top: 8px;
-        padding-top: 8px;
-        border-top: 1px dashed #d9e1ea;
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 2px solid #d9e1ea;
       }
 
       .detail-empty {
