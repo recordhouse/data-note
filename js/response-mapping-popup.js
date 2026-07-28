@@ -393,7 +393,7 @@
         const groupTitle =
           groups.length > 1
             ? `<div class="detail-group-title">
-                <span class="detail-group-number">${index + 1}</span>
+                <span class="detail-group-number">${index + 1}.</span>
                 <span class="detail-group-label">매칭 값</span>
                 <span class="detail-group-value">${escapeHtml(getDetailValueLabel(group.value))}</span>
               </div>`
