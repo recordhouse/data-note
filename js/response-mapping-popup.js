@@ -392,6 +392,39 @@
     });
   }
 
+  function setItemFilterExpanded(isExpanded) {
+    const toggle = document.querySelector("#mappingItemFilterToggle");
+    const panel = document.querySelector("#mappingItemFilterPanel");
+
+    if (!toggle || !panel) {
+      return;
+    }
+
+    toggle.setAttribute("aria-expanded", String(isExpanded));
+    toggle.title = isExpanded ? "표시 항목 닫기" : "표시 항목 열기";
+    panel.hidden = !isExpanded;
+  }
+
+  function filterItemOptions(keyword) {
+    const normalizedKeyword = normalizeName(keyword).toLocaleLowerCase("ko");
+    const optionLabels = Array.from(document.querySelectorAll("[data-mapping-filter-option]"));
+    const noResults = document.querySelector("#mappingItemFilterNoResults");
+    let resultCount = 0;
+
+    optionLabels.forEach((label) => {
+      const index = Number(label.dataset.mappingFilterOption);
+      const row = currentMappedList[index];
+      const searchableText = row ? `${row.itemName} ${row.itemKey}`.toLocaleLowerCase("ko") : "";
+      const isMatch = !normalizedKeyword || searchableText.includes(normalizedKeyword);
+      label.hidden = !isMatch;
+      resultCount += isMatch ? 1 : 0;
+    });
+
+    if (noResults) {
+      noResults.hidden = resultCount > 0;
+    }
+  }
+
   function renderItemFilter(mappedList) {
     const filter = document.querySelector("#mappingItemFilter");
     const options = document.querySelector("#mappingItemFilterOptions");
@@ -409,7 +442,11 @@
         const checked = visibleItemIds.has(getMappedItemId(row));
 
         return `
-          <label class="item-filter-label" title="${escapeHtml(row.itemName)}">
+          <label
+            class="item-filter-label"
+            title="${escapeHtml(row.itemName)}"
+            data-mapping-filter-option="${index}"
+          >
             <input type="checkbox" data-mapping-filter-index="${index}" ${checked ? "checked" : ""} />
             <span>${escapeHtml(row.itemName)}</span>
           </label>
@@ -418,6 +455,7 @@
       .join("");
 
     updateItemFilterState();
+    filterItemOptions(document.querySelector("#mappingItemFilterSearch")?.value || "");
   }
 
   function renderList(target, mappedList, mappingRows) {
@@ -473,6 +511,27 @@
 
     saveVisibleItemIds();
     updateItemFilterState();
+  }
+
+  function handleItemFilterToggle(event) {
+    const toggle = event.target.closest("#mappingItemFilterToggle");
+
+    if (!toggle) {
+      return;
+    }
+
+    setItemFilterExpanded(toggle.getAttribute("aria-expanded") !== "true");
+  }
+
+  function handleItemFilterSearch(event) {
+    const search = event.target.closest("#mappingItemFilterSearch");
+
+    if (!search) {
+      return;
+    }
+
+    setItemFilterExpanded(true);
+    filterItemOptions(search.value);
   }
 
   function handleTreeToggle(event) {
@@ -646,7 +705,10 @@
   window.addEventListener("message", handleParentMessage);
   window.addEventListener("message", handlePopupMessage);
   document.addEventListener("click", handleTreeToggle);
+  document.addEventListener("click", handleItemFilterToggle);
   document.addEventListener("change", handleItemFilterChange);
+  document.addEventListener("input", handleItemFilterSearch);
+  document.addEventListener("focusin", handleItemFilterSearch);
 
   if (document.querySelector("#mappingList")) {
     if (document.readyState === "loading") {

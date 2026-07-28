@@ -132,9 +132,23 @@
         display: none;
       }
 
-      .item-filter summary {
+      .item-filter-bar {
+        display: grid;
+        grid-template-columns: auto minmax(100px, 1fr);
+        align-items: center;
+        gap: 8px;
         min-height: 34px;
-        padding: 7px 10px;
+        padding: 4px 6px;
+      }
+
+      .item-filter-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        padding: 4px;
+        border: 0;
+        background: transparent;
         color: #475569;
         font-size: 12px;
         font-weight: 800;
@@ -142,11 +156,48 @@
         user-select: none;
       }
 
+      .item-filter-chevron {
+        width: 7px;
+        height: 7px;
+        border-right: 1.5px solid currentColor;
+        border-bottom: 1.5px solid currentColor;
+        transform: rotate(45deg) translateY(-2px);
+      }
+
+      .item-filter-toggle[aria-expanded="true"] .item-filter-chevron {
+        transform: rotate(225deg) translate(-1px, -1px);
+      }
+
+      .item-filter-search {
+        width: 100%;
+        height: 26px;
+        padding: 3px 8px;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        outline: none;
+        color: #17202a;
+        background: #ffffff;
+        font: inherit;
+        font-size: 12px;
+      }
+
+      .item-filter-search:focus {
+        border-color: #1266d6;
+        box-shadow: 0 0 0 2px rgba(18, 102, 214, 0.12);
+      }
+
       .item-filter-panel {
-        max-height: 160px;
+        max-height: calc(100vh - 68px);
+        max-height: calc(100dvh - 68px);
         padding: 8px 10px 10px;
         border-top: 1px solid #e5eaf0;
         overflow: auto;
+      }
+
+      .item-filter-panel[hidden],
+      .item-filter-label[hidden],
+      .item-filter-no-results[hidden] {
+        display: none;
       }
 
       .item-filter-all {
@@ -186,6 +237,13 @@
         white-space: nowrap;
       }
 
+      .item-filter-no-results {
+        padding: 10px 0 2px;
+        color: #7b8797;
+        font-size: 12px;
+        text-align: center;
+      }
+
       @media (max-width: 560px) {
         .tree-row {
           padding-left: calc(var(--depth) * 14px);
@@ -199,16 +257,36 @@
         <div class="empty">통신 응답을 기다리는 중입니다.</div>
       </div>
 
-      <details class="item-filter" id="mappingItemFilter" hidden>
-        <summary id="mappingItemFilterSummary">표시 항목 0/0</summary>
-        <div class="item-filter-panel">
+      <section class="item-filter" id="mappingItemFilter" hidden>
+        <div class="item-filter-bar">
+          <button
+            class="item-filter-toggle"
+            id="mappingItemFilterToggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="mappingItemFilterPanel"
+            title="표시 항목 열기"
+          >
+            <span id="mappingItemFilterSummary">표시 항목 0/0</span>
+            <span class="item-filter-chevron" aria-hidden="true"></span>
+          </button>
+          <input
+            class="item-filter-search"
+            id="mappingItemFilterSearch"
+            type="search"
+            placeholder="항목명 또는 키 검색"
+            aria-label="표시 항목 검색"
+          />
+        </div>
+        <div class="item-filter-panel" id="mappingItemFilterPanel" hidden>
           <label class="item-filter-label item-filter-all">
             <input id="mappingItemFilterAll" type="checkbox" />
             <span>전체</span>
           </label>
           <div class="item-filter-options" id="mappingItemFilterOptions"></div>
+          <div class="item-filter-no-results" id="mappingItemFilterNoResults" hidden>검색 결과가 없습니다.</div>
         </div>
-      </details>
+      </section>
     </main>
 
     <script src="./js/response-mapping-popup.js"></script>
