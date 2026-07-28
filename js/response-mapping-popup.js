@@ -6,6 +6,7 @@
   const DEFAULT_MAPPING_URL = "./data/mapping.json";
   const DEFAULT_POPUP_NAME = "responseMappingPopup";
   const DEFAULT_POPUP_FEATURES = "popup=yes,width=720,height=760,left=140,top=80";
+  const VISIBLE_ITEMS_STORAGE_KEY = "response-mapping-popup-visible-items";
 
   let popupWindow = null;
   let popupReady = false;
@@ -14,7 +15,7 @@
   let renderResolvers = [];
   let readyResolvers = [];
   let currentMappedList = [];
-  const hiddenItemIds = new Set();
+  const visibleItemIds = loadVisibleItemIds();
   let activePopupOptions = {
     popupUrl: DEFAULT_POPUP_URL,
     mappingUrl: DEFAULT_MAPPING_URL,
@@ -334,6 +335,23 @@
     return `${row.itemKey}\u0000${row.itemName}`;
   }
 
+  function loadVisibleItemIds() {
+    try {
+      const savedItemIds = JSON.parse(window.localStorage.getItem(VISIBLE_ITEMS_STORAGE_KEY) || "[]");
+      return new Set(Array.isArray(savedItemIds) ? savedItemIds : []);
+    } catch (error) {
+      return new Set();
+    }
+  }
+
+  function saveVisibleItemIds() {
+    try {
+      window.localStorage.setItem(VISIBLE_ITEMS_STORAGE_KEY, JSON.stringify([...visibleItemIds]));
+    } catch (error) {
+      // 저장소를 사용할 수 없는 환경에서는 현재 팝업의 선택 상태만 유지합니다.
+    }
+  }
+
   function updateItemFilterState() {
     const filter = document.querySelector("#mappingItemFilter");
     const summary = document.querySelector("#mappingItemFilterSummary");
@@ -370,8 +388,10 @@
     currentMappedList = mappedList;
     filter.hidden = mappedList.length === 0;
     options.innerHTML = mappedList
-      .map((row, index) => {
-        const checked = !hiddenItemIds.has(getMappedItemId(row));
+      .map((row, index) => ({ row, index }))
+      .sort((left, right) => left.row.itemName.localeCompare(right.row.itemName, "ko"))
+      .map(({ row, index }) => {
+        const checked = visibleItemIds.has(getMappedItemId(row));
 
         return `
           <label class="item-filter-label" title="${escapeHtml(row.itemName)}">
@@ -424,7 +444,7 @@
         checkbox.checked = allCheckbox.checked;
 
         if (row) {
-          hiddenItemIds[allCheckbox.checked ? "delete" : "add"](getMappedItemId(row));
+          visibleItemIds[allCheckbox.checked ? "add" : "delete"](getMappedItemId(row));
         }
       });
     } else {
@@ -432,10 +452,11 @@
       const row = currentMappedList[index];
 
       if (row) {
-        hiddenItemIds[itemCheckbox.checked ? "delete" : "add"](getMappedItemId(row));
+        visibleItemIds[itemCheckbox.checked ? "add" : "delete"](getMappedItemId(row));
       }
     }
 
+    saveVisibleItemIds();
     updateItemFilterState();
   }
 
