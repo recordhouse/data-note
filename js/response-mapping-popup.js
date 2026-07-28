@@ -15,6 +15,7 @@
   let renderResolvers = [];
   let readyResolvers = [];
   let currentMappedList = [];
+  let currentLabelMap = new Map();
   const visibleItemIds = loadVisibleItemIds();
   let activePopupOptions = {
     popupUrl: DEFAULT_POPUP_URL,
@@ -174,6 +175,9 @@
           if (key === targetKey) {
             matches.push({
               value: childValue,
+              siblings: Object.fromEntries(
+                Object.entries(value).filter(([siblingKey]) => siblingKey !== key),
+              ),
             });
           }
 
@@ -227,6 +231,23 @@
     return [...uniqueMap.values()];
   }
 
+  function getUniqueMatchDetails(matches) {
+    const uniqueMap = new Map();
+
+    matches.forEach((match) => {
+      const signature = `${getValueSignature(match.value)}\u0001${getValueSignature(match.siblings)}`;
+
+      if (!uniqueMap.has(signature)) {
+        uniqueMap.set(signature, {
+          value: match.value,
+          siblings: match.siblings,
+        });
+      }
+    });
+
+    return [...uniqueMap.values()];
+  }
+
   function mapResponse(responseJson, mappingRows) {
     return normalizeMappingRows(mappingRows).reduce((list, row) => {
       const matches = collectMatchesByKey(responseJson, row.itemKey);
@@ -242,6 +263,7 @@
         itemKey: row.itemKey,
         value: values.length === 1 ? values[0] : values,
         values,
+        siblingGroups: getUniqueMatchDetails(matches),
         exception: false,
       });
       return list;
@@ -344,6 +366,45 @@
     }
 
     return renderTreeBranch(displayLabel, children, depth);
+  }
+
+  function getDetailValueLabel(value) {
+    if (Array.isArray(value)) {
+      return "배열";
+    }
+
+    if (value && typeof value === "object") {
+      return "객체";
+    }
+
+    return formatValue(value);
+  }
+
+  function renderSiblingDetails(row, labelMap) {
+    const groups = row.siblingGroups || [];
+
+    if (!groups.length) {
+      return `<div class="detail-empty">형제 속성이 없습니다.</div>`;
+    }
+
+    const renderedGroups = groups
+      .map((group, index) => {
+        const siblingEntries = Object.entries(group.siblings || {});
+        const groupTitle =
+          groups.length > 1
+            ? `<div class="detail-group-title">값 ${index + 1}: ${escapeHtml(getDetailValueLabel(group.value))}</div>`
+            : "";
+        const siblingList = siblingEntries.length
+          ? siblingEntries
+              .map(([key, value]) => renderTreeValue(key, value, 0, new WeakSet(), labelMap))
+              .join("")
+          : `<div class="detail-empty">형제 속성이 없습니다.</div>`;
+
+        return `<div class="detail-group">${groupTitle}${siblingList}</div>`;
+      })
+      .join("");
+
+    return `<div class="detail-title">형제 속성</div>${renderedGroups}`;
   }
 
   function getMappedItemId(row) {
@@ -507,14 +568,54 @@
     }
 
     const labelMap = createLabelMap(mappingRows || mappedList);
+    currentMappedList = mappedList;
+    currentLabelMap = labelMap;
 
     container.innerHTML = mappedList
       .map(
         (row, index) =>
-          `<section class="row" data-mapping-row-index="${index}">${renderTreeValue(row.itemName, row.value, 0, new WeakSet(), labelMap)}</section>`,
+          `<section class="row" data-mapping-row-index="${index}">
+            <div class="mapped-item">
+              <div class="mapped-item-tree">${renderTreeValue(row.itemName, row.value, 0, new WeakSet(), labelMap)}</div>
+              <button
+                class="detail-toggle"
+                type="button"
+                aria-expanded="false"
+                data-detail-toggle
+              >세부항목보기</button>
+            </div>
+            <div class="mapped-item-details" data-item-details hidden></div>
+          </section>`,
       )
       .join("");
     renderItemFilter(mappedList);
+  }
+
+  function handleDetailToggle(event) {
+    const toggle = event.target.closest("[data-detail-toggle]");
+
+    if (!toggle) {
+      return;
+    }
+
+    const section = toggle.closest("[data-mapping-row-index]");
+    const details = section?.querySelector("[data-item-details]");
+
+    if (!section || !details) {
+      return;
+    }
+
+    const isExpanded = toggle.getAttribute("aria-expanded") === "true";
+
+    if (!details.dataset.rendered) {
+      const row = currentMappedList[Number(section.dataset.mappingRowIndex)];
+      details.innerHTML = row ? renderSiblingDetails(row, currentLabelMap) : "";
+      details.dataset.rendered = "true";
+    }
+
+    toggle.setAttribute("aria-expanded", String(!isExpanded));
+    toggle.textContent = isExpanded ? "세부항목보기" : "세부항목닫기";
+    details.hidden = isExpanded;
   }
 
   function handleItemFilterChange(event) {
@@ -740,6 +841,7 @@
   window.addEventListener("message", handlePopupMessage);
   window.addEventListener("resize", setItemFilterFullHeight);
   document.addEventListener("click", handleTreeToggle);
+  document.addEventListener("click", handleDetailToggle);
   document.addEventListener("click", handleItemFilterToggle);
   document.addEventListener("change", handleItemFilterChange);
   document.addEventListener("input", handleItemFilterSearch);
