@@ -530,7 +530,6 @@
       return;
     }
 
-    setItemFilterExpanded(true);
     filterItemOptions(search.value);
   }
 
@@ -708,7 +707,6 @@
   document.addEventListener("click", handleItemFilterToggle);
   document.addEventListener("change", handleItemFilterChange);
   document.addEventListener("input", handleItemFilterSearch);
-  document.addEventListener("focusin", handleItemFilterSearch);
 
   if (document.querySelector("#mappingList")) {
     if (document.readyState === "loading") {
