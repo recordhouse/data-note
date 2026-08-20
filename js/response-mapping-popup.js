@@ -883,6 +883,17 @@
     return popupWindow && !popupWindow.closed;
   }
 
+  function closePopupOnParentUnload() {
+    if (!isPopupOpen()) {
+      return;
+    }
+
+    popupWindow.close();
+    popupWindow = null;
+    popupReady = false;
+    pendingPayload = null;
+  }
+
   function sendPendingPayload() {
     if (!isPopupOpen() || !popupReady || !pendingPayload) {
       return;
@@ -1014,6 +1025,7 @@
 
   window.addEventListener("message", handleParentMessage);
   window.addEventListener("message", handlePopupMessage);
+  window.addEventListener("pagehide", closePopupOnParentUnload);
   window.addEventListener("resize", setItemFilterFullHeight);
   document.addEventListener("click", handleTreeToggle);
   document.addEventListener("click", handleDetailToggle);
