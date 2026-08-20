@@ -96,6 +96,144 @@
         padding: 16px 18px 18px;
       }
 
+      .flow-test-step {
+        display: grid;
+        gap: 16px;
+      }
+
+      .flow-test-step[hidden] {
+        display: none;
+      }
+
+      .flow-test-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .flow-test-field {
+        display: grid;
+        gap: 7px;
+        min-width: 0;
+        color: #536174;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .flow-test-field.is-wide {
+        grid-column: 1 / -1;
+      }
+
+      .flow-test-field input,
+      .flow-test-field select,
+      .flow-test-field textarea {
+        width: 100%;
+        min-height: 40px;
+        padding: 9px 10px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        outline: none;
+        background: #ffffff;
+        color: #17202a;
+        font: inherit;
+        font-weight: 500;
+      }
+
+      .flow-test-field textarea {
+        min-height: 90px;
+        resize: vertical;
+      }
+
+      .flow-test-field input:focus,
+      .flow-test-field select:focus,
+      .flow-test-field textarea:focus {
+        border-color: #1266d6;
+        box-shadow: 0 0 0 3px rgba(18, 102, 214, 0.12);
+      }
+
+      .flow-test-checks {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 18px;
+      }
+
+      .flow-test-check {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: #334155;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .flow-test-check input {
+        width: 16px;
+        height: 16px;
+        margin: 0;
+        accent-color: #1266d6;
+      }
+
+      .flow-test-scroll {
+        display: grid;
+        gap: 6px;
+        max-height: 132px;
+        padding: 8px;
+        border: 1px solid #d9e1ea;
+        border-radius: 6px;
+        overflow: auto;
+        background: #f8fafc;
+      }
+
+      .flow-test-scroll label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 34px;
+        padding: 5px 7px;
+        background: #ffffff;
+        color: #334155;
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .flow-test-scroll input {
+        width: 15px;
+        height: 15px;
+        min-height: 0;
+        margin: 0;
+      }
+
+      .flow-test-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
+      .flow-test-actions button {
+        min-width: 96px;
+        height: 38px;
+        font-size: 13px;
+      }
+
+      .flow-test-actions .secondary {
+        border: 1px solid #cbd5e1;
+        background: #ffffff;
+        color: #334155;
+      }
+
+      .flow-test-result {
+        display: block;
+        min-height: 40px;
+        margin-top: 14px;
+        padding: 10px 12px;
+        border-left: 3px solid #1266d6;
+        background: #eef5ff;
+        color: #334155;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
       pre {
         margin: 0;
         padding: 14px;
@@ -122,6 +260,19 @@
         button {
           width: 100%;
         }
+
+        .flow-test-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .flow-test-field.is-wide {
+          grid-column: auto;
+        }
+
+        .flow-test-actions {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
       }
     </style>
   </head>
@@ -132,13 +283,106 @@
         <button id="requestButton" type="button">통신</button>
       </section>
 
+      <section class="panel" id="flowTestPanel">
+        <div class="panel-header">
+          <h2>유저 행동 테스트</h2>
+          <span class="badge" id="flowTestStepBadge">1 / 2</span>
+        </div>
+        <div class="content">
+          <form id="flowTestForm">
+            <section class="flow-test-step" data-flow-test-step="1">
+              <div class="flow-test-grid">
+                <label class="flow-test-field">
+                  고객명
+                  <input id="flowCustomerName" name="customerName" type="text" autocomplete="name" />
+                </label>
+                <label class="flow-test-field">
+                  이메일
+                  <input id="flowCustomerEmail" name="customerEmail" type="email" autocomplete="email" />
+                </label>
+                <label class="flow-test-field">
+                  요청 유형
+                  <select id="flowRequestType" name="requestType">
+                    <option value="refund">환불</option>
+                    <option value="delivery">배송</option>
+                    <option value="account">계정</option>
+                  </select>
+                </label>
+                <label class="flow-test-field">
+                  연락 가능 시간
+                  <input id="flowContactTime" name="contactTime" type="time" />
+                </label>
+              </div>
+
+              <div class="flow-test-checks">
+                <label class="flow-test-check">
+                  <input id="flowUrgent" name="urgent" type="checkbox" />
+                  긴급 요청
+                </label>
+                <label class="flow-test-check">
+                  <input id="flowNotification" name="notification" type="checkbox" />
+                  처리 결과 알림
+                </label>
+              </div>
+
+              <div class="flow-test-actions">
+                <button id="flowNextButton" type="button">다음 페이지</button>
+              </div>
+            </section>
+
+            <section class="flow-test-step" data-flow-test-step="2" hidden>
+              <div class="flow-test-grid">
+                <label class="flow-test-field">
+                  희망 처리 방식
+                  <select id="flowProcessMethod" name="processMethod">
+                    <option value="call">전화 안내</option>
+                    <option value="email">이메일 안내</option>
+                    <option value="auto">자동 처리</option>
+                  </select>
+                </label>
+                <label class="flow-test-field">
+                  요청 금액
+                  <input id="flowRequestAmount" name="requestAmount" type="number" min="0" step="1000" />
+                </label>
+                <label class="flow-test-field is-wide">
+                  요청 내용
+                  <textarea id="flowRequestMemo" name="requestMemo"></textarea>
+                </label>
+              </div>
+
+              <div class="flow-test-field">
+                확인 항목
+                <div class="flow-test-scroll" id="flowTestScrollArea">
+                  <label><input name="checks" type="checkbox" value="identity" /> 본인 확인</label>
+                  <label><input name="checks" type="checkbox" value="payment" /> 결제 내역 확인</label>
+                  <label><input name="checks" type="checkbox" value="delivery" /> 배송 상태 확인</label>
+                  <label><input name="checks" type="checkbox" value="policy" /> 처리 정책 확인</label>
+                  <label><input name="checks" type="checkbox" value="agreement" /> 고객 동의 확인</label>
+                  <label><input name="checks" type="checkbox" value="complete" /> 최종 검토 완료</label>
+                </div>
+              </div>
+
+              <div class="flow-test-actions">
+                <button class="secondary" id="flowPreviousButton" type="button">이전 페이지</button>
+                <button id="flowSubmitButton" type="submit">처리 완료</button>
+              </div>
+            </section>
+          </form>
+
+          <output class="flow-test-result" id="flowTestResult">입력 대기 중</output>
+        </div>
+      </section>
+
       <section class="panel">
         <div class="panel-header">
           <h2>가져다 쓸 호출 코드</h2>
           <span class="badge" id="statusBadge">대기중</span>
         </div>
         <div class="content">
-          <pre><code>// 1. 원하는 시점에 실행: 스크립트 로드 + 빈 팝업 열기
+          <pre><code>// 부모 사이트에 한 번 로드: 유저 행동 녹화/재생 엔진
+&lt;script src="/js/user-flow-recorder.js"&gt;&lt;/script&gt;
+
+// 1. 원하는 시점에 실행: 스크립트 로드 + 빈 팝업 열기
 function openResponseMappingPopup() {
   if (window.ResponseMappingPopup) {
     window.ResponseMappingPopup.openPopup({
@@ -178,11 +422,38 @@ function renderResponseMappingPopup(responseJson) {
       </section>
     </main>
 
+    <script src="./js/user-flow-recorder.js"></script>
     <script src="./js/response-mapping-popup.js"></script>
     <script>
       const requestButton = document.querySelector("#requestButton");
       const statusBadge = document.querySelector("#statusBadge");
       const rawResponse = document.querySelector("#rawResponse");
+      const flowTestForm = document.querySelector("#flowTestForm");
+      const flowTestStepBadge = document.querySelector("#flowTestStepBadge");
+      const flowTestResult = document.querySelector("#flowTestResult");
+
+      function showFlowTestStep(stepNumber) {
+        document.querySelectorAll("[data-flow-test-step]").forEach((step) => {
+          step.hidden = Number(step.dataset.flowTestStep) !== stepNumber;
+        });
+        flowTestStepBadge.textContent = `${stepNumber} / 2`;
+      }
+
+      document.querySelector("#flowNextButton").addEventListener("click", () => {
+        showFlowTestStep(2);
+      });
+
+      document.querySelector("#flowPreviousButton").addEventListener("click", () => {
+        showFlowTestStep(1);
+      });
+
+      flowTestForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const formData = new FormData(flowTestForm);
+        const customerName = formData.get("customerName") || "이름 없음";
+        const requestType = formData.get("requestType") || "미선택";
+        flowTestResult.textContent = `${customerName} / ${requestType} 요청 처리가 완료되었습니다.`;
+      });
 
       async function requestDummyResponse() {
         requestButton.disabled = true;

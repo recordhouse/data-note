@@ -23,10 +23,258 @@
 
       .wrap {
         display: grid;
-        grid-template-rows: minmax(0, 1fr) auto;
+        grid-template-rows: auto minmax(0, 1fr);
         gap: 8px;
         height: 100%;
         padding: 12px;
+      }
+
+      .popup-tabs {
+        display: flex;
+        align-items: end;
+        gap: 4px;
+        min-height: 38px;
+        border-bottom: 1px solid #cbd5e1;
+      }
+
+      .popup-tab {
+        min-height: 37px;
+        padding: 7px 14px;
+        border: 0;
+        border-bottom: 3px solid transparent;
+        background: transparent;
+        color: #64748b;
+        font-size: 13px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .popup-tab:hover {
+        color: #17202a;
+      }
+
+      .popup-tab[aria-selected="true"] {
+        border-bottom-color: #1266d6;
+        color: #1266d6;
+      }
+
+      .tab-panel {
+        min-width: 0;
+        min-height: 0;
+      }
+
+      .tab-panel[hidden] {
+        display: none;
+      }
+
+      .response-list-layout {
+        display: grid;
+        grid-template-rows: minmax(0, 1fr) auto;
+        gap: 8px;
+        height: 100%;
+        min-height: 0;
+      }
+
+      .user-flow-panel {
+        height: 100%;
+        background: #ffffff;
+      }
+
+      .user-flow-content {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        gap: 18px;
+        height: 100%;
+        min-height: 0;
+        padding: 8px 2px;
+      }
+
+      .user-flow-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        min-height: 44px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+
+      .user-flow-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: #64748b;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .user-flow-status::before {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #94a3b8;
+        content: "";
+      }
+
+      .user-flow-status[data-state="recording"] {
+        color: #b42345;
+      }
+
+      .user-flow-status[data-state="recording"]::before {
+        background: #b42345;
+        box-shadow: 0 0 0 4px rgba(180, 35, 69, 0.12);
+      }
+
+      .user-flow-status[data-state="replaying"],
+      .user-flow-status[data-state="ready"] {
+        color: #0f766e;
+      }
+
+      .user-flow-status[data-state="replaying"]::before,
+      .user-flow-status[data-state="ready"]::before {
+        background: #0f766e;
+      }
+
+      .user-flow-status[data-state="error"] {
+        color: #b42345;
+      }
+
+      .user-flow-status[data-state="error"]::before {
+        background: #b42345;
+      }
+
+      .user-flow-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .user-flow-action {
+        min-width: 76px;
+        height: 32px;
+        padding: 5px 10px;
+        border: 1px solid #cbd5e1;
+        border-radius: 5px;
+        background: #ffffff;
+        color: #334155;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .user-flow-action[data-action="toggle-record"] {
+        border-color: #b42345;
+        color: #b42345;
+      }
+
+      .user-flow-action[aria-pressed="true"] {
+        color: #ffffff;
+      }
+
+      .user-flow-action[data-action="toggle-record"][aria-pressed="true"] {
+        background: #b42345;
+      }
+
+      .user-flow-action:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
+
+      .user-flow-sessions {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        gap: 8px;
+        min-height: 0;
+      }
+
+      .user-flow-session-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        color: #334155;
+        font-size: 13px;
+      }
+
+      .user-flow-session-heading span {
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .user-flow-session-list {
+        display: grid;
+        align-content: start;
+        gap: 7px;
+        min-height: 0;
+        overflow: auto;
+      }
+
+      .user-flow-session {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        min-height: 52px;
+        padding: 8px 10px;
+        border: 1px solid #d9e1ea;
+        border-radius: 6px;
+        background: #fbfdff;
+      }
+
+      .user-flow-session[data-state="recording"] {
+        border-color: #d89aaa;
+        background: #fff8fa;
+      }
+
+      .user-flow-session-main {
+        display: grid;
+        gap: 4px;
+        min-width: 0;
+      }
+
+      .user-flow-session-time {
+        color: #17202a;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .user-flow-session-meta {
+        color: #64748b;
+        font-size: 11px;
+      }
+
+      .user-flow-replay {
+        min-width: 64px;
+        height: 30px;
+        padding: 4px 9px;
+        border: 1px solid #0f766e;
+        border-radius: 5px;
+        background: #ffffff;
+        color: #0f766e;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .user-flow-replay[aria-pressed="true"] {
+        background: #0f766e;
+        color: #ffffff;
+      }
+
+      .user-flow-replay:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
+
+      .user-flow-empty {
+        min-height: 150px;
+        display: grid;
+        place-items: center;
+        border: 1px dashed #b8c5d5;
+        border-radius: 6px;
+        color: #64748b;
+        font-size: 13px;
       }
 
       .list {
@@ -280,8 +528,8 @@
       }
 
       .item-filter-panel {
-        max-height: calc(100vh - 68px);
-        max-height: calc(100dvh - 68px);
+        max-height: calc(100vh - 116px);
+        max-height: calc(100dvh - 116px);
         padding: 8px 10px 10px;
         border-top: 1px solid #e5eaf0;
         overflow: auto;
@@ -342,6 +590,15 @@
           gap: 6px;
         }
 
+        .user-flow-toolbar {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .user-flow-action {
+          width: 100%;
+        }
+
         .tree-row {
           padding-left: calc(var(--depth) * 14px);
         }
@@ -350,38 +607,107 @@
   </head>
   <body>
     <main class="wrap">
-      <div class="list" id="mappingList">
-        <div class="empty">통신 응답을 기다리는 중입니다.</div>
-      </div>
+      <nav class="popup-tabs" role="tablist" aria-label="통신 팝업 기능">
+        <button
+          class="popup-tab"
+          id="responseListTab"
+          type="button"
+          role="tab"
+          aria-selected="true"
+          aria-controls="responseListPanel"
+          data-popup-tab="response-list"
+        >응답 리스트</button>
+        <button
+          class="popup-tab"
+          id="userFlowTab"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="userFlowPanel"
+          tabindex="-1"
+          data-popup-tab="user-flow"
+        >유저 플로우</button>
+      </nav>
 
-      <section class="item-filter" id="mappingItemFilter" hidden>
-        <div class="item-filter-bar">
-          <button
-            class="item-filter-toggle"
-            id="mappingItemFilterToggle"
-            type="button"
-            aria-expanded="false"
-            aria-controls="mappingItemFilterPanel"
-            title="표시 항목 열기"
-          >
-            <span id="mappingItemFilterSummary">표시 항목 0/0</span>
-            <span class="item-filter-chevron" aria-hidden="true"></span>
-          </button>
-          <input
-            class="item-filter-search"
-            id="mappingItemFilterSearch"
-            type="search"
-            placeholder="항목명 또는 키 검색"
-            aria-label="표시 항목 검색"
-          />
+      <section
+        class="tab-panel"
+        id="responseListPanel"
+        role="tabpanel"
+        aria-labelledby="responseListTab"
+        data-popup-panel="response-list"
+      >
+        <div class="response-list-layout">
+          <div class="list" id="mappingList">
+            <div class="empty">통신 응답을 기다리는 중입니다.</div>
+          </div>
+
+          <section class="item-filter" id="mappingItemFilter" hidden>
+            <div class="item-filter-bar">
+              <button
+                class="item-filter-toggle"
+                id="mappingItemFilterToggle"
+                type="button"
+                aria-expanded="false"
+                aria-controls="mappingItemFilterPanel"
+                title="표시 항목 열기"
+              >
+                <span id="mappingItemFilterSummary">표시 항목 0/0</span>
+                <span class="item-filter-chevron" aria-hidden="true"></span>
+              </button>
+              <input
+                class="item-filter-search"
+                id="mappingItemFilterSearch"
+                type="search"
+                placeholder="항목명 또는 키 검색"
+                aria-label="표시 항목 검색"
+              />
+            </div>
+            <div class="item-filter-panel" id="mappingItemFilterPanel" hidden>
+              <label class="item-filter-label item-filter-all">
+                <input id="mappingItemFilterAll" type="checkbox" />
+                <span>전체</span>
+              </label>
+              <div class="item-filter-options" id="mappingItemFilterOptions"></div>
+              <div class="item-filter-no-results" id="mappingItemFilterNoResults" hidden>
+                검색 결과가 없습니다.
+              </div>
+            </div>
+          </section>
         </div>
-        <div class="item-filter-panel" id="mappingItemFilterPanel" hidden>
-          <label class="item-filter-label item-filter-all">
-            <input id="mappingItemFilterAll" type="checkbox" />
-            <span>전체</span>
-          </label>
-          <div class="item-filter-options" id="mappingItemFilterOptions"></div>
-          <div class="item-filter-no-results" id="mappingItemFilterNoResults" hidden>검색 결과가 없습니다.</div>
+      </section>
+
+      <section
+        class="tab-panel user-flow-panel"
+        id="userFlowPanel"
+        role="tabpanel"
+        aria-labelledby="userFlowTab"
+        data-popup-panel="user-flow"
+        hidden
+      >
+        <div class="user-flow-content">
+          <div class="user-flow-toolbar">
+            <span class="user-flow-status" id="userFlowStatus" data-state="idle">연결 대기</span>
+            <div class="user-flow-actions">
+              <button
+                class="user-flow-action"
+                id="userFlowRecordButton"
+                type="button"
+                data-action="toggle-record"
+                data-user-flow-command="toggle-record"
+                aria-pressed="false"
+              >녹음</button>
+            </div>
+          </div>
+
+          <section class="user-flow-sessions" aria-labelledby="userFlowSessionTitle">
+            <div class="user-flow-session-heading">
+              <strong id="userFlowSessionTitle">녹음 목록</strong>
+              <span id="userFlowSessionCount">0개</span>
+            </div>
+            <div class="user-flow-session-list" id="userFlowSessionList">
+              <div class="user-flow-empty">저장된 녹음이 없습니다.</div>
+            </div>
+          </section>
         </div>
       </section>
     </main>
