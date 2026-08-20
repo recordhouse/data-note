@@ -11,6 +11,7 @@
   const IGNORE_ATTRIBUTE = "data-user-flow-ignore";
   const VISUAL_STYLE_ID = "user-flow-recorder-visual-style";
   const CLICK_PULSE_MS = 420;
+  const ACTION_INDICATOR_MS = 720;
   const MAX_EVENTS = 10000;
   const MAX_SESSIONS = 20;
   const SCROLL_SAMPLE_MS = 80;
@@ -48,6 +49,43 @@
         transform: translate(-50%, -50%) scale(1.9);
       }
     }
+
+    .user-flow-action-indicator {
+      position: fixed;
+      bottom: 16px;
+      left: 16px;
+      z-index: 2147482999;
+      min-height: 32px;
+      padding: 7px 10px;
+      border-left: 3px solid #1266d6;
+      border-radius: 4px;
+      background: rgba(23, 32, 42, 0.92);
+      color: #ffffff;
+      box-shadow: 0 8px 20px rgba(23, 32, 42, 0.18);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 18px;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(6px);
+      transition:
+        opacity 140ms ease,
+        transform 140ms ease;
+    }
+
+    .user-flow-action-indicator[data-kind="typing"] {
+      border-left-color: #0f766e;
+    }
+
+    .user-flow-action-indicator[data-kind="selection"] {
+      border-left-color: #9a6400;
+    }
+
+    .user-flow-action-indicator.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
   `;
 
   const state = {
@@ -66,6 +104,8 @@
     scrollTimers: new Map(),
     clients: new Map(),
     notifyTimer: 0,
+    actionIndicator: null,
+    actionIndicatorTimer: 0,
   };
 
   function readRecording() {
@@ -228,6 +268,45 @@
     document.body.append(pulse);
 
     window.setTimeout(() => pulse.remove(), CLICK_PULSE_MS);
+  }
+
+  function showActionIndicator(message, kind) {
+    if (!document.body) {
+      return;
+    }
+
+    let indicator = state.actionIndicator;
+
+    if (!indicator || !indicator.isConnected) {
+      indicator = document.createElement("div");
+      indicator.className = "user-flow-action-indicator";
+      indicator.setAttribute(IGNORE_ATTRIBUTE, "true");
+      document.body.append(indicator);
+      state.actionIndicator = indicator;
+    }
+
+    indicator.textContent = message;
+    indicator.dataset.kind = kind;
+    indicator.classList.add("is-visible");
+
+    window.clearTimeout(state.actionIndicatorTimer);
+    state.actionIndicatorTimer = window.setTimeout(() => {
+      indicator.classList.remove("is-visible");
+    }, ACTION_INDICATOR_MS);
+  }
+
+  function hideActionIndicator() {
+    window.clearTimeout(state.actionIndicatorTimer);
+    state.actionIndicatorTimer = 0;
+    state.actionIndicator?.classList.remove("is-visible");
+  }
+
+  function showFormActionIndicator(element) {
+    const isSelection =
+      element instanceof HTMLSelectElement ||
+      (element instanceof HTMLInputElement && ["checkbox", "radio"].includes(element.type));
+
+    showActionIndicator(isSelection ? "선택 변경" : "입력 중", isSelection ? "selection" : "typing");
   }
 
   function cssEscape(value) {
@@ -447,6 +526,10 @@
       return;
     }
 
+    if (state.isRecording && !state.isReplaying) {
+      showFormActionIndicator(target);
+    }
+
     pushEvent({
       type: event.type,
       selector: getStableSelector(target),
@@ -491,6 +574,8 @@
     if (!state.isRecording || state.isReplaying) {
       return;
     }
+
+    showActionIndicator("스크롤 중", "scroll");
 
     const target = normalizeScrollTarget(event.target);
     const scrollEvent = getScrollEvent(target);
@@ -548,13 +633,36 @@
   function playScroll(recordedEvent) {
     const target = findTarget(recordedEvent.selector);
 
+    showActionIndicator("스크롤 중", "scroll");
+
     if (target === window) {
-      window.scrollTo(recordedEvent.scrollX || 0, recordedEvent.scrollY || 0);
+      try {
+        window.scrollTo({
+          left: recordedEvent.scrollX || 0,
+          top: recordedEvent.scrollY || 0,
+          behavior: "smooth",
+        });
+      } catch (error) {
+        window.scrollTo(recordedEvent.scrollX || 0, recordedEvent.scrollY || 0);
+      }
       return;
     }
 
     if (!target) {
       return;
+    }
+
+    if (typeof target.scrollTo === "function") {
+      try {
+        target.scrollTo({
+          left: recordedEvent.scrollLeft || 0,
+          top: recordedEvent.scrollTop || 0,
+          behavior: "smooth",
+        });
+        return;
+      } catch (error) {
+        // Fall through for browsers that only support numeric scrollTo arguments.
+      }
     }
 
     target.scrollLeft = recordedEvent.scrollLeft || 0;
@@ -593,6 +701,8 @@
     if (!applyFormValue(target, recordedEvent.detail || {})) {
       return;
     }
+
+    showFormActionIndicator(target);
 
     target.dispatchEvent(
       new Event(recordedEvent.type, {
@@ -653,6 +763,7 @@
     }
 
     state.isRecording = false;
+    hideActionIndicator();
     state.scrollTimers.forEach((timer) => window.clearTimeout(timer));
     state.scrollTimers.clear();
     persistRecording();
@@ -668,6 +779,7 @@
     state.replayRunId += 1;
     state.isReplaying = false;
     state.replaySessionId = "";
+    hideActionIndicator();
     notifyClients({ immediate: true });
   }
 

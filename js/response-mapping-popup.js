@@ -702,6 +702,10 @@
     }
   }
 
+  function getActivePopupTabName() {
+    return document.querySelector('[data-popup-tab][aria-selected="true"]')?.dataset.popupTab || "response-list";
+  }
+
   function handlePopupTabClick(event) {
     const tab = event.target.closest("[data-popup-tab]");
 
@@ -868,9 +872,11 @@
   }
 
   async function renderPopupPayload(payload) {
+    const activeTabName = getActivePopupTabName();
     const mappingRows = payload.mappingRows || (await loadMapping(payload.mappingUrl));
     const mappedList = mapResponse(payload.responseJson, mappingRows);
     renderList("#mappingList", mappedList, mappingRows);
+    activatePopupTab(activeTabName);
     return mappedList;
   }
 
