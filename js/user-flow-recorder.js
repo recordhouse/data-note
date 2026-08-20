@@ -848,6 +848,31 @@
     notifyClients({ immediate: true });
   }
 
+  function deleteSession(sessionId) {
+    if (!sessionId || state.isRecording || state.isReplaying) {
+      return false;
+    }
+
+    const sessionIndex = state.sessions.findIndex((session) => session.id === sessionId);
+
+    if (sessionIndex < 0) {
+      return false;
+    }
+
+    state.sessions.splice(sessionIndex, 1);
+
+    if (state.currentSessionId === sessionId) {
+      const latestSession = state.sessions[0];
+      state.currentSessionId = latestSession?.id || "";
+      state.events = latestSession?.events || [];
+      state.recordedAt = latestSession?.recordedAt || null;
+    }
+
+    persistRecording();
+    notifyClients({ immediate: true });
+    return true;
+  }
+
   function handleCommandMessage(event) {
     if (!event.data || event.data.type !== MESSAGE_COMMAND || !isAllowedMessage(event)) {
       return;
@@ -880,6 +905,9 @@
           replay(event.data.sessionId);
         }
         break;
+      case "delete-session":
+        deleteSession(event.data.sessionId);
+        break;
       case "clear":
         clearRecording();
         break;
@@ -911,6 +939,7 @@
 
   window.UserFlowRecorder = Object.freeze({
     clear: clearRecording,
+    deleteSession,
     getEvents: (sessionId = state.currentSessionId) => [
       ...(state.sessions.find((session) => session.id === sessionId)?.events || []),
     ],

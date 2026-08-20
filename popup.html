@@ -244,6 +244,12 @@
         font-size: 11px;
       }
 
+      .user-flow-session-controls {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
       .user-flow-replay {
         min-width: 64px;
         height: 30px;
@@ -263,6 +269,28 @@
       }
 
       .user-flow-replay:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
+
+      .user-flow-delete {
+        min-width: 52px;
+        height: 30px;
+        padding: 4px 9px;
+        border: 1px solid #b42345;
+        border-radius: 5px;
+        background: #ffffff;
+        color: #b42345;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .user-flow-delete:hover:not(:disabled) {
+        background: #fff1f4;
+      }
+
+      .user-flow-delete:disabled {
         cursor: not-allowed;
         opacity: 0.45;
       }

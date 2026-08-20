@@ -665,6 +665,17 @@
     setItemFilterExpanded(toggle.getAttribute("aria-expanded") !== "true");
   }
 
+  function handleItemFilterOutsideClick(event) {
+    const filter = document.querySelector("#mappingItemFilter");
+    const panel = document.querySelector("#mappingItemFilterPanel");
+
+    if (!filter || !panel || panel.hidden || filter.contains(event.target)) {
+      return;
+    }
+
+    setItemFilterExpanded(false);
+  }
+
   function handleItemFilterSearch(event) {
     const search = event.target.closest("#mappingItemFilterSearch");
 
@@ -782,6 +793,7 @@
           flowState.isRecording ||
           (!session.eventCount && !isReplayingSession) ||
           (flowState.isReplaying && !isReplayingSession);
+        const deleteDisabled = flowState.isRecording || flowState.isReplaying;
 
         return `
           <article class="user-flow-session" data-state="${isRecordingSession ? "recording" : "idle"}">
@@ -791,14 +803,24 @@
                 ${Number(session.eventCount || 0).toLocaleString("ko-KR")}개 행동 · ${formatFlowDuration(session.durationMs)}
               </span>
             </div>
-            <button
-              class="user-flow-replay"
-              type="button"
-              data-user-flow-command="toggle-replay-session"
-              data-session-id="${escapeHtml(session.id)}"
-              aria-pressed="${String(isReplayingSession)}"
-              ${disabled ? "disabled" : ""}
-            >${isReplayingSession ? "재생 중지" : "재생"}</button>
+            <div class="user-flow-session-controls">
+              <button
+                class="user-flow-replay"
+                type="button"
+                data-user-flow-command="toggle-replay-session"
+                data-session-id="${escapeHtml(session.id)}"
+                aria-pressed="${String(isReplayingSession)}"
+                ${disabled ? "disabled" : ""}
+              >${isReplayingSession ? "재생 중지" : "재생"}</button>
+              <button
+                class="user-flow-delete"
+                type="button"
+                data-user-flow-command="delete-session"
+                data-session-id="${escapeHtml(session.id)}"
+                aria-label="${escapeHtml(recordedAt)} 녹음 삭제"
+                ${deleteDisabled ? "disabled" : ""}
+              >삭제</button>
+            </div>
           </article>
         `;
       })
@@ -1032,6 +1054,7 @@
   document.addEventListener("click", handlePopupTabClick);
   document.addEventListener("click", handleUserFlowControl);
   document.addEventListener("click", handleItemFilterToggle);
+  document.addEventListener("click", handleItemFilterOutsideClick);
   document.addEventListener("change", handleItemFilterChange);
   document.addEventListener("input", handleItemFilterSearch);
 
