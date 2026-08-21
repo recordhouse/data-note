@@ -16,7 +16,9 @@
   const MAX_SESSIONS = 20;
   const SCROLL_SAMPLE_MS = 80;
   const STATE_NOTIFY_MS = 120;
-  const TARGET_WAIT_MS = 5000;
+  const TASK_WAIT_TIMEOUT_MS = 30000;
+  const TARGET_WAIT_MS = 15000;
+  const REPLAY_WAIT_POLL_MS = 40;
   const SENSITIVE_AUTOCOMPLETE = new Set([
     "cc-csc",
     "cc-number",
@@ -190,6 +192,9 @@
     lastError: "",
     scrollLastAt: new Map(),
     scrollTimers: new Map(),
+    pendingTasks: new Map(),
+    taskSequence: 0,
+    replayTaskError: "",
     clients: new Map(),
     notifyTimer: 0,
     runtimeStatus: null,
@@ -268,6 +273,8 @@
       canReplay: state.sessions.some((session) => session.events.length > 0),
       activeRecordingSessionId: state.isRecording ? state.currentSessionId : "",
       replaySessionId: state.replaySessionId,
+      pendingTaskCount: state.pendingTasks.size,
+      pendingTaskNames: [...state.pendingTasks.values()].map((task) => task.name),
       eventCount: state.events.length,
       durationMs: getDurationMs(),
       recordedAt: state.recordedAt,
@@ -321,6 +328,76 @@
         state.clients.delete(client);
       }
     });
+  }
+
+  function finishTask(taskId, error) {
+    const task = state.pendingTasks.get(taskId);
+
+    if (!task) {
+      return false;
+    }
+
+    state.pendingTasks.delete(taskId);
+
+    if (error && state.isReplaying) {
+      const message = error instanceof Error ? error.message : String(error);
+      state.replayTaskError = `${task.name}: ${message || "통신 작업에 실패했습니다."}`;
+    }
+
+    notifyClients();
+    return true;
+  }
+
+  function beginTask(name = "통신") {
+    state.taskSequence += 1;
+    const taskId = `user-flow-task-${Date.now()}-${state.taskSequence}`;
+    const taskName = String(name || "통신").trim() || "통신";
+    let isFinished = false;
+
+    state.pendingTasks.set(taskId, {
+      id: taskId,
+      name: taskName,
+      startedAt: performance.now(),
+    });
+    notifyClients();
+
+    return Object.freeze({
+      id: taskId,
+      name: taskName,
+      end() {
+        if (isFinished) {
+          return false;
+        }
+
+        isFinished = true;
+        return finishTask(taskId);
+      },
+      fail(error) {
+        if (isFinished) {
+          return false;
+        }
+
+        isFinished = true;
+        return finishTask(taskId, error || new Error("통신 작업에 실패했습니다."));
+      },
+    });
+  }
+
+  async function runTask(name, operation) {
+    if (typeof operation !== "function") {
+      throw new TypeError("runTask의 두 번째 인자는 함수여야 합니다.");
+    }
+
+    const task = beginTask(name);
+
+    try {
+      return await operation();
+    } catch (error) {
+      task.fail(error);
+      throw error;
+    } finally {
+      task.end();
+    }
   }
 
   function isAllowedMessage(event) {
@@ -760,25 +837,97 @@
     return new Promise((resolve) => window.setTimeout(resolve, Math.max(0, ms)));
   }
 
-  async function waitForTarget(selector) {
+  function replayIsActive(replayRunId) {
+    return !state.replayAbort && state.isReplaying && state.replayRunId === replayRunId;
+  }
+
+  function targetIsReady(target, recordedEvent) {
+    if (target === window) {
+      return true;
+    }
+
+    if (!(target instanceof Element) || !target.isConnected) {
+      return false;
+    }
+
+    if (target.closest("[hidden], [inert], [aria-hidden='true']")) {
+      return false;
+    }
+
+    const style = window.getComputedStyle(target);
+    const rect = target.getBoundingClientRect();
+
+    if (
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      style.visibility === "collapse" ||
+      rect.width <= 0 ||
+      rect.height <= 0
+    ) {
+      return false;
+    }
+
+    if (["click", "input", "change"].includes(recordedEvent.type)) {
+      const control = target.closest("button, input, select, textarea, [aria-disabled]");
+
+      if (control?.disabled || control?.getAttribute("aria-disabled") === "true") {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  async function waitForTarget(selector, recordedEvent, replayRunId) {
     const startedAt = performance.now();
 
     while (performance.now() - startedAt < TARGET_WAIT_MS) {
+      if (!replayIsActive(replayRunId)) {
+        return null;
+      }
+
       const target = findTarget(selector);
 
-      if (target) {
+      if (targetIsReady(target, recordedEvent)) {
         return target;
       }
 
-      await sleep(50);
+      await sleep(REPLAY_WAIT_POLL_MS);
     }
 
-    return null;
+    throw new Error(`다음 화면의 재생 대상을 준비하지 못했습니다. (${selector})`);
   }
 
-  function playScroll(recordedEvent) {
-    const target = findTarget(recordedEvent.selector);
+  async function waitForPendingTasks(replayRunId) {
+    await sleep(0);
+    const startedAt = performance.now();
 
+    while (state.pendingTasks.size > 0) {
+      if (!replayIsActive(replayRunId)) {
+        return false;
+      }
+
+      if (performance.now() - startedAt >= TASK_WAIT_TIMEOUT_MS) {
+        const taskNames = [...state.pendingTasks.values()]
+          .map((task) => task.name)
+          .slice(0, 3)
+          .join(", ");
+        throw new Error(`통신 완료를 기다리는 시간이 초과되었습니다. (${taskNames || "통신"})`);
+      }
+
+      await sleep(REPLAY_WAIT_POLL_MS);
+    }
+
+    if (state.replayTaskError) {
+      const taskError = state.replayTaskError;
+      state.replayTaskError = "";
+      throw new Error(`통신 작업이 실패했습니다. (${taskError})`);
+    }
+
+    return true;
+  }
+
+  function playScroll(recordedEvent, target) {
     if (target === window) {
       try {
         window.scrollTo({
@@ -854,15 +1003,19 @@
     );
   }
 
-  async function playEvent(recordedEvent) {
-    if (recordedEvent.type === "scroll") {
-      playScroll(recordedEvent);
+  async function playEvent(recordedEvent, replayRunId) {
+    const target = await waitForTarget(recordedEvent.selector, recordedEvent, replayRunId);
+
+    if (!target || !replayIsActive(replayRunId)) {
       return;
     }
 
-    const target = await waitForTarget(recordedEvent.selector);
+    if (recordedEvent.type === "scroll") {
+      playScroll(recordedEvent, target);
+      return;
+    }
 
-    if (!target || target === window) {
+    if (target === window) {
       return;
     }
 
@@ -943,6 +1096,7 @@
     const replayRunId = state.replayRunId;
     state.isReplaying = true;
     state.replaySessionId = session.id;
+    state.replayTaskError = "";
     state.lastError = "";
     showReplayOverlay();
     showRuntimeStatus("replaying");
@@ -955,24 +1109,33 @@
     }
 
     try {
-      const replayStartedAt = performance.now();
+      let previousEventAt = 0;
 
       for (const recordedEvent of state.events) {
-        if (state.replayAbort || state.replayRunId !== replayRunId) {
+        if (!replayIsActive(replayRunId)) {
           break;
         }
 
-        const waitMs = recordedEvent.at - (performance.now() - replayStartedAt);
+        const recordedGapMs = Math.max(0, recordedEvent.at - previousEventAt);
+        previousEventAt = recordedEvent.at;
+        const [, tasksReady] = await Promise.all([
+          sleep(recordedGapMs),
+          waitForPendingTasks(replayRunId),
+        ]);
 
-        if (waitMs > 0) {
-          await sleep(waitMs);
-        }
-
-        if (state.replayAbort || state.replayRunId !== replayRunId) {
+        if (!tasksReady || !replayIsActive(replayRunId)) {
           break;
         }
 
-        await playEvent(recordedEvent);
+        await playEvent(recordedEvent, replayRunId);
+      }
+
+      if (replayIsActive(replayRunId)) {
+        await waitForPendingTasks(replayRunId);
+      }
+    } catch (error) {
+      if (state.replayRunId === replayRunId) {
+        state.lastError = error instanceof Error ? error.message : "재생 중 오류가 발생했습니다.";
       }
     } finally {
       if (state.replayRunId === replayRunId) {
@@ -1088,6 +1251,7 @@
   }
 
   window.UserFlowRecorder = Object.freeze({
+    beginTask,
     clear: clearRecording,
     deleteSession,
     getEvents: (sessionId = state.currentSessionId) => [
@@ -1096,6 +1260,7 @@
     getState: getPublicState,
     replay,
     replaySession: replay,
+    runTask,
     start: startRecording,
     stop: stopRecording,
     stopReplay,

@@ -428,7 +428,14 @@ function renderResponseMappingPopup(responseJson) {
   window.ResponseMappingPopup.renderResponse(responseJson, {
     mappingUrl: "/data/mapping.json"
   });
-}</code></pre>
+}
+
+// 통신 완료 후 다음 패널을 표시해야 하는 경우
+await UserFlowRecorder.runTask("다음 패널 조회", async () => {
+  const response = await fetch("/api/next-panel");
+  const data = await response.json();
+  renderNextPanel(data);
+});</code></pre>
         </div>
       </section>
 
@@ -461,8 +468,28 @@ function renderResponseMappingPopup(responseJson) {
         flowTestStepBadge.textContent = `${stepNumber} / 2`;
       }
 
-      document.querySelector("#flowNextButton").addEventListener("click", () => {
-        showFlowTestStep(2);
+      document.querySelector("#flowNextButton").addEventListener("click", async (event) => {
+        const nextButton = event.currentTarget;
+        nextButton.disabled = true;
+        flowTestResult.textContent = "다음 패널 준비 중";
+
+        try {
+          await UserFlowRecorder.runTask("다음 패널 통신", async () => {
+            const response = await fetch("./data/response-dummy.json");
+
+            if (!response.ok) {
+              throw new Error(`다음 패널 데이터를 불러오지 못했습니다. (${response.status})`);
+            }
+
+            await response.json();
+            showFlowTestStep(2);
+          });
+          flowTestResult.textContent = "다음 패널 준비 완료";
+        } catch (error) {
+          flowTestResult.textContent = error.message;
+        } finally {
+          nextButton.disabled = false;
+        }
       });
 
       document.querySelector("#flowPreviousButton").addEventListener("click", () => {
@@ -505,13 +532,15 @@ function renderResponseMappingPopup(responseJson) {
         statusBadge.textContent = "통신중";
 
         try {
-          const response = await fetch("./data/response-dummy.json");
+          const responseJson = await UserFlowRecorder.runTask("응답 매핑 통신", async () => {
+            const response = await fetch("./data/response-dummy.json");
 
-          if (!response.ok) {
-            throw new Error(`더미 응답을 불러오지 못했습니다. (${response.status})`);
-          }
+            if (!response.ok) {
+              throw new Error(`더미 응답을 불러오지 못했습니다. (${response.status})`);
+            }
 
-          const responseJson = await response.json();
+            return response.json();
+          });
           rawResponse.textContent = JSON.stringify(responseJson, null, 2);
 
           if (responsePopupWindow.closed) {
