@@ -11,7 +11,7 @@
   const IGNORE_ATTRIBUTE = "data-user-flow-ignore";
   const VISUAL_STYLE_ID = "user-flow-recorder-visual-style";
   const CLICK_PULSE_MS = 420;
-  const ACTION_INDICATOR_MS = 720;
+  const REPLAY_OVERLAY_TRANSITION_MS = 160;
   const MAX_EVENTS = 10000;
   const MAX_SESSIONS = 20;
   const SCROLL_SAMPLE_MS = 80;
@@ -50,22 +50,24 @@
       }
     }
 
-    .user-flow-action-indicator {
+    .user-flow-runtime-status {
       position: fixed;
       bottom: 16px;
       left: 16px;
       z-index: 2147482999;
-      min-height: 32px;
-      padding: 7px 10px;
-      border-left: 3px solid #1266d6;
-      border-radius: 4px;
-      background: rgba(23, 32, 42, 0.92);
-      color: #ffffff;
-      box-shadow: 0 8px 20px rgba(23, 32, 42, 0.18);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 36px;
+      padding: 7px 11px;
+      border: 1px solid currentColor;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow: 0 8px 22px rgba(23, 32, 42, 0.16);
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 800;
-      line-height: 18px;
+      line-height: 20px;
       opacity: 0;
       pointer-events: none;
       transform: translateY(6px);
@@ -74,17 +76,103 @@
         transform 140ms ease;
     }
 
-    .user-flow-action-indicator[data-kind="typing"] {
-      border-left-color: #0f766e;
+    .user-flow-runtime-status[data-mode="recording"] {
+      color: #b42345;
     }
 
-    .user-flow-action-indicator[data-kind="selection"] {
-      border-left-color: #9a6400;
+    .user-flow-runtime-status[data-mode="replaying"] {
+      color: #0f766e;
     }
 
-    .user-flow-action-indicator.is-visible {
+    .user-flow-runtime-status.is-visible {
       opacity: 1;
       transform: translateY(0);
+    }
+
+    .user-flow-runtime-icon {
+      position: relative;
+      flex: 0 0 18px;
+      width: 18px;
+      height: 18px;
+    }
+
+    .user-flow-runtime-status[data-mode="recording"] .user-flow-runtime-icon::before {
+      position: absolute;
+      inset: 5px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: user-flow-record-pulse 900ms ease-in-out infinite;
+      content: "";
+    }
+
+    .user-flow-runtime-status[data-mode="recording"] .user-flow-runtime-icon::after {
+      position: absolute;
+      inset: 2px;
+      border: 1px solid currentColor;
+      border-radius: 50%;
+      animation: user-flow-record-ring 900ms ease-out infinite;
+      content: "";
+    }
+
+    .user-flow-runtime-status[data-mode="replaying"] .user-flow-runtime-icon::before {
+      position: absolute;
+      top: 5px;
+      left: 7px;
+      width: 0;
+      height: 0;
+      border-top: 4px solid transparent;
+      border-bottom: 4px solid transparent;
+      border-left: 6px solid currentColor;
+      content: "";
+    }
+
+    .user-flow-runtime-status[data-mode="replaying"] .user-flow-runtime-icon::after {
+      position: absolute;
+      inset: 1px;
+      border: 1.5px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: user-flow-replay-spin 680ms linear infinite;
+      content: "";
+    }
+
+    @keyframes user-flow-record-pulse {
+      50% {
+        opacity: 0.45;
+        transform: scale(0.78);
+      }
+    }
+
+    @keyframes user-flow-record-ring {
+      0% {
+        opacity: 0.8;
+        transform: scale(0.72);
+      }
+
+      100% {
+        opacity: 0;
+        transform: scale(1.35);
+      }
+    }
+
+    .user-flow-replay-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 2147482997;
+      background: rgba(15, 23, 42, 0.12);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity ${REPLAY_OVERLAY_TRANSITION_MS}ms ease;
+    }
+
+    .user-flow-replay-overlay.is-visible {
+      opacity: 1;
+    }
+
+    @keyframes user-flow-replay-spin {
+      to {
+        transform: rotate(360deg);
+      }
     }
   `;
 
@@ -104,8 +192,12 @@
     scrollTimers: new Map(),
     clients: new Map(),
     notifyTimer: 0,
-    actionIndicator: null,
-    actionIndicatorTimer: 0,
+    runtimeStatus: null,
+    runtimeStatusFrame: 0,
+    runtimeStatusTimer: 0,
+    replayOverlay: null,
+    replayOverlayFrame: 0,
+    replayOverlayTimer: 0,
   };
 
   function readRecording() {
@@ -270,43 +362,103 @@
     window.setTimeout(() => pulse.remove(), CLICK_PULSE_MS);
   }
 
-  function showActionIndicator(message, kind) {
+  function showRuntimeStatus(mode) {
     if (!document.body) {
       return;
     }
 
-    let indicator = state.actionIndicator;
+    let status = state.runtimeStatus;
 
-    if (!indicator || !indicator.isConnected) {
-      indicator = document.createElement("div");
-      indicator.className = "user-flow-action-indicator";
-      indicator.setAttribute(IGNORE_ATTRIBUTE, "true");
-      document.body.append(indicator);
-      state.actionIndicator = indicator;
+    if (!status || !status.isConnected) {
+      status = document.createElement("div");
+      status.className = "user-flow-runtime-status";
+      status.setAttribute(IGNORE_ATTRIBUTE, "true");
+      status.setAttribute("role", "status");
+      status.setAttribute("aria-live", "polite");
+      status.innerHTML = `
+        <span class="user-flow-runtime-icon" aria-hidden="true"></span>
+        <span data-user-flow-runtime-label></span>
+      `;
+      document.body.append(status);
+      state.runtimeStatus = status;
     }
 
-    indicator.textContent = message;
-    indicator.dataset.kind = kind;
-    indicator.classList.add("is-visible");
+    status.dataset.mode = mode;
+    status.querySelector("[data-user-flow-runtime-label]").textContent =
+      mode === "recording" ? "녹음 중" : "재생 중";
+    status.hidden = false;
 
-    window.clearTimeout(state.actionIndicatorTimer);
-    state.actionIndicatorTimer = window.setTimeout(() => {
-      indicator.classList.remove("is-visible");
-    }, ACTION_INDICATOR_MS);
+    window.clearTimeout(state.runtimeStatusTimer);
+    window.cancelAnimationFrame(state.runtimeStatusFrame);
+    state.runtimeStatusFrame = window.requestAnimationFrame(() => {
+      state.runtimeStatusFrame = 0;
+      status.classList.add("is-visible");
+    });
   }
 
-  function hideActionIndicator() {
-    window.clearTimeout(state.actionIndicatorTimer);
-    state.actionIndicatorTimer = 0;
-    state.actionIndicator?.classList.remove("is-visible");
+  function hideRuntimeStatus() {
+    const status = state.runtimeStatus;
+
+    if (!status) {
+      return;
+    }
+
+    window.cancelAnimationFrame(state.runtimeStatusFrame);
+    state.runtimeStatusFrame = 0;
+    window.clearTimeout(state.runtimeStatusTimer);
+    status.classList.remove("is-visible");
+    state.runtimeStatusTimer = window.setTimeout(() => {
+      if (!state.isRecording && !state.isReplaying) {
+        status.hidden = true;
+      }
+    }, 140);
   }
 
-  function showFormActionIndicator(element) {
-    const isSelection =
-      element instanceof HTMLSelectElement ||
-      (element instanceof HTMLInputElement && ["checkbox", "radio"].includes(element.type));
+  function showReplayOverlay() {
+    if (!document.body) {
+      return;
+    }
 
-    showActionIndicator(isSelection ? "선택 변경" : "입력 중", isSelection ? "selection" : "typing");
+    let overlay = state.replayOverlay;
+
+    if (!overlay || !overlay.isConnected) {
+      overlay = document.createElement("div");
+      overlay.className = "user-flow-replay-overlay";
+      overlay.setAttribute(IGNORE_ATTRIBUTE, "true");
+      overlay.setAttribute("aria-hidden", "true");
+      document.body.append(overlay);
+      state.replayOverlay = overlay;
+    }
+
+    window.clearTimeout(state.replayOverlayTimer);
+    overlay.hidden = false;
+    window.cancelAnimationFrame(state.replayOverlayFrame);
+    state.replayOverlayFrame = window.requestAnimationFrame(() => {
+      state.replayOverlayFrame = 0;
+
+      if (state.isReplaying) {
+        overlay.classList.add("is-visible");
+      }
+    });
+  }
+
+  function hideReplayOverlay() {
+    const overlay = state.replayOverlay;
+
+    if (!overlay) {
+      return;
+    }
+
+    window.cancelAnimationFrame(state.replayOverlayFrame);
+    state.replayOverlayFrame = 0;
+    window.clearTimeout(state.replayOverlayTimer);
+    overlay.classList.remove("is-visible");
+    state.replayOverlayTimer = window.setTimeout(() => {
+      if (!state.isReplaying) {
+        overlay.classList.remove("is-visible");
+        overlay.hidden = true;
+      }
+    }, REPLAY_OVERLAY_TRANSITION_MS);
   }
 
   function cssEscape(value) {
@@ -526,10 +678,6 @@
       return;
     }
 
-    if (state.isRecording && !state.isReplaying) {
-      showFormActionIndicator(target);
-    }
-
     pushEvent({
       type: event.type,
       selector: getStableSelector(target),
@@ -574,8 +722,6 @@
     if (!state.isRecording || state.isReplaying) {
       return;
     }
-
-    showActionIndicator("스크롤 중", "scroll");
 
     const target = normalizeScrollTarget(event.target);
     const scrollEvent = getScrollEvent(target);
@@ -632,8 +778,6 @@
 
   function playScroll(recordedEvent) {
     const target = findTarget(recordedEvent.selector);
-
-    showActionIndicator("스크롤 중", "scroll");
 
     if (target === window) {
       try {
@@ -702,8 +846,6 @@
       return;
     }
 
-    showFormActionIndicator(target);
-
     target.dispatchEvent(
       new Event(recordedEvent.type, {
         bubbles: true,
@@ -753,6 +895,7 @@
     state.scrollLastAt.clear();
     state.scrollTimers.forEach((timer) => window.clearTimeout(timer));
     state.scrollTimers.clear();
+    showRuntimeStatus("recording");
     persistRecording();
     notifyClients({ immediate: true });
   }
@@ -763,7 +906,7 @@
     }
 
     state.isRecording = false;
-    hideActionIndicator();
+    hideRuntimeStatus();
     state.scrollTimers.forEach((timer) => window.clearTimeout(timer));
     state.scrollTimers.clear();
     persistRecording();
@@ -779,7 +922,8 @@
     state.replayRunId += 1;
     state.isReplaying = false;
     state.replaySessionId = "";
-    hideActionIndicator();
+    hideRuntimeStatus();
+    hideReplayOverlay();
     notifyClients({ immediate: true });
   }
 
@@ -800,6 +944,8 @@
     state.isReplaying = true;
     state.replaySessionId = session.id;
     state.lastError = "";
+    showReplayOverlay();
+    showRuntimeStatus("replaying");
     notifyClients({ immediate: true });
 
     try {
@@ -808,31 +954,35 @@
       // Browsers may ignore focus requests between windows.
     }
 
-    const replayStartedAt = performance.now();
+    try {
+      const replayStartedAt = performance.now();
 
-    for (const recordedEvent of state.events) {
-      if (state.replayAbort || state.replayRunId !== replayRunId) {
-        break;
+      for (const recordedEvent of state.events) {
+        if (state.replayAbort || state.replayRunId !== replayRunId) {
+          break;
+        }
+
+        const waitMs = recordedEvent.at - (performance.now() - replayStartedAt);
+
+        if (waitMs > 0) {
+          await sleep(waitMs);
+        }
+
+        if (state.replayAbort || state.replayRunId !== replayRunId) {
+          break;
+        }
+
+        await playEvent(recordedEvent);
       }
-
-      const waitMs = recordedEvent.at - (performance.now() - replayStartedAt);
-
-      if (waitMs > 0) {
-        await sleep(waitMs);
+    } finally {
+      if (state.replayRunId === replayRunId) {
+        state.isReplaying = false;
+        state.replayAbort = false;
+        state.replaySessionId = "";
+        hideRuntimeStatus();
+        hideReplayOverlay();
+        notifyClients({ immediate: true });
       }
-
-      if (state.replayAbort || state.replayRunId !== replayRunId) {
-        break;
-      }
-
-      await playEvent(recordedEvent);
-    }
-
-    if (state.replayRunId === replayRunId) {
-      state.isReplaying = false;
-      state.replayAbort = false;
-      state.replaySessionId = "";
-      notifyClients({ immediate: true });
     }
   }
 

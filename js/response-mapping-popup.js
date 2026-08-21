@@ -9,6 +9,7 @@
   const DEFAULT_POPUP_NAME = "responseMappingPopup";
   const DEFAULT_POPUP_FEATURES = "popup=yes,width=720,height=760,left=140,top=80";
   const VISIBLE_ITEMS_STORAGE_KEY = "response-mapping-popup-visible-items";
+  const ITEM_FILTER_MOTION_MS = 160;
 
   let popupWindow = null;
   let popupReady = false;
@@ -469,11 +470,68 @@
 
     toggle.setAttribute("aria-expanded", String(isExpanded));
     toggle.title = isExpanded ? "표시 항목 닫기" : "표시 항목 열기";
-    panel.hidden = !isExpanded;
 
     if (isExpanded) {
+      panel.hidden = false;
       setItemFilterFullHeight();
     }
+
+    animateItemFilterPanel(panel, isExpanded);
+  }
+
+  function animateItemFilterPanel(panel, isExpanded) {
+    panel.getAnimations?.().forEach((animation) => animation.cancel());
+    panel.style.removeProperty("overflow");
+
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+
+    if (reduceMotion || typeof panel.animate !== "function") {
+      panel.hidden = !isExpanded;
+      return;
+    }
+
+    const expandedHeight = Math.max(0, panel.getBoundingClientRect().height);
+    const panelStyle = window.getComputedStyle(panel);
+    const expandedFrame = {
+      height: `${expandedHeight}px`,
+      opacity: 1,
+      paddingTop: panelStyle.paddingTop,
+      paddingBottom: panelStyle.paddingBottom,
+      borderTopWidth: panelStyle.borderTopWidth,
+    };
+    const collapsedFrame = {
+      height: "0px",
+      opacity: 0,
+      paddingTop: "0px",
+      paddingBottom: "0px",
+      borderTopWidth: "0px",
+    };
+    const animation = panel.animate(
+      isExpanded ? [collapsedFrame, expandedFrame] : [expandedFrame, collapsedFrame],
+      {
+        duration: isExpanded ? ITEM_FILTER_MOTION_MS : 130,
+        easing: isExpanded
+          ? "cubic-bezier(0.22, 1, 0.36, 1)"
+          : "cubic-bezier(0.4, 0, 1, 1)",
+        fill: "both",
+      },
+    );
+
+    panel.style.overflow = "hidden";
+    animation.addEventListener("finish", () => {
+      const remainsExpanded = isItemFilterExpanded();
+
+      if (!remainsExpanded) {
+        panel.hidden = true;
+      }
+
+      animation.cancel();
+      panel.style.removeProperty("overflow");
+    });
+  }
+
+  function isItemFilterExpanded() {
+    return document.querySelector("#mappingItemFilterToggle")?.getAttribute("aria-expanded") === "true";
   }
 
   function setItemFilterFullHeight() {
@@ -796,7 +854,7 @@
         const deleteDisabled = flowState.isRecording || flowState.isReplaying;
 
         return `
-          <article class="user-flow-session" data-state="${isRecordingSession ? "recording" : "idle"}">
+          <article class="user-flow-session" data-state="${isRecordingSession ? "recording" : isReplayingSession ? "replaying" : "idle"}">
             <div class="user-flow-session-main">
               <strong class="user-flow-session-time">${escapeHtml(recordedAt)}</strong>
               <span class="user-flow-session-meta">
