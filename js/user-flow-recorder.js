@@ -14,8 +14,10 @@
   const REPLAY_OVERLAY_TRANSITION_MS = 160;
   const MAX_EVENTS = 10000;
   const MAX_SESSIONS = 20;
+  const MAX_SESSION_NAME_LENGTH = 40;
   const SCROLL_SAMPLE_MS = 80;
   const STATE_NOTIFY_MS = 120;
+  const REPLAY_PROGRESS_NOTIFY_MS = 250;
   const TARGET_WAIT_MS = 5000;
   const SENSITIVE_AUTOCOMPLETE = new Set([
     "cc-csc",
@@ -187,6 +189,9 @@
     startAt: 0,
     replayAbort: false,
     replayRunId: 0,
+    replayStartedAt: 0,
+    replayCompletedEventCount: 0,
+    replayProgressTimer: 0,
     lastError: "",
     scrollLastAt: new Map(),
     scrollTimers: new Map(),
@@ -214,6 +219,7 @@
           .slice(0, MAX_SESSIONS)
           .map((session, index) => ({
             id: session.id || `recording-${session.recordedAt || Date.now()}-${index}`,
+            name: typeof session.name === "string" ? session.name : "",
             recordedAt: session.recordedAt || null,
             events: session.events,
           }));
@@ -222,6 +228,7 @@
         state.sessions = [
           {
             id: `recording-${recordedAt}`,
+            name: "",
             recordedAt,
             events: recording.events,
           },
@@ -262,17 +269,27 @@
   }
 
   function getPublicState() {
+    const replayDurationMs = getDurationMs();
+    const replayElapsedMs = state.isReplaying
+      ? Math.max(0, performance.now() - state.replayStartedAt)
+      : 0;
+
     return {
       isRecording: state.isRecording,
       isReplaying: state.isReplaying,
       canReplay: state.sessions.some((session) => session.events.length > 0),
       activeRecordingSessionId: state.isRecording ? state.currentSessionId : "",
       replaySessionId: state.replaySessionId,
+      replayCompletedEventCount: state.replayCompletedEventCount,
+      replayRemainingMs: state.isReplaying
+        ? Math.max(0, replayDurationMs - replayElapsedMs)
+        : 0,
       eventCount: state.events.length,
       durationMs: getDurationMs(),
       recordedAt: state.recordedAt,
       sessions: state.sessions.map((session) => ({
         id: session.id,
+        name: session.name || "",
         recordedAt: session.recordedAt,
         eventCount: session.events.length,
         durationMs: getDurationMs(session.events),
@@ -321,6 +338,24 @@
         state.clients.delete(client);
       }
     });
+  }
+
+  function startReplayProgressNotifications() {
+    window.clearInterval(state.replayProgressTimer);
+    state.replayProgressTimer = window.setInterval(() => {
+      if (!state.isReplaying) {
+        window.clearInterval(state.replayProgressTimer);
+        state.replayProgressTimer = 0;
+        return;
+      }
+
+      notifyClients({ immediate: true });
+    }, REPLAY_PROGRESS_NOTIFY_MS);
+  }
+
+  function stopReplayProgressNotifications() {
+    window.clearInterval(state.replayProgressTimer);
+    state.replayProgressTimer = 0;
   }
 
   function isAllowedMessage(event) {
@@ -881,6 +916,7 @@
     const recordedAt = Date.now();
     const session = {
       id: `recording-${recordedAt}-${Math.random().toString(36).slice(2, 8)}`,
+      name: "",
       recordedAt,
       events: [],
     };
@@ -922,6 +958,9 @@
     state.replayRunId += 1;
     state.isReplaying = false;
     state.replaySessionId = "";
+    state.replayStartedAt = 0;
+    state.replayCompletedEventCount = 0;
+    stopReplayProgressNotifications();
     hideRuntimeStatus();
     hideReplayOverlay();
     notifyClients({ immediate: true });
@@ -943,9 +982,12 @@
     const replayRunId = state.replayRunId;
     state.isReplaying = true;
     state.replaySessionId = session.id;
+    state.replayStartedAt = performance.now();
+    state.replayCompletedEventCount = 0;
     state.lastError = "";
     showReplayOverlay();
     showRuntimeStatus("replaying");
+    startReplayProgressNotifications();
     notifyClients({ immediate: true });
 
     try {
@@ -955,7 +997,7 @@
     }
 
     try {
-      const replayStartedAt = performance.now();
+      const replayStartedAt = state.replayStartedAt;
 
       for (const recordedEvent of state.events) {
         if (state.replayAbort || state.replayRunId !== replayRunId) {
@@ -973,12 +1015,17 @@
         }
 
         await playEvent(recordedEvent);
+        state.replayCompletedEventCount += 1;
+        notifyClients();
       }
     } finally {
       if (state.replayRunId === replayRunId) {
         state.isReplaying = false;
         state.replayAbort = false;
         state.replaySessionId = "";
+        state.replayStartedAt = 0;
+        state.replayCompletedEventCount = 0;
+        stopReplayProgressNotifications();
         hideRuntimeStatus();
         hideReplayOverlay();
         notifyClients({ immediate: true });
@@ -996,6 +1043,24 @@
     state.lastError = "";
     window.localStorage.removeItem(STORAGE_KEY);
     notifyClients({ immediate: true });
+  }
+
+  function renameSession(sessionId, name) {
+    if (!sessionId || state.isRecording || state.isReplaying) {
+      return false;
+    }
+
+    const session = state.sessions.find((item) => item.id === sessionId);
+    const normalizedName = String(name || "").trim().slice(0, MAX_SESSION_NAME_LENGTH);
+
+    if (!session || !normalizedName) {
+      return false;
+    }
+
+    session.name = normalizedName;
+    persistRecording();
+    notifyClients({ immediate: true });
+    return true;
   }
 
   function deleteSession(sessionId) {
@@ -1058,6 +1123,9 @@
       case "delete-session":
         deleteSession(event.data.sessionId);
         break;
+      case "rename-session":
+        renameSession(event.data.sessionId, event.data.sessionName);
+        break;
       case "clear":
         clearRecording();
         break;
@@ -1094,6 +1162,7 @@
       ...(state.sessions.find((session) => session.id === sessionId)?.events || []),
     ],
     getState: getPublicState,
+    renameSession,
     replay,
     replaySession: replay,
     start: startRecording,
