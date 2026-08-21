@@ -33,6 +33,18 @@
         margin-bottom: 18px;
       }
 
+      .top-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .top-actions .secondary {
+        border: 1px solid #9cabbc;
+        background: #ffffff;
+        color: #334155;
+      }
+
       h1 {
         margin: 0;
         font-size: 30px;
@@ -257,6 +269,11 @@
           flex-direction: column;
         }
 
+        .top-actions {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
         button {
           width: 100%;
         }
@@ -280,7 +297,10 @@
     <main>
       <section class="top">
         <h1>통신 응답 매핑 테스트</h1>
-        <button id="requestButton" type="button">통신</button>
+        <div class="top-actions">
+          <button class="secondary" id="popupButton" type="button">팝업 열기</button>
+          <button id="requestButton" type="button">통신</button>
+        </div>
       </section>
 
       <section class="panel" id="flowTestPanel">
@@ -425,12 +445,14 @@ function renderResponseMappingPopup(responseJson) {
     <script src="./js/user-flow-recorder.js"></script>
     <script src="./js/response-mapping-popup.js"></script>
     <script>
+      const popupButton = document.querySelector("#popupButton");
       const requestButton = document.querySelector("#requestButton");
       const statusBadge = document.querySelector("#statusBadge");
       const rawResponse = document.querySelector("#rawResponse");
       const flowTestForm = document.querySelector("#flowTestForm");
       const flowTestStepBadge = document.querySelector("#flowTestStepBadge");
       const flowTestResult = document.querySelector("#flowTestResult");
+      let responsePopupWindow = null;
 
       function showFlowTestStep(stepNumber) {
         document.querySelectorAll("[data-flow-test-step]").forEach((step) => {
@@ -455,18 +477,34 @@ function renderResponseMappingPopup(responseJson) {
         flowTestResult.textContent = `${customerName} / ${requestType} 요청 처리가 완료되었습니다.`;
       });
 
-      async function requestDummyResponse() {
-        requestButton.disabled = true;
+      async function openResponsePopup() {
+        popupButton.disabled = true;
         statusBadge.textContent = "팝업 여는중";
 
         try {
-          await ResponseMappingPopup.openPopup({
+          responsePopupWindow = await ResponseMappingPopup.openPopup({
             popupUrl: "./popup.html",
             mappingUrl: "./data/mapping.json",
           });
+          statusBadge.textContent = "팝업 준비";
+        } catch (error) {
+          statusBadge.textContent = "팝업 오류";
+          rawResponse.textContent = error.message;
+        } finally {
+          popupButton.disabled = false;
+        }
+      }
 
-          statusBadge.textContent = "통신중";
+      async function requestDummyResponse() {
+        if (!responsePopupWindow || responsePopupWindow.closed) {
+          statusBadge.textContent = "팝업을 먼저 열어주세요";
+          return;
+        }
 
+        requestButton.disabled = true;
+        statusBadge.textContent = "통신중";
+
+        try {
           const response = await fetch("./data/response-dummy.json");
 
           if (!response.ok) {
@@ -475,6 +513,10 @@ function renderResponseMappingPopup(responseJson) {
 
           const responseJson = await response.json();
           rawResponse.textContent = JSON.stringify(responseJson, null, 2);
+
+          if (responsePopupWindow.closed) {
+            throw new Error("통신 응답을 표시할 팝업이 닫혀 있습니다.");
+          }
 
           await ResponseMappingPopup.renderResponse(responseJson, {
             mappingUrl: "./data/mapping.json",
@@ -489,6 +531,7 @@ function renderResponseMappingPopup(responseJson) {
         }
       }
 
+      popupButton.addEventListener("click", openResponsePopup);
       requestButton.addEventListener("click", requestDummyResponse);
     </script>
   </body>

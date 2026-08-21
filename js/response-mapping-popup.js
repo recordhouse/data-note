@@ -1002,23 +1002,16 @@
   function renderResponse(responseJson, options = {}) {
     const popupOptions = getPopupOptions(options);
 
+    if (!isPopupOpen()) {
+      return Promise.reject(new Error("팝업을 먼저 열어주세요."));
+    }
+
     popupOrigin = getTargetOrigin(popupOptions.popupUrl);
     pendingPayload = {
       responseJson,
       mappingUrl: popupOptions.mappingUrl,
       mappingRows: options.mappingRows,
     };
-
-    if (!isPopupOpen()) {
-      popupReady = false;
-      popupWindow = window.open(popupOptions.popupUrl, popupOptions.popupName, popupOptions.popupFeatures);
-
-      if (!popupWindow) {
-        return Promise.reject(new Error("팝업이 차단되었습니다."));
-      }
-    } else {
-      popupWindow.focus();
-    }
 
     const renderPromise = new Promise((resolve) => {
       renderResolvers.push(resolve);
