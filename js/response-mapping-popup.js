@@ -1,4 +1,10 @@
 (() => {
+  "use strict";
+
+  if (window.ResponseMappingPopup) {
+    return;
+  }
+
   const MESSAGE_READY = "response-mapping-popup-ready";
   const MESSAGE_RENDER = "response-mapping-popup-render";
   const MESSAGE_RENDERED = "response-mapping-popup-rendered";
@@ -906,7 +912,6 @@
     }
 
     popupReady = false;
-    pendingPayload = null;
     popupWindow = window.open(popupOptions.popupUrl, popupOptions.popupName, popupOptions.popupFeatures);
 
     if (!popupWindow) {
@@ -921,16 +926,16 @@
   function renderResponse(responseJson, options = {}) {
     const popupOptions = getPopupOptions(options);
 
-    if (!isPopupOpen()) {
-      return Promise.reject(new Error("팝업을 먼저 열어주세요."));
-    }
-
     popupOrigin = getTargetOrigin(popupOptions.popupUrl);
     pendingPayload = {
       responseJson,
       mappingUrl: popupOptions.mappingUrl,
       mappingRows: options.mappingRows,
     };
+
+    if (!isPopupOpen()) {
+      return Promise.resolve([]);
+    }
 
     const renderPromise = new Promise((resolve) => {
       renderResolvers.push(resolve);

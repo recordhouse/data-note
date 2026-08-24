@@ -496,11 +496,6 @@ function renderResponseMappingPopup(responseJson) {
       }
 
       async function requestDummyResponse() {
-        if (!responsePopupWindow || responsePopupWindow.closed) {
-          statusBadge.textContent = "팝업을 먼저 열어주세요";
-          return;
-        }
-
         requestButton.disabled = true;
         statusBadge.textContent = "통신중";
 
@@ -514,15 +509,12 @@ function renderResponseMappingPopup(responseJson) {
           const responseJson = await response.json();
           rawResponse.textContent = JSON.stringify(responseJson, null, 2);
 
-          if (responsePopupWindow.closed) {
-            throw new Error("통신 응답을 표시할 팝업이 닫혀 있습니다.");
-          }
-
           await ResponseMappingPopup.renderResponse(responseJson, {
             mappingUrl: "./data/mapping.json",
           });
 
-          statusBadge.textContent = "팝업 표시";
+          statusBadge.textContent =
+            responsePopupWindow && !responsePopupWindow.closed ? "팝업 표시" : "응답 대기";
         } catch (error) {
           rawResponse.textContent = error.message;
           statusBadge.textContent = "오류";
