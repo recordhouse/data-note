@@ -19,6 +19,7 @@
   const STATE_NOTIFY_MS = 120;
   const REPLAY_PROGRESS_NOTIFY_MS = 250;
   const TARGET_WAIT_MS = 5000;
+  const IMPORTABLE_EVENT_TYPES = new Set(["change", "click", "input", "scroll"]);
   const SENSITIVE_AUTOCOMPLETE = new Set([
     "cc-csc",
     "cc-number",
@@ -83,8 +84,26 @@
         transform 140ms ease;
     }
 
+    .user-flow-runtime-status[data-mode="recording"],
+    .user-flow-runtime-status[data-mode="replaying"] {
+      gap: 6px;
+      min-height: 32px;
+      padding: 4px 9px;
+    }
+
     .user-flow-runtime-status[data-mode="recording"] {
       color: #b42345;
+    }
+
+    .user-flow-runtime-status[data-mode="recording"] .user-flow-runtime-icon {
+      flex-basis: 20px;
+      width: 20px;
+      height: 20px;
+    }
+
+    .user-flow-runtime-status[data-mode="recording"] .user-flow-runtime-action,
+    .user-flow-runtime-status[data-mode="replaying"] .user-flow-runtime-action {
+      display: none;
     }
 
     .user-flow-runtime-status[data-mode="recording"]:hover {
@@ -121,9 +140,9 @@
 
     .user-flow-runtime-icon {
       position: relative;
-      flex: 0 0 18px;
-      width: 18px;
-      height: 18px;
+      flex: 0 0 20px;
+      width: 20px;
+      height: 20px;
     }
 
     .user-flow-runtime-status[data-mode="recording"] .user-flow-runtime-icon::before {
@@ -171,7 +190,7 @@
 
     .user-flow-runtime-status[data-mode="replaying"] .user-flow-runtime-icon::after {
       position: absolute;
-      inset: 1px;
+      inset: 2px;
       border: 1.5px solid currentColor;
       border-right-color: transparent;
       border-radius: 50%;
@@ -517,18 +536,18 @@
     status.dataset.state = statusState;
     const isActive = statusState === "active";
     const isRecordingMode = mode === "recording";
-    const label = isActive
-      ? isRecordingMode
-        ? "녹음 중"
-        : "재생 중"
-      : statusState === "completed"
-        ? "재생 완료"
-        : isRecordingMode
-          ? "녹음 중지됨"
-          : "재생 중지됨";
+    const label = isRecordingMode
+      ? isActive
+        ? "녹음 중지"
+        : "녹음 시작"
+      : isActive
+        ? "재생 중지"
+        : statusState === "completed"
+          ? "재생 완료"
+          : "재생 시작";
     const action = isActive ? "중지" : isRecordingMode ? "다시 녹음" : "다시 재생";
 
-    status.title = `${label}, ${action}`;
+    status.title = label;
     status.setAttribute("aria-label", status.title);
     status.querySelector("[data-user-flow-runtime-label]").textContent = label;
     status.querySelector("[data-user-flow-runtime-action]").textContent = action;
@@ -1026,11 +1045,132 @@
     }
   }
 
+  function createUniqueSessionId(recordedAt = Date.now(), reservedIds) {
+    const ids =
+      reservedIds || new Set(state.sessions.map((session) => String(session.id || "")));
+    let sessionId = "";
+
+    do {
+      sessionId = `recording-${recordedAt}-${Math.random().toString(36).slice(2, 8)}`;
+    } while (ids.has(sessionId));
+
+    ids.add(sessionId);
+    return sessionId;
+  }
+
+  function normalizeImportedEvents(events) {
+    if (!Array.isArray(events)) {
+      return null;
+    }
+
+    return events
+      .slice(0, MAX_EVENTS)
+      .filter(
+        (recordedEvent) =>
+          recordedEvent &&
+          typeof recordedEvent === "object" &&
+          IMPORTABLE_EVENT_TYPES.has(recordedEvent.type) &&
+          Number.isFinite(Number(recordedEvent.at)),
+      )
+      .map((recordedEvent) => ({
+        ...recordedEvent,
+        at: Math.max(0, Math.round(Number(recordedEvent.at))),
+      }))
+      .sort((first, second) => first.at - second.at);
+  }
+
+  function normalizeImportedSessions(importData) {
+    const candidates = Array.isArray(importData?.sessions)
+      ? importData.sessions
+      : importData?.session
+        ? [importData.session]
+        : Array.isArray(importData?.events)
+          ? [importData]
+          : [];
+    const reservedIds = new Set(state.sessions.map((session) => String(session.id || "")));
+    const importedSessions = [];
+
+    for (const candidate of candidates.slice(0, MAX_SESSIONS)) {
+      if (!candidate || typeof candidate !== "object") {
+        continue;
+      }
+
+      const events = normalizeImportedEvents(candidate.events);
+
+      if (!events) {
+        continue;
+      }
+
+      const recordedAtValue = Number(candidate.recordedAt);
+      const recordedAt =
+        Number.isFinite(recordedAtValue) && recordedAtValue > 0
+          ? Math.round(recordedAtValue)
+          : Date.now();
+      const importedId =
+        typeof candidate.id === "string" ? candidate.id.trim().slice(0, 160) : "";
+
+      if (importedId && reservedIds.has(importedId)) {
+        continue;
+      }
+
+      const sessionId = importedId || createUniqueSessionId(recordedAt, reservedIds);
+      reservedIds.add(sessionId);
+      importedSessions.push({
+        id: sessionId,
+        name: String(candidate.name || "").trim().slice(0, MAX_SESSION_NAME_LENGTH),
+        recordedAt,
+        events,
+      });
+    }
+
+    return importedSessions;
+  }
+
+  function importRecordings(importData) {
+    if (state.isRecording || state.isReplaying) {
+      state.lastError = "녹음 또는 재생 중에는 가져올 수 없습니다.";
+      notifyClients({ immediate: true });
+      return false;
+    }
+
+    const importedSessions = normalizeImportedSessions(importData);
+
+    if (!importedSessions.length) {
+      state.lastError = "가져올 새 녹음이 없거나 이미 존재하는 녹음입니다.";
+      notifyClients({ immediate: true });
+      return false;
+    }
+
+    const previousState = {
+      currentSessionId: state.currentSessionId,
+      events: state.events,
+      recordedAt: state.recordedAt,
+      sessions: state.sessions,
+    };
+
+    state.sessions = [...importedSessions, ...state.sessions].slice(0, MAX_SESSIONS);
+    state.currentSessionId = importedSessions[0].id;
+    state.events = importedSessions[0].events;
+    state.recordedAt = importedSessions[0].recordedAt;
+
+    if (!persistRecording()) {
+      state.sessions = previousState.sessions;
+      state.currentSessionId = previousState.currentSessionId;
+      state.events = previousState.events;
+      state.recordedAt = previousState.recordedAt;
+      notifyClients({ immediate: true });
+      return false;
+    }
+
+    notifyClients({ immediate: true });
+    return true;
+  }
+
   function startRecording() {
     stopReplay();
     const recordedAt = Date.now();
     const session = {
-      id: `recording-${recordedAt}-${Math.random().toString(36).slice(2, 8)}`,
+      id: createUniqueSessionId(recordedAt),
       name: "",
       recordedAt,
       events: [],
@@ -1166,6 +1306,61 @@
     notifyClients({ immediate: true });
   }
 
+  function getExportFileTimestamp(timestamp = Date.now()) {
+    const date = new Date(timestamp);
+    const datePart = [date.getFullYear(), date.getMonth() + 1, date.getDate()]
+      .map((value) => String(value).padStart(2, "0"))
+      .join("");
+    const timePart = [date.getHours(), date.getMinutes(), date.getSeconds()]
+      .map((value) => String(value).padStart(2, "0"))
+      .join("");
+
+    return `${datePart}-${timePart}`;
+  }
+
+  function exportRecording(sessionId) {
+    const session = state.sessions.find((item) => item.id === sessionId);
+
+    if (!session || state.isRecording || state.isReplaying) {
+      return false;
+    }
+
+    try {
+      const exportedAt = Date.now();
+      const exportData = {
+        version: 2,
+        exportedAt: new Date(exportedAt).toISOString(),
+        session: {
+          id: session.id,
+          name: session.name || "",
+          recordedAt: session.recordedAt,
+          events: session.events,
+        },
+      };
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+        type: "application/json;charset=utf-8",
+      });
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = downloadUrl;
+      const sessionIdSuffix = session.id.slice(-6).replace(/[^a-zA-Z0-9_-]/g, "");
+      link.download = `user-flow-${getExportFileTimestamp(session.recordedAt || exportedAt)}-${sessionIdSuffix}.json`;
+      link.hidden = true;
+      link.setAttribute(IGNORE_ATTRIBUTE, "true");
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+      state.lastError = "";
+      return true;
+    } catch (error) {
+      state.lastError = "선택한 녹음을 JSON 파일로 내보내지 못했습니다.";
+      notifyClients({ immediate: true });
+      return false;
+    }
+  }
+
   function renameSession(sessionId, name) {
     if (!sessionId || state.isRecording || state.isReplaying) {
       return false;
@@ -1247,6 +1442,12 @@
       case "rename-session":
         renameSession(event.data.sessionId, event.data.sessionName);
         break;
+      case "export-recording":
+        exportRecording(event.data.sessionId);
+        break;
+      case "import-recordings":
+        importRecordings(event.data.importData);
+        break;
       case "clear":
         clearRecording();
         break;
@@ -1279,10 +1480,12 @@
   window.UserFlowRecorder = Object.freeze({
     clear: clearRecording,
     deleteSession,
+    exportRecording,
     getEvents: (sessionId = state.currentSessionId) => [
       ...(state.sessions.find((session) => session.id === sessionId)?.events || []),
     ],
     getState: getPublicState,
+    importRecordings,
     renameSession,
     replay,
     replaySession: replay,

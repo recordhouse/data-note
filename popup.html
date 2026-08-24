@@ -21,6 +21,11 @@
           "Segoe UI", sans-serif;
       }
 
+      body.is-user-flow-file-dragging .wrap {
+        box-shadow: inset 0 0 0 3px rgba(18, 102, 214, 0.55);
+        background: #f8fbff;
+      }
+
       .wrap {
         display: grid;
         grid-template-rows: auto minmax(0, 1fr);
@@ -268,7 +273,8 @@
         gap: 6px;
       }
 
-      .user-flow-name-action {
+      .user-flow-name-action,
+      .user-flow-export {
         min-width: 64px;
         height: 30px;
         padding: 4px 8px;
@@ -281,11 +287,13 @@
         cursor: pointer;
       }
 
-      .user-flow-name-action:hover:not(:disabled) {
+      .user-flow-name-action:hover:not(:disabled),
+      .user-flow-export:hover:not(:disabled) {
         background: #f1f5f9;
       }
 
-      .user-flow-name-action:disabled {
+      .user-flow-name-action:disabled,
+      .user-flow-export:disabled {
         cursor: not-allowed;
         opacity: 0.45;
       }
@@ -718,8 +726,13 @@
           flex-direction: column;
         }
 
-        .user-flow-action {
+        .user-flow-actions {
           width: 100%;
+        }
+
+        .user-flow-action {
+          flex: 1 1 0;
+          width: auto;
         }
 
         .user-flow-session {
@@ -821,12 +834,24 @@
             <div class="user-flow-actions">
               <button
                 class="user-flow-action"
+                id="userFlowImportButton"
+                type="button"
+                data-user-flow-import-trigger
+              >가져오기</button>
+              <button
+                class="user-flow-action"
                 id="userFlowRecordButton"
                 type="button"
                 data-action="toggle-record"
                 data-user-flow-command="toggle-record"
                 aria-pressed="false"
               >녹음</button>
+              <input
+                id="userFlowImportInput"
+                type="file"
+                accept=".json,application/json"
+                hidden
+              />
             </div>
           </div>
 
@@ -844,5 +869,6 @@
     </main>
 
     <script src="./js/response-mapping-popup.js"></script>
+    <script src="./js/user-flow-popup.js"></script>
   </body>
 </html>

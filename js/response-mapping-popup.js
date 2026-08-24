@@ -2,8 +2,6 @@
   const MESSAGE_READY = "response-mapping-popup-ready";
   const MESSAGE_RENDER = "response-mapping-popup-render";
   const MESSAGE_RENDERED = "response-mapping-popup-rendered";
-  const MESSAGE_USER_FLOW_COMMAND = "response-mapping-user-flow-command";
-  const MESSAGE_USER_FLOW_STATE = "response-mapping-user-flow-state";
   const DEFAULT_POPUP_URL = "./popup.html";
   const DEFAULT_MAPPING_URL = "./data/mapping.json";
   const DEFAULT_POPUP_NAME = "responseMappingPopup";
@@ -19,9 +17,6 @@
   let readyResolvers = [];
   let currentMappedList = [];
   let currentLabelMap = new Map();
-  let currentUserFlowState = {};
-  let editingUserFlowSessionId = "";
-  let renderedUserFlowSessionSignature = "";
   const visibleItemIds = loadVisibleItemIds();
   let activePopupOptions = {
     popupUrl: DEFAULT_POPUP_URL,
@@ -769,9 +764,11 @@
       setItemFilterFullHeight();
     }
 
-    if (tabName === "user-flow") {
-      sendUserFlowCommand("get-state");
-    }
+    document.dispatchEvent(
+      new CustomEvent("response-mapping-popup-tab-change", {
+        detail: { tabName },
+      }),
+    );
   }
 
   function handlePopupTabClick(event) {
@@ -782,318 +779,6 @@
     }
 
     activatePopupTab(tab.dataset.popupTab);
-  }
-
-  function formatFlowDuration(durationMs) {
-    const totalSeconds = Math.max(0, Math.round((durationMs || 0) / 1000));
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  }
-
-  function formatFlowCountdown(durationMs) {
-    const totalSeconds = Math.max(0, Math.ceil((durationMs || 0) / 1000));
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  }
-
-  function getUserFlowSessionMeta(session, flowState, isReplayingSession) {
-    const eventCount = Number(session.eventCount || 0);
-
-    if (isReplayingSession) {
-      const completedCount = Math.min(
-        eventCount,
-        Math.max(0, Number(flowState.replayCompletedEventCount || 0)),
-      );
-      return `남은 시간 ${formatFlowCountdown(flowState.replayRemainingMs)} · 행동 ${completedCount.toLocaleString("ko-KR")}/${eventCount.toLocaleString("ko-KR")}`;
-    }
-
-    return `${eventCount.toLocaleString("ko-KR")}개 행동 · ${formatFlowDuration(session.durationMs)}`;
-  }
-
-  function getUserFlowSessionSignature(flowState, sessions) {
-    return JSON.stringify({
-      activeRecordingSessionId: flowState.activeRecordingSessionId || "",
-      editingUserFlowSessionId,
-      isRecording: Boolean(flowState.isRecording),
-      isReplaying: Boolean(flowState.isReplaying),
-      replaySessionId: flowState.replaySessionId || "",
-      sessions: sessions.map((session) => ({
-        durationMs: session.durationMs,
-        eventCount: session.eventCount,
-        id: session.id,
-        name: session.name || "",
-        recordedAt: session.recordedAt,
-      })),
-    });
-  }
-
-  function updateUserFlowSessionProgress(flowState, sessions) {
-    document.querySelectorAll("[data-user-flow-session-meta]").forEach((meta) => {
-      const session = sessions.find(
-        (item) => item.id === meta.dataset.userFlowSessionMeta,
-      );
-
-      if (!session) {
-        return;
-      }
-
-      meta.textContent = getUserFlowSessionMeta(
-        session,
-        flowState,
-        flowState.replaySessionId === session.id,
-      );
-    });
-  }
-
-  function renderUserFlowState(flowState = {}) {
-    currentUserFlowState = flowState;
-    const status = document.querySelector("#userFlowStatus");
-    const recordButton = document.querySelector("#userFlowRecordButton");
-    const sessionCount = document.querySelector("#userFlowSessionCount");
-    const sessionList = document.querySelector("#userFlowSessionList");
-
-    if (!status || !recordButton || !sessionList) {
-      return;
-    }
-
-    let statusText = "기록 없음";
-    let statusState = "idle";
-
-    if (flowState.error) {
-      statusText = flowState.error;
-      statusState = "error";
-    } else if (flowState.isRecording) {
-      statusText = "녹음 중";
-      statusState = "recording";
-    } else if (flowState.isReplaying) {
-      statusText = "재생 중";
-      statusState = "replaying";
-    } else if (flowState.canReplay) {
-      statusText = "재생 준비";
-      statusState = "ready";
-    }
-
-    status.textContent = statusText;
-    status.dataset.state = statusState;
-
-    recordButton.textContent = flowState.isRecording ? "녹음 중지" : "녹음";
-    recordButton.setAttribute("aria-pressed", String(Boolean(flowState.isRecording)));
-    recordButton.disabled = Boolean(flowState.isReplaying);
-
-    const sessions = Array.isArray(flowState.sessions) ? flowState.sessions : [];
-
-    if (
-      flowState.isRecording ||
-      flowState.isReplaying ||
-      !sessions.some((session) => session.id === editingUserFlowSessionId)
-    ) {
-      editingUserFlowSessionId = "";
-    }
-
-    if (sessionCount) {
-      sessionCount.textContent = `${sessions.length.toLocaleString("ko-KR")}개`;
-    }
-
-    if (!sessions.length) {
-      renderedUserFlowSessionSignature = "";
-      sessionList.innerHTML = `<div class="user-flow-empty">저장된 녹음이 없습니다.</div>`;
-      return;
-    }
-
-    const sessionSignature = getUserFlowSessionSignature(flowState, sessions);
-
-    if (renderedUserFlowSessionSignature === sessionSignature) {
-      updateUserFlowSessionProgress(flowState, sessions);
-      return;
-    }
-
-    renderedUserFlowSessionSignature = sessionSignature;
-
-    sessionList.innerHTML = sessions
-      .map((session) => {
-        const isRecordingSession = flowState.activeRecordingSessionId === session.id;
-        const isReplayingSession = flowState.replaySessionId === session.id;
-        const recordedAt = session.recordedAt
-          ? new Date(session.recordedAt).toLocaleString("ko-KR", {
-              year: "numeric",
-              month: "2-digit",
-              day: "2-digit",
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-            })
-          : "녹음 일시 없음";
-        const sessionName = String(session.name || "").trim();
-        const isEditing = editingUserFlowSessionId === session.id;
-        const disabled =
-          flowState.isRecording ||
-          (!session.eventCount && !isReplayingSession) ||
-          (flowState.isReplaying && !isReplayingSession);
-        const changeDisabled = flowState.isRecording || flowState.isReplaying;
-        const sessionMeta = getUserFlowSessionMeta(session, flowState, isReplayingSession);
-
-        if (isEditing) {
-          return `
-            <article
-              class="user-flow-session"
-              data-editing="true"
-              data-state="idle"
-              data-user-flow-session-id="${escapeHtml(session.id)}"
-            >
-              <div class="user-flow-session-main">
-                <form class="user-flow-name-editor" data-user-flow-name-form>
-                  <input
-                    class="user-flow-name-input"
-                    type="text"
-                    value="${escapeHtml(sessionName)}"
-                    maxlength="40"
-                    placeholder="녹음 이름"
-                    aria-label="녹음 이름"
-                    required
-                    data-user-flow-name-input
-                  />
-                  <button class="user-flow-name-save" type="submit">저장</button>
-                  <button class="user-flow-name-cancel" type="button" data-user-flow-name-cancel>취소</button>
-                </form>
-                <span class="user-flow-session-recorded-at">${escapeHtml(recordedAt)}</span>
-                <span class="user-flow-session-meta" data-user-flow-session-meta="${escapeHtml(session.id)}">
-                  ${escapeHtml(sessionMeta)}
-                </span>
-              </div>
-            </article>
-          `;
-        }
-
-        return `
-          <article
-            class="user-flow-session"
-            data-state="${isRecordingSession ? "recording" : isReplayingSession ? "replaying" : "idle"}"
-            data-user-flow-session-id="${escapeHtml(session.id)}"
-          >
-            <div class="user-flow-session-main">
-              <strong class="user-flow-session-time">${escapeHtml(sessionName || recordedAt)}</strong>
-              ${sessionName ? `<span class="user-flow-session-recorded-at">${escapeHtml(recordedAt)}</span>` : ""}
-              <span class="user-flow-session-meta" data-user-flow-session-meta="${escapeHtml(session.id)}">
-                ${escapeHtml(sessionMeta)}
-              </span>
-            </div>
-            <div class="user-flow-session-controls">
-              <button
-                class="user-flow-replay"
-                type="button"
-                data-user-flow-command="toggle-replay-session"
-                data-session-id="${escapeHtml(session.id)}"
-                aria-pressed="${String(isReplayingSession)}"
-                ${disabled ? "disabled" : ""}
-              >${isReplayingSession ? "재생 중지" : "재생"}</button>
-              <button
-                class="user-flow-name-action"
-                type="button"
-                data-user-flow-name-edit
-                data-session-id="${escapeHtml(session.id)}"
-                ${changeDisabled ? "disabled" : ""}
-              >${sessionName ? "수정" : "이름변경"}</button>
-              <button
-                class="user-flow-delete"
-                type="button"
-                data-user-flow-command="delete-session"
-                data-session-id="${escapeHtml(session.id)}"
-                aria-label="${escapeHtml(recordedAt)} 녹음 삭제"
-                ${changeDisabled ? "disabled" : ""}
-              >삭제</button>
-            </div>
-          </article>
-        `;
-      })
-      .join("");
-  }
-
-  function sendUserFlowCommand(command, payload = {}) {
-    if (!window.opener || window.opener.closed) {
-      renderUserFlowState({ error: "부모 화면에 연결할 수 없습니다." });
-      return;
-    }
-
-    window.opener.postMessage(
-      {
-        type: MESSAGE_USER_FLOW_COMMAND,
-        command,
-        ...payload,
-      },
-      window.location.origin === "null" ? "*" : window.location.origin,
-    );
-  }
-
-  function handleUserFlowControl(event) {
-    const button = event.target.closest("[data-user-flow-command]");
-
-    if (!button || button.disabled) {
-      return;
-    }
-
-    sendUserFlowCommand(button.dataset.userFlowCommand, {
-      sessionId: button.dataset.sessionId || "",
-    });
-  }
-
-  function handleUserFlowNameControl(event) {
-    const editButton = event.target.closest("[data-user-flow-name-edit]");
-    const cancelButton = event.target.closest("[data-user-flow-name-cancel]");
-
-    if (editButton && !editButton.disabled) {
-      editingUserFlowSessionId = editButton.dataset.sessionId || "";
-      renderUserFlowState(currentUserFlowState);
-      window.requestAnimationFrame(() => {
-        const input = document.querySelector("[data-user-flow-name-input]");
-        input?.focus();
-        input?.select();
-      });
-      return;
-    }
-
-    if (cancelButton) {
-      editingUserFlowSessionId = "";
-      renderUserFlowState(currentUserFlowState);
-    }
-  }
-
-  function handleUserFlowNameSubmit(event) {
-    const form = event.target.closest("[data-user-flow-name-form]");
-
-    if (!form) {
-      return;
-    }
-
-    event.preventDefault();
-    const session = form.closest("[data-user-flow-session-id]");
-    const input = form.querySelector("[data-user-flow-name-input]");
-    const sessionName = input?.value.trim() || "";
-
-    if (!session || !input || !sessionName) {
-      input?.focus();
-      return;
-    }
-
-    form.querySelectorAll("button, input").forEach((control) => {
-      control.disabled = true;
-    });
-    editingUserFlowSessionId = "";
-    sendUserFlowCommand("rename-session", {
-      sessionId: session.dataset.userFlowSessionId || "",
-      sessionName,
-    });
-  }
-
-  function handleUserFlowNameKeydown(event) {
-    if (event.key !== "Escape" || !event.target.closest("[data-user-flow-name-form]")) {
-      return;
-    }
-
-    event.preventDefault();
-    editingUserFlowSessionId = "";
-    renderUserFlowState(currentUserFlowState);
   }
 
   function handleTreeToggle(event) {
@@ -1194,13 +879,6 @@
       return;
     }
 
-    if (event.data.type === MESSAGE_USER_FLOW_STATE) {
-      if (window.opener && event.source === window.opener) {
-        renderUserFlowState(event.data.state || {});
-      }
-      return;
-    }
-
     if (event.data.type !== MESSAGE_RENDER) {
       return;
     }
@@ -1278,9 +956,6 @@
       window.location.origin === "null" ? "*" : window.location.origin,
     );
 
-    if (document.querySelector('[data-popup-tab="user-flow"][aria-selected="true"]')) {
-      sendUserFlowCommand("get-state");
-    }
   }
 
   window.addEventListener("message", handleParentMessage);
@@ -1290,14 +965,10 @@
   document.addEventListener("click", handleTreeToggle);
   document.addEventListener("click", handleDetailToggle);
   document.addEventListener("click", handlePopupTabClick);
-  document.addEventListener("click", handleUserFlowControl);
-  document.addEventListener("click", handleUserFlowNameControl);
   document.addEventListener("click", handleItemFilterToggle);
   document.addEventListener("click", handleItemFilterOutsideClick);
   document.addEventListener("change", handleItemFilterChange);
   document.addEventListener("input", handleItemFilterSearch);
-  document.addEventListener("keydown", handleUserFlowNameKeydown);
-  document.addEventListener("submit", handleUserFlowNameSubmit);
 
   if (document.querySelector("#mappingList")) {
     if (document.readyState === "loading") {
