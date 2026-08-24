@@ -14,6 +14,10 @@
 
   let currentMappedList = [];
   let currentLabelMap = new Map();
+  let activeCommunicationId = "";
+  let responseRenderQueue = Promise.resolve();
+  const communicationStates = new Map();
+  const mappingLoads = new Map();
   const visibleItemIds = loadVisibleItemIds();
 
   function normalizeMappingRows(source) {
@@ -107,6 +111,30 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
+  }
+
+  function getCommunicationNameFromUrl(mappingUrl) {
+    try {
+      const pathname = new URL(mappingUrl, window.location.href).pathname;
+      const fileName = decodeURIComponent(pathname).split("/").pop() || "";
+      return fileName.replace(/\.json$/i, "");
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function getCommunicationMeta(payload = {}) {
+    const communicationName =
+      normalizeName(payload.communicationName) ||
+      normalizeName(getCommunicationNameFromUrl(payload.mappingUrl)) ||
+      `통신 ${communicationStates.size + 1}`;
+    const communicationId =
+      String(payload.communicationId || communicationName).trim() || communicationName;
+
+    return {
+      communicationId,
+      communicationName,
+    };
   }
 
   function formatValue(value) {
@@ -633,6 +661,115 @@
     renderItemFilter(mappedList);
   }
 
+  function renderCommunicationTabs() {
+    const tabList = document.querySelector("#communicationTabs");
+
+    if (!tabList) {
+      return;
+    }
+
+    const states = [...communicationStates.values()];
+    tabList.hidden = states.length === 0;
+    tabList.innerHTML = states
+      .map(
+        (communication) => `
+          <button
+            class="communication-tab"
+            type="button"
+            role="tab"
+            aria-selected="${String(communication.communicationId === activeCommunicationId)}"
+            aria-controls="mappingList"
+            tabindex="${communication.communicationId === activeCommunicationId ? "0" : "-1"}"
+            title="${escapeHtml(communication.communicationName)}"
+            data-communication-tab="${escapeHtml(communication.communicationId)}"
+          >${escapeHtml(communication.communicationName)}</button>
+        `,
+      )
+      .join("");
+  }
+
+  function activateCommunication(communicationId, { focus = false } = {}) {
+    const communication = communicationStates.get(communicationId);
+
+    if (!communication) {
+      return false;
+    }
+
+    activeCommunicationId = communicationId;
+    renderCommunicationTabs();
+
+    if (communication.error) {
+      const container = document.querySelector("#mappingList");
+
+      if (container) {
+        container.innerHTML = `<div class="empty">${escapeHtml(communication.error)}</div>`;
+      }
+
+      renderItemFilter([]);
+    } else {
+      renderList("#mappingList", communication.mappedList, communication.mappingRows);
+    }
+
+    if (focus) {
+      Array.from(document.querySelectorAll("[data-communication-tab]")).find(
+        (tab) => tab.dataset.communicationTab === communicationId,
+      )?.focus();
+    }
+
+    return true;
+  }
+
+  function saveCommunicationState(meta, state) {
+    const shouldActivate =
+      !activeCommunicationId || activeCommunicationId === meta.communicationId;
+
+    communicationStates.set(meta.communicationId, {
+      ...meta,
+      ...state,
+    });
+
+    if (shouldActivate) {
+      activateCommunication(meta.communicationId);
+    } else {
+      renderCommunicationTabs();
+    }
+  }
+
+  function handleCommunicationTabClick(event) {
+    const tab = event.target.closest("[data-communication-tab]");
+
+    if (tab) {
+      activateCommunication(tab.dataset.communicationTab);
+    }
+  }
+
+  function handleCommunicationTabKeydown(event) {
+    const currentTab = event.target.closest("[data-communication-tab]");
+
+    if (!currentTab) {
+      return;
+    }
+
+    const tabs = Array.from(document.querySelectorAll("[data-communication-tab]"));
+    const currentIndex = tabs.indexOf(currentTab);
+    let nextIndex = currentIndex;
+
+    if (event.key === "ArrowRight") {
+      nextIndex = (currentIndex + 1) % tabs.length;
+    } else if (event.key === "ArrowLeft") {
+      nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = tabs.length - 1;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    activateCommunication(tabs[nextIndex].dataset.communicationTab, { focus: true });
+  }
+
   function handleDetailToggle(event) {
     const toggle = event.target.closest("[data-detail-toggle]");
 
@@ -748,20 +885,51 @@
   }
 
   async function loadMapping(mappingUrl = DEFAULT_MAPPING_URL) {
-    const response = await fetch(mappingUrl);
+    const resolvedUrl = new URL(mappingUrl || DEFAULT_MAPPING_URL, window.location.href).href;
 
-    if (!response.ok) {
-      throw new Error(`매핑 JSON을 불러오지 못했습니다. (${response.status})`);
+    if (mappingLoads.has(resolvedUrl)) {
+      return mappingLoads.get(resolvedUrl);
     }
 
-    return normalizeMappingRows(await response.json());
+    const loadPromise = fetch(resolvedUrl)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`매핑 JSON을 불러오지 못했습니다. (${response.status})`);
+        }
+
+        return response.json();
+      })
+      .then(normalizeMappingRows)
+      .catch((error) => {
+        mappingLoads.delete(resolvedUrl);
+        throw error;
+      });
+
+    mappingLoads.set(resolvedUrl, loadPromise);
+    return loadPromise;
   }
 
   async function renderPopupPayload(payload) {
-    const mappingRows = payload.mappingRows || (await loadMapping(payload.mappingUrl));
-    const mappedList = mapResponse(payload.responseJson, mappingRows);
-    renderList("#mappingList", mappedList, mappingRows);
-    return mappedList;
+    const meta = getCommunicationMeta(payload);
+
+    try {
+      const mappingRows = payload.mappingRows || (await loadMapping(payload.mappingUrl));
+      const mappedList = mapResponse(payload.responseJson, mappingRows);
+
+      saveCommunicationState(meta, {
+        error: "",
+        mappedList,
+        mappingRows,
+      });
+      return mappedList;
+    } catch (error) {
+      saveCommunicationState(meta, {
+        error: error.message || "매핑 데이터를 처리하지 못했습니다.",
+        mappedList: [],
+        mappingRows: [],
+      });
+      throw error;
+    }
   }
 
 
@@ -777,22 +945,42 @@
     return event.origin === window.location.origin;
   }
 
-  async function handleResponseMessage(event) {
+  function postRenderedResult(targetWindow, targetOrigin, payload, result) {
+    if (!targetWindow || targetWindow.closed) {
+      return;
+    }
+
+    targetWindow.postMessage(
+      {
+        type: MESSAGE_RENDERED,
+        requestId: payload.requestId,
+        ...result,
+      },
+      targetOrigin,
+    );
+  }
+
+  function handleResponseMessage(event) {
     if (event.data?.type !== MESSAGE_RENDER || !isAllowedParentMessage(event)) {
       return;
     }
 
-    const mappedList = await renderPopupPayload(event.data.payload);
+    const payload = event.data.payload || {};
+    const targetWindow = event.source;
+    const targetOrigin = event.origin === "null" ? "*" : event.origin;
+    const renderTask = responseRenderQueue.then(() => renderPopupPayload(payload));
 
-    if (window.opener && !window.opener.closed) {
-      window.opener.postMessage(
-        {
-          type: MESSAGE_RENDERED,
-          mappedList,
-        },
-        event.origin === "null" ? "*" : event.origin,
-      );
-    }
+    responseRenderQueue = renderTask.catch(() => []);
+    renderTask
+      .then((mappedList) => {
+        postRenderedResult(targetWindow, targetOrigin, payload, { mappedList });
+      })
+      .catch((error) => {
+        postRenderedResult(targetWindow, targetOrigin, payload, {
+          error: error.message || "응답 매핑에 실패했습니다.",
+          mappedList: [],
+        });
+      });
   }
 
   function handlePopupTabChange(event) {
@@ -804,15 +992,19 @@
   window.addEventListener("message", handleResponseMessage);
   window.addEventListener("resize", setItemFilterFullHeight);
   document.addEventListener("click", handleTreeToggle);
+  document.addEventListener("click", handleCommunicationTabClick);
   document.addEventListener("click", handleDetailToggle);
   document.addEventListener("click", handleItemFilterToggle);
   document.addEventListener("click", handleItemFilterOutsideClick);
   document.addEventListener("change", handleItemFilterChange);
   document.addEventListener("input", handleItemFilterSearch);
+  document.addEventListener("keydown", handleCommunicationTabKeydown);
   document.addEventListener(POPUP_TAB_CHANGE_EVENT, handlePopupTabChange);
 
   window.ResponseMappingFeature = Object.freeze({
+    activateCommunication,
     collectMatchesByKey,
+    getCommunicationStates: () => [...communicationStates.values()],
     createLabelMap,
     formatValue,
     loadMapping,

@@ -13,8 +13,10 @@
   const PARENT_READY_EVENT = "response-mapping-popup-parent-ready";
   const DEFAULT_POPUP_URL = "./popup.html";
   const DEFAULT_MAPPING_URL = "./data/mapping.json";
+  const DEFAULT_MAPPING_BASE_URL = "./data/";
   const DEFAULT_POPUP_NAME = "responseMappingPopup";
   const DEFAULT_POPUP_FEATURES = "popup=yes,width=720,height=760,left=140,top=80";
+  const MAX_PENDING_RESPONSES = 50;
 
   const coreScript = document.currentScript;
   const coreBaseUrl = coreScript?.src
@@ -28,6 +30,43 @@
   function getFeatureUrl(fileName, dataAttribute) {
     const configuredUrl = coreScript?.dataset?.[dataAttribute];
     return new URL(configuredUrl || fileName, coreBaseUrl).href;
+  }
+
+  function getCommunicationFileName(value) {
+    const fileName = String(value || "")
+      .trim()
+      .split(/[\\/]/)
+      .pop();
+
+    if (!fileName) {
+      return "";
+    }
+
+    return /\.json$/i.test(fileName) ? fileName : `${fileName}.json`;
+  }
+
+  function getCommunicationName(value) {
+    return getCommunicationFileName(value).replace(/\.json$/i, "");
+  }
+
+  function getCommunicationNameFromUrl(mappingUrl) {
+    try {
+      const pathname = new URL(mappingUrl, window.location.href).pathname;
+      return getCommunicationName(decodeURIComponent(pathname));
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function createCommunicationMappingUrl(communicationName, mappingBaseUrl) {
+    const fileName = getCommunicationFileName(communicationName);
+
+    if (!fileName) {
+      return "";
+    }
+
+    const baseUrl = new URL(mappingBaseUrl || DEFAULT_MAPPING_BASE_URL, window.location.href);
+    return new URL(encodeURIComponent(fileName), baseUrl).href;
   }
 
   function loadFeatureScript(fileName, dataAttribute, globalName) {
@@ -186,12 +225,14 @@
     let popupWindow = null;
     let popupReady = false;
     let popupOrigin = window.location.origin;
-    let pendingPayload = null;
-    let renderResolvers = [];
+    let pendingPayloads = [];
+    let renderRequestSequence = 0;
+    const renderRequests = new Map();
     let readyResolvers = [];
     let activePopupOptions = {
       popupUrl: DEFAULT_POPUP_URL,
       mappingUrl: DEFAULT_MAPPING_URL,
+      mappingBaseUrl: DEFAULT_MAPPING_BASE_URL,
       popupName: DEFAULT_POPUP_NAME,
       popupFeatures: DEFAULT_POPUP_FEATURES,
     };
@@ -200,6 +241,7 @@
       activePopupOptions = {
         popupUrl: options.popupUrl || activePopupOptions.popupUrl,
         mappingUrl: options.mappingUrl || activePopupOptions.mappingUrl,
+        mappingBaseUrl: options.mappingBaseUrl || activePopupOptions.mappingBaseUrl,
         popupName: options.popupName || activePopupOptions.popupName,
         popupFeatures: options.popupFeatures || activePopupOptions.popupFeatures,
       };
@@ -244,27 +286,33 @@
 
       popupWindow = null;
       popupReady = false;
-      pendingPayload = null;
-      renderResolvers.splice(0).forEach((resolve) => resolve([]));
+      pendingPayloads = [];
+      renderRequests.forEach(({ resolve }) => resolve([]));
+      renderRequests.clear();
       readyResolvers.splice(0).forEach((resolve) => resolve(null));
     }
 
-    function sendPendingPayload() {
-      if (!isPopupOpen() || !popupReady || !pendingPayload) {
+    function sendPendingPayloads() {
+      if (!isPopupOpen() || !popupReady || !pendingPayloads.length) {
         return false;
       }
 
+      const payloadsToSend = pendingPayloads.splice(0);
+
       try {
-        popupWindow.postMessage(
-          {
-            type: MESSAGE_RENDER,
-            payload: pendingPayload,
-          },
-          popupOrigin,
-        );
+        payloadsToSend.forEach((payload) => {
+          popupWindow.postMessage(
+            {
+              type: MESSAGE_RENDER,
+              payload,
+            },
+            popupOrigin,
+          );
+        });
         popupWindow.focus();
         return true;
       } catch (error) {
+        pendingPayloads = [...payloadsToSend, ...pendingPayloads];
         popupReady = false;
         return false;
       }
@@ -278,7 +326,7 @@
       popupReady = true;
       sendParentReady();
       readyResolvers.splice(0).forEach((resolve) => resolve(popupWindow));
-      sendPendingPayload();
+      sendPendingPayloads();
     }
 
     function handlePopupMessage(event) {
@@ -293,9 +341,19 @@
       }
 
       if (event.data.type === MESSAGE_RENDERED) {
-        renderResolvers.splice(0).forEach((resolve) =>
-          resolve(event.data.mappedList || []),
-        );
+        const request = renderRequests.get(event.data.requestId);
+
+        if (!request) {
+          return;
+        }
+
+        renderRequests.delete(event.data.requestId);
+
+        if (event.data.error) {
+          request.reject(new Error(event.data.error));
+        } else {
+          request.resolve(event.data.mappedList || []);
+        }
       }
     }
 
@@ -329,21 +387,45 @@
     function renderResponse(responseJson, options = {}) {
       const popupOptions = getPopupOptions(options);
       popupOrigin = getTargetOrigin(popupOptions.popupUrl);
-      pendingPayload = {
+      const communicationName =
+        getCommunicationName(options.communicationName) ||
+        getCommunicationNameFromUrl(options.mappingUrl || popupOptions.mappingUrl) ||
+        "응답";
+      const mappingUrl =
+        options.mappingUrl ||
+        createCommunicationMappingUrl(communicationName, popupOptions.mappingBaseUrl) ||
+        popupOptions.mappingUrl;
+      const requestId = `response-${Date.now()}-${renderRequestSequence += 1}`;
+      const payload = {
+        requestId,
         responseJson,
-        mappingUrl: popupOptions.mappingUrl,
+        communicationId: options.communicationId || communicationName,
+        communicationName,
+        mappingUrl,
         mappingRows: options.mappingRows,
       };
+
+      pendingPayloads.push(payload);
+
+      if (pendingPayloads.length > MAX_PENDING_RESPONSES) {
+        const removedPayload = pendingPayloads.shift();
+        const removedRequest = renderRequests.get(removedPayload.requestId);
+
+        if (removedRequest) {
+          removedRequest.resolve([]);
+          renderRequests.delete(removedPayload.requestId);
+        }
+      }
 
       if (!isPopupOpen()) {
         return Promise.resolve([]);
       }
 
-      const renderPromise = new Promise((resolve) => {
-        renderResolvers.push(resolve);
+      const renderPromise = new Promise((resolve, reject) => {
+        renderRequests.set(requestId, { reject, resolve });
       });
 
-      sendPendingPayload();
+      sendPendingPayloads();
       return renderPromise;
     }
 

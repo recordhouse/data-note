@@ -413,15 +413,16 @@ async function openResponseMappingPopup() {
   await popupCoreReady;
   return window.ResponseMappingPopup.openPopup({
     popupUrl: "/popup.html",
-    mappingUrl: "/data/mapping.json"
+    mappingBaseUrl: "/data/"
   });
 }
 
 // 2. 서버 응답을 받은 시점에 실행
-async function renderResponseMappingPopup(responseJson) {
+async function renderResponseMappingPopup(communicationName, responseJson) {
   await popupCoreReady;
   return window.ResponseMappingPopup.renderResponse(responseJson, {
-    mappingUrl: "/data/mapping.json"
+    communicationName,
+    mappingBaseUrl: "/data/"
   });
 }</code></pre>
         </div>
@@ -446,6 +447,8 @@ async function renderResponseMappingPopup(responseJson) {
       const flowTestForm = document.querySelector("#flowTestForm");
       const flowTestStepBadge = document.querySelector("#flowTestStepBadge");
       const flowTestResult = document.querySelector("#flowTestResult");
+      const testCommunicationFile = "aaaaa.json";
+      const testCommunicationName = testCommunicationFile.replace(/\.json$/i, "");
       let responsePopupWindow = null;
 
       function showFlowTestStep(stepNumber) {
@@ -478,7 +481,7 @@ async function renderResponseMappingPopup(responseJson) {
         try {
           responsePopupWindow = await ResponseMappingPopup.openPopup({
             popupUrl: "./popup.html",
-            mappingUrl: "./data/mapping.json",
+            mappingBaseUrl: "./data/",
           });
           statusBadge.textContent = "팝업 준비";
         } catch (error) {
@@ -494,7 +497,7 @@ async function renderResponseMappingPopup(responseJson) {
         statusBadge.textContent = "통신중";
 
         try {
-          const response = await fetch("./data/response-dummy.json");
+          const response = await fetch(`./network/${testCommunicationFile}`);
 
           if (!response.ok) {
             throw new Error(`더미 응답을 불러오지 못했습니다. (${response.status})`);
@@ -504,7 +507,8 @@ async function renderResponseMappingPopup(responseJson) {
           rawResponse.textContent = JSON.stringify(responseJson, null, 2);
 
           await ResponseMappingPopup.renderResponse(responseJson, {
-            mappingUrl: "./data/mapping.json",
+            communicationName: testCommunicationName,
+            mappingBaseUrl: "./data/",
           });
 
           statusBadge.textContent =

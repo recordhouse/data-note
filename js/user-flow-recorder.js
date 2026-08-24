@@ -244,28 +244,46 @@
       pointer-events: none;
       background-position: top, bottom, left, right;
       background-repeat: no-repeat;
-      background-size: 100% 28px, 100% 28px, 28px 100%, 28px 100%;
+      background-size: 100% 22px, 100% 22px, 22px 100%, 22px 100%;
+      -webkit-mask-image: linear-gradient(
+        135deg,
+        rgba(0, 0, 0, 0.08) 0%,
+        #000 50%,
+        rgba(0, 0, 0, 0.08) 100%
+      );
+      -webkit-mask-position: 0% 0%;
+      -webkit-mask-size: 140% 140%;
+      mask-image: linear-gradient(
+        135deg,
+        rgba(0, 0, 0, 0.08) 0%,
+        #000 50%,
+        rgba(0, 0, 0, 0.08) 100%
+      );
+      mask-position: 0% 0%;
+      mask-size: 140% 140%;
       transition: opacity ${SCREEN_MASK_TRANSITION_MS}ms ease;
     }
 
     .user-flow-screen-mask[data-mode="recording"] {
       background-image:
-        linear-gradient(to bottom, rgba(180, 35, 69, 0.65), transparent),
-        linear-gradient(to top, rgba(180, 35, 69, 0.65), transparent),
-        linear-gradient(to right, rgba(180, 35, 69, 0.65), transparent),
-        linear-gradient(to left, rgba(180, 35, 69, 0.65), transparent);
+        linear-gradient(to bottom, rgba(220, 23, 77, 0.84), transparent),
+        linear-gradient(to top, rgba(220, 23, 77, 0.84), transparent),
+        linear-gradient(to right, rgba(220, 23, 77, 0.84), transparent),
+        linear-gradient(to left, rgba(220, 23, 77, 0.84), transparent);
     }
 
     .user-flow-screen-mask[data-mode="replaying"] {
       background-image:
-        linear-gradient(to bottom, rgba(15, 118, 110, 0.65), transparent),
-        linear-gradient(to top, rgba(15, 118, 110, 0.65), transparent),
-        linear-gradient(to right, rgba(15, 118, 110, 0.65), transparent),
-        linear-gradient(to left, rgba(15, 118, 110, 0.65), transparent);
+        linear-gradient(to bottom, rgba(0, 168, 120, 0.84), transparent),
+        linear-gradient(to top, rgba(0, 168, 120, 0.84), transparent),
+        linear-gradient(to right, rgba(0, 168, 120, 0.84), transparent),
+        linear-gradient(to left, rgba(0, 168, 120, 0.84), transparent);
     }
 
     .user-flow-screen-mask.is-visible {
-      animation: user-flow-screen-mask-pulse 1050ms ease-in-out infinite alternate;
+      animation:
+        user-flow-screen-mask-pulse 800ms ease-in-out infinite alternate,
+        user-flow-screen-mask-diagonal-fade 2200ms ease-in-out infinite alternate;
     }
 
     @keyframes user-flow-screen-mask-pulse {
@@ -275,6 +293,27 @@
 
       to {
         opacity: 1;
+      }
+    }
+
+    @keyframes user-flow-screen-mask-diagonal-fade {
+      from {
+        -webkit-mask-position: 0% 0%;
+        mask-position: 0% 0%;
+      }
+
+      to {
+        -webkit-mask-position: 100% 100%;
+        mask-position: 100% 100%;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .user-flow-screen-mask.is-visible {
+        animation: none;
+        opacity: 0.82;
+        -webkit-mask-position: 50% 50%;
+        mask-position: 50% 50%;
       }
     }
 
