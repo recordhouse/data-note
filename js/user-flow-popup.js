@@ -8,6 +8,7 @@
   const MESSAGE_USER_FLOW_COMMAND = "response-mapping-user-flow-command";
   const MESSAGE_USER_FLOW_STATE = "response-mapping-user-flow-state";
   const POPUP_TAB_CHANGE_EVENT = "response-mapping-popup-tab-change";
+  const PARENT_READY_EVENT = "response-mapping-popup-parent-ready";
   const MAX_USER_FLOW_IMPORT_BYTES = 10 * 1024 * 1024;
 
   let currentUserFlowState = {};
@@ -519,6 +520,7 @@
   document.addEventListener("dragend", resetUserFlowFileDrag);
   document.addEventListener("drop", handleUserFlowDrop);
   document.addEventListener(POPUP_TAB_CHANGE_EVENT, handlePopupTabChange);
+  document.addEventListener(PARENT_READY_EVENT, () => sendUserFlowCommand("get-state"));
   window.addEventListener("message", handleUserFlowStateMessage);
   window.addEventListener("blur", resetUserFlowFileDrag);
 

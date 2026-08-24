@@ -1,58 +1,57 @@
+```js
+let popupCoreLoadPromise = null;
 
-```JS
-
-// 1. 원하는 시점에 실행: 스크립트 로드 + 빈 팝업 열기
-function openResponseMappingPopup() {
-  function openPopup() {
-    window.ResponseMappingPopup.openPopup({
-      popupUrl: "/popup.html",
-      mappingUrl: "/data/mapping.json"
-    });
+// 부모 패널 초기화 시 한 번 실행
+function loadPopupCore() {
+  if (window.PopupCore && window.ResponseMappingPopup) {
+    return Promise.resolve(window.PopupCore);
   }
 
-  function loadResponseMappingPopupScript() {
-    if (window.ResponseMappingPopup) {
-      openPopup();
-      return;
-    }
+  if (popupCoreLoadPromise) {
+    return popupCoreLoadPromise;
+  }
 
+  popupCoreLoadPromise = new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = "/js/response-mapping-popup.js";
-    script.onload = openPopup;
+    script.src = "/js/popup-core.js";
+    script.onload = () => resolve(window.PopupCore);
+    script.onerror = () => reject(new Error("popup-core.js 로드 실패"));
     document.head.appendChild(script);
-  }
+  });
 
-  if (window.ResponseMappingPopup && window.UserFlowRecorder) {
-    openPopup();
-    return;
-  }
-
-  if (window.UserFlowRecorder) {
-    loadResponseMappingPopupScript();
-    return;
-  }
-
-  const recorderScript = document.createElement("script");
-  recorderScript.src = "/js/user-flow-recorder.js";
-  recorderScript.onload = loadResponseMappingPopupScript;
-  document.head.appendChild(recorderScript);
+  return popupCoreLoadPromise;
 }
 
+// 팝업 열기 버튼에서 실행
+async function openResponseMappingPopup() {
+  await loadPopupCore();
 
-// 2. 서버 응답 받은 뒤 실행: 이미 떠있는 팝업에 리스트 추가
-function renderResponseMappingPopup(responseJson) {
-  window.ResponseMappingPopup.renderResponse(responseJson, {
-    mappingUrl: "/data/mapping.json"
+  return window.ResponseMappingPopup.openPopup({
+    popupUrl: "/popup.html",
+    mappingUrl: "/data/mapping.json",
   });
 }
 
+// 서버 응답을 받은 뒤 실행
+async function renderResponseMappingPopup(responseJson) {
+  await loadPopupCore();
 
-openResponseMappingPopup();
+  return window.ResponseMappingPopup.renderResponse(responseJson, {
+    mappingUrl: "/data/mapping.json",
+  });
+}
 
-// 서버 응답 받은 뒤
-renderResponseMappingPopup(responseJson);
-
-
+loadPopupCore().catch(console.error);
 ```
 
-`user-flow-recorder.js`를 부모 사이트에서 로드하면 팝업의 `유저 플로우` 탭에 있는 녹음·재생 버튼이 부모 화면을 제어한다. 별도의 녹음·재생 함수 호출은 필요하지 않다.
+`popup-core.js`는 실행 위치에 따라 필요한 파일을 자동으로 불러온다.
+
+- 부모 화면: `user-flow-recorder.js`
+- 팝업 화면: `user-flow-popup.js`, `response-mapping-popup.js`
+
+각 파일의 역할은 다음과 같다.
+
+- `popup-core.js`: 팝업 열기, 응답 전달, 탭 전환, 기능 파일 자동 로드
+- `user-flow-recorder.js`: 부모 화면의 사용자 행동 녹화, 저장, 재생
+- `user-flow-popup.js`: 팝업의 유저 플로우 목록 및 조작 UI
+- `response-mapping-popup.js`: 응답 데이터 매핑 및 응답 리스트 UI

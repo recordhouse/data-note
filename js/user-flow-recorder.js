@@ -1,7 +1,11 @@
 (() => {
   "use strict";
 
-  if (window.UserFlowRecorder) {
+  if (
+    window.PopupCore?.context === "popup" ||
+    document.querySelector("#userFlowPanel") ||
+    window.UserFlowRecorder
+  ) {
     return;
   }
 

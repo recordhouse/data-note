@@ -399,33 +399,28 @@
           <span class="badge" id="statusBadge">대기중</span>
         </div>
         <div class="content">
-          <pre><code>// 부모 사이트에 한 번 로드: 유저 행동 녹화/재생 엔진
-&lt;script src="/js/user-flow-recorder.js"&gt;&lt;/script&gt;
-
-// 1. 원하는 시점에 실행: 스크립트 로드 + 빈 팝업 열기
-function openResponseMappingPopup() {
-  if (window.ResponseMappingPopup) {
-    window.ResponseMappingPopup.openPopup({
-      popupUrl: "/popup.html",
-      mappingUrl: "/data/mapping.json"
-    });
-    return;
-  }
-
+          <pre><code>// 부모 패널 초기화 시 실행: 코어가 필요한 기능 JS를 자동 로드
+const popupCoreReady = new Promise((resolve, reject) =&gt; {
   const script = document.createElement("script");
-  script.src = "/js/response-mapping-popup.js";
-  script.onload = () => {
-    window.ResponseMappingPopup.openPopup({
-      popupUrl: "/popup.html",
-      mappingUrl: "/data/mapping.json"
-    });
-  };
+  script.src = "/js/popup-core.js";
+  script.onload = resolve;
+  script.onerror = reject;
   document.head.appendChild(script);
+});
+
+// 1. 팝업 열기 버튼에서 실행
+async function openResponseMappingPopup() {
+  await popupCoreReady;
+  return window.ResponseMappingPopup.openPopup({
+    popupUrl: "/popup.html",
+    mappingUrl: "/data/mapping.json"
+  });
 }
 
-// 2. 서버 응답을 받은 시점에 실행: 떠있는 팝업에 리스트 추가
-function renderResponseMappingPopup(responseJson) {
-  window.ResponseMappingPopup.renderResponse(responseJson, {
+// 2. 서버 응답을 받은 시점에 실행
+async function renderResponseMappingPopup(responseJson) {
+  await popupCoreReady;
+  return window.ResponseMappingPopup.renderResponse(responseJson, {
     mappingUrl: "/data/mapping.json"
   });
 }</code></pre>
@@ -442,8 +437,7 @@ function renderResponseMappingPopup(responseJson) {
       </section>
     </main>
 
-    <script src="./js/user-flow-recorder.js"></script>
-    <script src="./js/response-mapping-popup.js"></script>
+    <script src="./js/popup-core.js"></script>
     <script>
       const popupButton = document.querySelector("#popupButton");
       const requestButton = document.querySelector("#requestButton");
