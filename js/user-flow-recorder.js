@@ -244,22 +244,32 @@
 
     .user-flow-screen-mask[data-mode="recording"] {
       background-image:
-        linear-gradient(to bottom, rgba(180, 35, 69, 0.32), transparent),
-        linear-gradient(to top, rgba(180, 35, 69, 0.32), transparent),
-        linear-gradient(to right, rgba(180, 35, 69, 0.32), transparent),
-        linear-gradient(to left, rgba(180, 35, 69, 0.32), transparent);
+        linear-gradient(to bottom, rgba(180, 35, 69, 0.65), transparent),
+        linear-gradient(to top, rgba(180, 35, 69, 0.65), transparent),
+        linear-gradient(to right, rgba(180, 35, 69, 0.65), transparent),
+        linear-gradient(to left, rgba(180, 35, 69, 0.65), transparent);
     }
 
     .user-flow-screen-mask[data-mode="replaying"] {
       background-image:
-        linear-gradient(to bottom, rgba(15, 118, 110, 0.32), transparent),
-        linear-gradient(to top, rgba(15, 118, 110, 0.32), transparent),
-        linear-gradient(to right, rgba(15, 118, 110, 0.32), transparent),
-        linear-gradient(to left, rgba(15, 118, 110, 0.32), transparent);
+        linear-gradient(to bottom, rgba(15, 118, 110, 0.65), transparent),
+        linear-gradient(to top, rgba(15, 118, 110, 0.65), transparent),
+        linear-gradient(to right, rgba(15, 118, 110, 0.65), transparent),
+        linear-gradient(to left, rgba(15, 118, 110, 0.65), transparent);
     }
 
     .user-flow-screen-mask.is-visible {
-      opacity: 1;
+      animation: user-flow-screen-mask-pulse 1050ms ease-in-out infinite alternate;
+    }
+
+    @keyframes user-flow-screen-mask-pulse {
+      from {
+        opacity: 0.35;
+      }
+
+      to {
+        opacity: 1;
+      }
     }
 
     @keyframes user-flow-replay-spin {
