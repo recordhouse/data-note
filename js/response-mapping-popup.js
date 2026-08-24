@@ -1277,6 +1277,10 @@
       },
       window.location.origin === "null" ? "*" : window.location.origin,
     );
+
+    if (document.querySelector('[data-popup-tab="user-flow"][aria-selected="true"]')) {
+      sendUserFlowCommand("get-state");
+    }
   }
 
   window.addEventListener("message", handleParentMessage);

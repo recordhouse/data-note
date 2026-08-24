@@ -741,23 +741,23 @@
       <nav class="popup-tabs" role="tablist" aria-label="통신 팝업 기능">
         <button
           class="popup-tab"
-          id="responseListTab"
-          type="button"
-          role="tab"
-          aria-selected="true"
-          aria-controls="responseListPanel"
-          data-popup-tab="response-list"
-        >응답 리스트</button>
-        <button
-          class="popup-tab"
           id="userFlowTab"
           type="button"
           role="tab"
-          aria-selected="false"
+          aria-selected="true"
           aria-controls="userFlowPanel"
-          tabindex="-1"
           data-popup-tab="user-flow"
         >유저 플로우</button>
+        <button
+          class="popup-tab"
+          id="responseListTab"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="responseListPanel"
+          tabindex="-1"
+          data-popup-tab="response-list"
+        >응답 리스트</button>
       </nav>
 
       <section
@@ -766,6 +766,7 @@
         role="tabpanel"
         aria-labelledby="responseListTab"
         data-popup-panel="response-list"
+        hidden
       >
         <div class="response-list-layout">
           <div class="list" id="mappingList">
@@ -813,7 +814,6 @@
         role="tabpanel"
         aria-labelledby="userFlowTab"
         data-popup-panel="user-flow"
-        hidden
       >
         <div class="user-flow-content">
           <div class="user-flow-toolbar">

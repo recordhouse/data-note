@@ -11,7 +11,7 @@
   const IGNORE_ATTRIBUTE = "data-user-flow-ignore";
   const VISUAL_STYLE_ID = "user-flow-recorder-visual-style";
   const CLICK_PULSE_MS = 420;
-  const REPLAY_OVERLAY_TRANSITION_MS = 160;
+  const SCREEN_MASK_TRANSITION_MS = 160;
   const MAX_EVENTS = 10000;
   const MAX_SESSIONS = 20;
   const MAX_SESSION_NAME_LENGTH = 40;
@@ -60,10 +60,15 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
+      width: auto;
+      min-width: 0;
+      height: auto;
       min-height: 36px;
+      margin: 0;
       padding: 7px 11px;
       border: 1px solid currentColor;
       border-radius: 6px;
+      appearance: none;
       background: rgba(255, 255, 255, 0.94);
       box-shadow: 0 8px 22px rgba(23, 32, 42, 0.16);
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -82,8 +87,31 @@
       color: #b42345;
     }
 
+    .user-flow-runtime-status[data-mode="recording"]:hover {
+      background: #fff1f4;
+    }
+
+    .user-flow-runtime-status[data-mode="recording"]:focus-visible {
+      outline: 2px solid rgba(180, 35, 69, 0.35);
+      outline-offset: 2px;
+    }
+
     .user-flow-runtime-status[data-mode="replaying"] {
       color: #0f766e;
+    }
+
+    .user-flow-runtime-status[data-mode="replaying"]:hover {
+      background: #ecfdf5;
+    }
+
+    .user-flow-runtime-status[data-mode="replaying"]:focus-visible {
+      outline: 2px solid rgba(15, 118, 110, 0.35);
+      outline-offset: 2px;
+    }
+
+    .user-flow-runtime-status[data-state] {
+      cursor: pointer;
+      pointer-events: auto;
     }
 
     .user-flow-runtime-status.is-visible {
@@ -103,7 +131,6 @@
       inset: 5px;
       border-radius: 50%;
       background: currentColor;
-      animation: user-flow-record-pulse 900ms ease-in-out infinite;
       content: "";
     }
 
@@ -112,8 +139,22 @@
       inset: 2px;
       border: 1px solid currentColor;
       border-radius: 50%;
-      animation: user-flow-record-ring 900ms ease-out infinite;
       content: "";
+    }
+
+    .user-flow-runtime-status[data-mode="recording"][data-state="active"]
+      .user-flow-runtime-icon::before {
+      animation: user-flow-record-pulse 900ms ease-in-out infinite;
+    }
+
+    .user-flow-runtime-status[data-mode="recording"][data-state="active"]
+      .user-flow-runtime-icon::after {
+      animation: user-flow-record-ring 900ms ease-out infinite;
+    }
+
+    .user-flow-runtime-status[data-mode="recording"]:not([data-state="active"])
+      .user-flow-runtime-icon::after {
+      opacity: 0.45;
     }
 
     .user-flow-runtime-status[data-mode="replaying"] .user-flow-runtime-icon::before {
@@ -134,8 +175,21 @@
       border: 1.5px solid currentColor;
       border-right-color: transparent;
       border-radius: 50%;
-      animation: user-flow-replay-spin 680ms linear infinite;
       content: "";
+    }
+
+    .user-flow-runtime-status[data-mode="replaying"][data-state="active"]
+      .user-flow-runtime-icon::after {
+      animation: user-flow-replay-spin 680ms linear infinite;
+    }
+
+    .user-flow-runtime-action {
+      margin-left: 2px;
+      padding-left: 9px;
+      border-left: 1px solid currentColor;
+      font-size: 12px;
+      font-weight: 700;
+      opacity: 0.8;
     }
 
     @keyframes user-flow-record-pulse {
@@ -157,17 +211,35 @@
       }
     }
 
-    .user-flow-replay-overlay {
+    .user-flow-screen-mask {
       position: fixed;
       inset: 0;
       z-index: 2147482997;
-      background: rgba(15, 23, 42, 0.12);
       opacity: 0;
       pointer-events: none;
-      transition: opacity ${REPLAY_OVERLAY_TRANSITION_MS}ms ease;
+      background-position: top, bottom, left, right;
+      background-repeat: no-repeat;
+      background-size: 100% 28px, 100% 28px, 28px 100%, 28px 100%;
+      transition: opacity ${SCREEN_MASK_TRANSITION_MS}ms ease;
     }
 
-    .user-flow-replay-overlay.is-visible {
+    .user-flow-screen-mask[data-mode="recording"] {
+      background-image:
+        linear-gradient(to bottom, rgba(180, 35, 69, 0.32), transparent),
+        linear-gradient(to top, rgba(180, 35, 69, 0.32), transparent),
+        linear-gradient(to right, rgba(180, 35, 69, 0.32), transparent),
+        linear-gradient(to left, rgba(180, 35, 69, 0.32), transparent);
+    }
+
+    .user-flow-screen-mask[data-mode="replaying"] {
+      background-image:
+        linear-gradient(to bottom, rgba(15, 118, 110, 0.32), transparent),
+        linear-gradient(to top, rgba(15, 118, 110, 0.32), transparent),
+        linear-gradient(to right, rgba(15, 118, 110, 0.32), transparent),
+        linear-gradient(to left, rgba(15, 118, 110, 0.32), transparent);
+    }
+
+    .user-flow-screen-mask.is-visible {
       opacity: 1;
     }
 
@@ -185,6 +257,7 @@
     isRecording: false,
     isReplaying: false,
     replaySessionId: "",
+    lastReplaySessionId: "",
     recordedAt: null,
     startAt: 0,
     replayAbort: false,
@@ -200,9 +273,9 @@
     runtimeStatus: null,
     runtimeStatusFrame: 0,
     runtimeStatusTimer: 0,
-    replayOverlay: null,
-    replayOverlayFrame: 0,
-    replayOverlayTimer: 0,
+    screenMask: null,
+    screenMaskFrame: 0,
+    screenMaskTimer: 0,
   };
 
   function readRecording() {
@@ -397,7 +470,7 @@
     window.setTimeout(() => pulse.remove(), CLICK_PULSE_MS);
   }
 
-  function showRuntimeStatus(mode) {
+  function showRuntimeStatus(mode, statusState = "active") {
     if (!document.body) {
       return;
     }
@@ -405,22 +478,60 @@
     let status = state.runtimeStatus;
 
     if (!status || !status.isConnected) {
-      status = document.createElement("div");
+      status = document.createElement("button");
+      status.type = "button";
       status.className = "user-flow-runtime-status";
       status.setAttribute(IGNORE_ATTRIBUTE, "true");
-      status.setAttribute("role", "status");
       status.setAttribute("aria-live", "polite");
       status.innerHTML = `
         <span class="user-flow-runtime-icon" aria-hidden="true"></span>
         <span data-user-flow-runtime-label></span>
+        <span class="user-flow-runtime-action" data-user-flow-runtime-action></span>
       `;
+      status.addEventListener("click", () => {
+        if (status.dataset.mode === "recording") {
+          if (state.isRecording) {
+            stopRecording();
+          } else if (!state.isReplaying) {
+            startRecording();
+          }
+          return;
+        }
+
+        if (status.dataset.mode === "replaying") {
+          if (state.isReplaying) {
+            stopReplay();
+          } else if (!state.isRecording) {
+            const replaySessionExists = state.sessions.some(
+              (session) => session.id === state.lastReplaySessionId,
+            );
+            replay(replaySessionExists ? state.lastReplaySessionId : undefined);
+          }
+        }
+      });
       document.body.append(status);
       state.runtimeStatus = status;
     }
 
     status.dataset.mode = mode;
-    status.querySelector("[data-user-flow-runtime-label]").textContent =
-      mode === "recording" ? "녹음 중" : "재생 중";
+    status.dataset.state = statusState;
+    const isActive = statusState === "active";
+    const isRecordingMode = mode === "recording";
+    const label = isActive
+      ? isRecordingMode
+        ? "녹음 중"
+        : "재생 중"
+      : statusState === "completed"
+        ? "재생 완료"
+        : isRecordingMode
+          ? "녹음 중지됨"
+          : "재생 중지됨";
+    const action = isActive ? "중지" : isRecordingMode ? "다시 녹음" : "다시 재생";
+
+    status.title = `${label}, ${action}`;
+    status.setAttribute("aria-label", status.title);
+    status.querySelector("[data-user-flow-runtime-label]").textContent = label;
+    status.querySelector("[data-user-flow-runtime-action]").textContent = action;
     status.hidden = false;
 
     window.clearTimeout(state.runtimeStatusTimer);
@@ -449,51 +560,55 @@
     }, 140);
   }
 
-  function showReplayOverlay() {
+  function showScreenMask(mode) {
     if (!document.body) {
       return;
     }
 
-    let overlay = state.replayOverlay;
+    let mask = state.screenMask;
 
-    if (!overlay || !overlay.isConnected) {
-      overlay = document.createElement("div");
-      overlay.className = "user-flow-replay-overlay";
-      overlay.setAttribute(IGNORE_ATTRIBUTE, "true");
-      overlay.setAttribute("aria-hidden", "true");
-      document.body.append(overlay);
-      state.replayOverlay = overlay;
+    if (!mask || !mask.isConnected) {
+      mask = document.createElement("div");
+      mask.className = "user-flow-screen-mask";
+      mask.setAttribute(IGNORE_ATTRIBUTE, "true");
+      mask.setAttribute("aria-hidden", "true");
+      document.body.append(mask);
+      state.screenMask = mask;
     }
 
-    window.clearTimeout(state.replayOverlayTimer);
-    overlay.hidden = false;
-    window.cancelAnimationFrame(state.replayOverlayFrame);
-    state.replayOverlayFrame = window.requestAnimationFrame(() => {
-      state.replayOverlayFrame = 0;
+    mask.dataset.mode = mode;
+    window.clearTimeout(state.screenMaskTimer);
+    mask.hidden = false;
+    window.cancelAnimationFrame(state.screenMaskFrame);
+    state.screenMaskFrame = window.requestAnimationFrame(() => {
+      state.screenMaskFrame = 0;
 
-      if (state.isReplaying) {
-        overlay.classList.add("is-visible");
+      if (
+        (mode === "recording" && state.isRecording) ||
+        (mode === "replaying" && state.isReplaying)
+      ) {
+        mask.classList.add("is-visible");
       }
     });
   }
 
-  function hideReplayOverlay() {
-    const overlay = state.replayOverlay;
+  function hideScreenMask() {
+    const mask = state.screenMask;
 
-    if (!overlay) {
+    if (!mask) {
       return;
     }
 
-    window.cancelAnimationFrame(state.replayOverlayFrame);
-    state.replayOverlayFrame = 0;
-    window.clearTimeout(state.replayOverlayTimer);
-    overlay.classList.remove("is-visible");
-    state.replayOverlayTimer = window.setTimeout(() => {
-      if (!state.isReplaying) {
-        overlay.classList.remove("is-visible");
-        overlay.hidden = true;
+    window.cancelAnimationFrame(state.screenMaskFrame);
+    state.screenMaskFrame = 0;
+    window.clearTimeout(state.screenMaskTimer);
+    mask.classList.remove("is-visible");
+    state.screenMaskTimer = window.setTimeout(() => {
+      if (!state.isRecording && !state.isReplaying) {
+        mask.classList.remove("is-visible");
+        mask.hidden = true;
       }
-    }, REPLAY_OVERLAY_TRANSITION_MS);
+    }, SCREEN_MASK_TRANSITION_MS);
   }
 
   function cssEscape(value) {
@@ -931,6 +1046,7 @@
     state.scrollLastAt.clear();
     state.scrollTimers.forEach((timer) => window.clearTimeout(timer));
     state.scrollTimers.clear();
+    showScreenMask("recording");
     showRuntimeStatus("recording");
     persistRecording();
     notifyClients({ immediate: true });
@@ -942,7 +1058,8 @@
     }
 
     state.isRecording = false;
-    hideRuntimeStatus();
+    hideScreenMask();
+    showRuntimeStatus("recording", "stopped");
     state.scrollTimers.forEach((timer) => window.clearTimeout(timer));
     state.scrollTimers.clear();
     persistRecording();
@@ -957,12 +1074,13 @@
     state.replayAbort = true;
     state.replayRunId += 1;
     state.isReplaying = false;
+    state.lastReplaySessionId = state.replaySessionId || state.lastReplaySessionId;
     state.replaySessionId = "";
     state.replayStartedAt = 0;
     state.replayCompletedEventCount = 0;
     stopReplayProgressNotifications();
-    hideRuntimeStatus();
-    hideReplayOverlay();
+    showRuntimeStatus("replaying", "stopped");
+    hideScreenMask();
     notifyClients({ immediate: true });
   }
 
@@ -982,10 +1100,11 @@
     const replayRunId = state.replayRunId;
     state.isReplaying = true;
     state.replaySessionId = session.id;
+    state.lastReplaySessionId = session.id;
     state.replayStartedAt = performance.now();
     state.replayCompletedEventCount = 0;
     state.lastError = "";
-    showReplayOverlay();
+    showScreenMask("replaying");
     showRuntimeStatus("replaying");
     startReplayProgressNotifications();
     notifyClients({ immediate: true });
@@ -1026,8 +1145,8 @@
         state.replayStartedAt = 0;
         state.replayCompletedEventCount = 0;
         stopReplayProgressNotifications();
-        hideRuntimeStatus();
-        hideReplayOverlay();
+        showRuntimeStatus("replaying", "completed");
+        hideScreenMask();
         notifyClients({ immediate: true });
       }
     }
@@ -1041,6 +1160,8 @@
     state.currentSessionId = "";
     state.recordedAt = null;
     state.lastError = "";
+    state.lastReplaySessionId = "";
+    hideRuntimeStatus();
     window.localStorage.removeItem(STORAGE_KEY);
     notifyClients({ immediate: true });
   }
