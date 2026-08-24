@@ -23,6 +23,8 @@
   const STATE_NOTIFY_MS = 120;
   const REPLAY_PROGRESS_NOTIFY_MS = 250;
   const TARGET_WAIT_MS = 5000;
+  const RECORDING_FORMAT_VERSION = 3;
+  const PERCENT_PRECISION = 6;
   const IMPORTABLE_EVENT_TYPES = new Set(["change", "click", "input", "scroll"]);
   const SENSITIVE_AUTOCOMPLETE = new Set([
     "cc-csc",
@@ -358,7 +360,7 @@
       window.localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify({
-          version: 2,
+          version: RECORDING_FORMAT_VERSION,
           sessions: state.sessions,
         }),
       );
@@ -660,6 +662,59 @@
     return Boolean(target?.closest?.(`[${IGNORE_ATTRIBUTE}]`));
   }
 
+  function clamp(value, minimum, maximum) {
+    return Math.min(maximum, Math.max(minimum, value));
+  }
+
+  function getPercent(position, maximum, fallback = 0) {
+    const numericPosition = Number(position);
+    const numericMaximum = Number(maximum);
+
+    if (!Number.isFinite(numericPosition) || !Number.isFinite(numericMaximum)) {
+      return fallback;
+    }
+
+    if (numericMaximum <= 0) {
+      return fallback;
+    }
+
+    return Number(
+      (clamp(numericPosition / numericMaximum, 0, 1) * 100).toFixed(
+        PERCENT_PRECISION,
+      ),
+    );
+  }
+
+  function getPositionFromPercent(percent, maximum, fallback = 0) {
+    const numericPercent = Number(percent);
+    const numericMaximum = Number(maximum);
+
+    if (Number.isFinite(numericPercent) && Number.isFinite(numericMaximum)) {
+      return Math.max(0, numericMaximum) * (clamp(numericPercent, 0, 100) / 100);
+    }
+
+    const numericFallback = Number(fallback);
+    return Number.isFinite(numericFallback) ? Math.max(0, numericFallback) : 0;
+  }
+
+  function getWindowScrollBounds() {
+    const scrollingElement = document.scrollingElement || document.documentElement;
+    const viewportWidth = window.innerWidth || scrollingElement?.clientWidth || 0;
+    const viewportHeight = window.innerHeight || scrollingElement?.clientHeight || 0;
+
+    return {
+      maxX: Math.max(0, (scrollingElement?.scrollWidth || 0) - viewportWidth),
+      maxY: Math.max(0, (scrollingElement?.scrollHeight || 0) - viewportHeight),
+    };
+  }
+
+  function getElementScrollBounds(element) {
+    return {
+      maxLeft: Math.max(0, element.scrollWidth - element.clientWidth),
+      maxTop: Math.max(0, element.scrollHeight - element.clientHeight),
+    };
+  }
+
   function getStableSelector(element) {
     if (!element || element === document) {
       return "";
@@ -837,13 +892,18 @@
       showClickPulse(event.clientX, event.clientY);
     }
 
+    const targetRect = target.getBoundingClientRect();
+    const pointerType =
+      event.pointerType || (event.sourceCapabilities?.firesTouchEvents ? "touch" : "mouse");
+
     pushEvent({
       type: "click",
       selector: getStableSelector(target),
       button: event.button,
       pointer: {
-        clientX: Math.round(event.clientX),
-        clientY: Math.round(event.clientY),
+        xPercent: getPercent(event.clientX - targetRect.left, targetRect.width, 50),
+        yPercent: getPercent(event.clientY - targetRect.top, targetRect.height, 50),
+        pointerType,
       },
     });
   }
@@ -885,19 +945,23 @@
     const normalizedTarget = normalizeScrollTarget(target);
 
     if (normalizedTarget === window) {
+      const { maxX, maxY } = getWindowScrollBounds();
+
       return {
         type: "scroll",
         selector: "__window__",
-        scrollX: window.scrollX,
-        scrollY: window.scrollY,
+        scrollXPercent: getPercent(window.scrollX, maxX),
+        scrollYPercent: getPercent(window.scrollY, maxY),
       };
     }
+
+    const { maxLeft, maxTop } = getElementScrollBounds(normalizedTarget);
 
     return {
       type: "scroll",
       selector: getStableSelector(normalizedTarget),
-      scrollLeft: normalizedTarget.scrollLeft,
-      scrollTop: normalizedTarget.scrollTop,
+      scrollLeftPercent: getPercent(normalizedTarget.scrollLeft, maxLeft),
+      scrollTopPercent: getPercent(normalizedTarget.scrollTop, maxTop),
     };
   }
 
@@ -959,18 +1023,30 @@
     return null;
   }
 
-  function playScroll(recordedEvent) {
-    const target = findTarget(recordedEvent.selector);
+  async function playScroll(recordedEvent) {
+    const target = await waitForTarget(recordedEvent.selector);
 
     if (target === window) {
+      const { maxX, maxY } = getWindowScrollBounds();
+      const left = getPositionFromPercent(
+        recordedEvent.scrollXPercent,
+        maxX,
+        recordedEvent.scrollX,
+      );
+      const top = getPositionFromPercent(
+        recordedEvent.scrollYPercent,
+        maxY,
+        recordedEvent.scrollY,
+      );
+
       try {
         window.scrollTo({
-          left: recordedEvent.scrollX || 0,
-          top: recordedEvent.scrollY || 0,
+          left,
+          top,
           behavior: "smooth",
         });
       } catch (error) {
-        window.scrollTo(recordedEvent.scrollX || 0, recordedEvent.scrollY || 0);
+        window.scrollTo(left, top);
       }
       return;
     }
@@ -979,11 +1055,23 @@
       return;
     }
 
+    const { maxLeft, maxTop } = getElementScrollBounds(target);
+    const left = getPositionFromPercent(
+      recordedEvent.scrollLeftPercent,
+      maxLeft,
+      recordedEvent.scrollLeft,
+    );
+    const top = getPositionFromPercent(
+      recordedEvent.scrollTopPercent,
+      maxTop,
+      recordedEvent.scrollTop,
+    );
+
     if (typeof target.scrollTo === "function") {
       try {
         target.scrollTo({
-          left: recordedEvent.scrollLeft || 0,
-          top: recordedEvent.scrollTop || 0,
+          left,
+          top,
           behavior: "smooth",
         });
         return;
@@ -992,29 +1080,49 @@
       }
     }
 
-    target.scrollLeft = recordedEvent.scrollLeft || 0;
-    target.scrollTop = recordedEvent.scrollTop || 0;
+    target.scrollLeft = left;
+    target.scrollTop = top;
   }
 
   function playClick(target, recordedEvent) {
     const pointer = recordedEvent.pointer || {};
     const targetRect = target.getBoundingClientRect();
+    const clientX = Number.isFinite(Number(pointer.xPercent))
+      ? targetRect.left +
+        getPositionFromPercent(pointer.xPercent, targetRect.width, targetRect.width / 2)
+      : Number.isFinite(Number(pointer.clientX))
+        ? Number(pointer.clientX)
+        : targetRect.left + targetRect.width / 2;
+    const clientY = Number.isFinite(Number(pointer.yPercent))
+      ? targetRect.top +
+        getPositionFromPercent(pointer.yPercent, targetRect.height, targetRect.height / 2)
+      : Number.isFinite(Number(pointer.clientY))
+        ? Number(pointer.clientY)
+        : targetRect.top + targetRect.height / 2;
     const mouseOptions = {
       bubbles: true,
       cancelable: true,
       composed: true,
       button: recordedEvent.button || 0,
-      clientX: pointer.clientX || 0,
-      clientY: pointer.clientY || 0,
+      clientX,
+      clientY,
+    };
+    const pointerOptions = {
+      ...mouseOptions,
+      isPrimary: true,
+      pointerType: pointer.pointerType || "mouse",
     };
 
-    showClickPulse(
-      targetRect.left + targetRect.width / 2,
-      targetRect.top + targetRect.height / 2,
-    );
+    showClickPulse(clientX, clientY);
 
     for (const eventType of ["pointerdown", "mousedown", "pointerup", "mouseup"]) {
-      target.dispatchEvent(new MouseEvent(eventType, mouseOptions));
+      const isPointerEvent = eventType.startsWith("pointer");
+      const replayEvent =
+        isPointerEvent && typeof window.PointerEvent === "function"
+          ? new window.PointerEvent(eventType, pointerOptions)
+          : new MouseEvent(eventType, isPointerEvent ? pointerOptions : mouseOptions);
+
+      target.dispatchEvent(replayEvent);
     }
 
     if (typeof target.click === "function") {
@@ -1039,7 +1147,7 @@
 
   async function playEvent(recordedEvent) {
     if (recordedEvent.type === "scroll") {
-      playScroll(recordedEvent);
+      await playScroll(recordedEvent);
       return;
     }
 
@@ -1342,7 +1450,7 @@
     try {
       const exportedAt = Date.now();
       const exportData = {
-        version: 2,
+        version: RECORDING_FORMAT_VERSION,
         exportedAt: new Date(exportedAt).toISOString(),
         session: {
           id: session.id,
