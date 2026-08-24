@@ -412,8 +412,7 @@ const popupCoreReady = new Promise((resolve, reject) =&gt; {
 async function openResponseMappingPopup() {
   await popupCoreReady;
   return window.ResponseMappingPopup.openPopup({
-    popupUrl: "/popup.html",
-    mappingBaseUrl: "/data/"
+    popupUrl: "/popup.html"
   });
 }
 
@@ -421,8 +420,7 @@ async function openResponseMappingPopup() {
 async function renderResponseMappingPopup(communicationName, responseJson) {
   await popupCoreReady;
   return window.ResponseMappingPopup.renderResponse(responseJson, {
-    communicationName,
-    mappingBaseUrl: "/data/"
+    communicationName
   });
 }</code></pre>
         </div>
@@ -481,7 +479,6 @@ async function renderResponseMappingPopup(communicationName, responseJson) {
         try {
           responsePopupWindow = await ResponseMappingPopup.openPopup({
             popupUrl: "./popup.html",
-            mappingBaseUrl: "./data/",
           });
           statusBadge.textContent = "팝업 준비";
         } catch (error) {
@@ -508,7 +505,6 @@ async function renderResponseMappingPopup(communicationName, responseJson) {
 
           await ResponseMappingPopup.renderResponse(responseJson, {
             communicationName: testCommunicationName,
-            mappingBaseUrl: "./data/",
           });
 
           statusBadge.textContent =

@@ -12,8 +12,7 @@
   const POPUP_TAB_CHANGE_EVENT = "response-mapping-popup-tab-change";
   const PARENT_READY_EVENT = "response-mapping-popup-parent-ready";
   const DEFAULT_POPUP_URL = "./popup.html";
-  const DEFAULT_MAPPING_URL = "./data/mapping.json";
-  const DEFAULT_MAPPING_BASE_URL = "./data/";
+  const DEFAULT_MAPPING_DIRECTORY = "./data/";
   const DEFAULT_POPUP_NAME = "responseMappingPopup";
   const DEFAULT_POPUP_FEATURES = "popup=yes,width=720,height=760,left=140,top=80";
   const MAX_PENDING_RESPONSES = 50;
@@ -49,23 +48,21 @@
     return getCommunicationFileName(value).replace(/\.json$/i, "");
   }
 
-  function getCommunicationNameFromUrl(mappingUrl) {
-    try {
-      const pathname = new URL(mappingUrl, window.location.href).pathname;
-      return getCommunicationName(decodeURIComponent(pathname));
-    } catch (error) {
-      return "";
-    }
-  }
-
-  function createCommunicationMappingUrl(communicationName, mappingBaseUrl) {
+  function createCommunicationMappingUrl(
+    communicationName,
+    mappingBaseUrl,
+    popupUrl,
+  ) {
     const fileName = getCommunicationFileName(communicationName);
 
     if (!fileName) {
       return "";
     }
 
-    const baseUrl = new URL(mappingBaseUrl || DEFAULT_MAPPING_BASE_URL, window.location.href);
+    const popupDocumentUrl = new URL(popupUrl || DEFAULT_POPUP_URL, window.location.href);
+    const baseUrl = mappingBaseUrl
+      ? new URL(mappingBaseUrl, window.location.href)
+      : new URL(DEFAULT_MAPPING_DIRECTORY, popupDocumentUrl);
     return new URL(encodeURIComponent(fileName), baseUrl).href;
   }
 
@@ -231,8 +228,7 @@
     let readyResolvers = [];
     let activePopupOptions = {
       popupUrl: DEFAULT_POPUP_URL,
-      mappingUrl: DEFAULT_MAPPING_URL,
-      mappingBaseUrl: DEFAULT_MAPPING_BASE_URL,
+      mappingBaseUrl: "",
       popupName: DEFAULT_POPUP_NAME,
       popupFeatures: DEFAULT_POPUP_FEATURES,
     };
@@ -240,7 +236,6 @@
     function getPopupOptions(options = {}) {
       activePopupOptions = {
         popupUrl: options.popupUrl || activePopupOptions.popupUrl,
-        mappingUrl: options.mappingUrl || activePopupOptions.mappingUrl,
         mappingBaseUrl: options.mappingBaseUrl || activePopupOptions.mappingBaseUrl,
         popupName: options.popupName || activePopupOptions.popupName,
         popupFeatures: options.popupFeatures || activePopupOptions.popupFeatures,
@@ -387,19 +382,24 @@
     function renderResponse(responseJson, options = {}) {
       const popupOptions = getPopupOptions(options);
       popupOrigin = getTargetOrigin(popupOptions.popupUrl);
-      const communicationName =
-        getCommunicationName(options.communicationName) ||
-        getCommunicationNameFromUrl(options.mappingUrl || popupOptions.mappingUrl) ||
-        "응답";
-      const mappingUrl =
-        options.mappingUrl ||
-        createCommunicationMappingUrl(communicationName, popupOptions.mappingBaseUrl) ||
-        popupOptions.mappingUrl;
+      const communicationName = getCommunicationName(options.communicationName);
+      const mappingUrl = createCommunicationMappingUrl(
+        communicationName,
+        popupOptions.mappingBaseUrl,
+        popupOptions.popupUrl,
+      );
+
+      if (!communicationName) {
+        return Promise.reject(
+          new Error("communicationName을 전달해야 같은 이름의 매핑 JSON을 찾을 수 있습니다."),
+        );
+      }
+
       const requestId = `response-${Date.now()}-${renderRequestSequence += 1}`;
       const payload = {
         requestId,
         responseJson,
-        communicationId: options.communicationId || communicationName,
+        communicationId: options.communicationId || communicationName || requestId,
         communicationName,
         mappingUrl,
         mappingRows: options.mappingRows,

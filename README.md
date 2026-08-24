@@ -27,7 +27,6 @@ function openResponsePopup() {
   loadPopupScript().then(function () {
     ResponseMappingPopup.openPopup({
       popupUrl: "/popup.html",
-      mappingBaseUrl: "/data/",
     });
   });
 }
@@ -37,7 +36,6 @@ function renderResponsePopup(communicationName, responseJson) {
   loadPopupScript().then(function () {
     ResponseMappingPopup.renderResponse(responseJson, {
       communicationName: communicationName,
-      mappingBaseUrl: "/data/",
     });
   });
 }

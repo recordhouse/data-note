@@ -8,7 +8,6 @@
   const MESSAGE_RENDER = "response-mapping-popup-render";
   const MESSAGE_RENDERED = "response-mapping-popup-rendered";
   const POPUP_TAB_CHANGE_EVENT = "response-mapping-popup-tab-change";
-  const DEFAULT_MAPPING_URL = "./data/mapping.json";
   const VISIBLE_ITEMS_STORAGE_KEY = "response-mapping-popup-visible-items";
   const ITEM_FILTER_MOTION_MS = 160;
 
@@ -884,8 +883,12 @@
     children.hidden = isExpanded;
   }
 
-  async function loadMapping(mappingUrl = DEFAULT_MAPPING_URL) {
-    const resolvedUrl = new URL(mappingUrl || DEFAULT_MAPPING_URL, window.location.href).href;
+  async function loadMapping(mappingUrl) {
+    if (!mappingUrl) {
+      throw new Error("통신 이름과 일치하는 매핑 JSON 경로가 없습니다.");
+    }
+
+    const resolvedUrl = new URL(mappingUrl, window.location.href).href;
 
     if (mappingLoads.has(resolvedUrl)) {
       return mappingLoads.get(resolvedUrl);
