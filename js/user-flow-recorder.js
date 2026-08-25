@@ -25,6 +25,7 @@
   const TARGET_WAIT_MS = 5000;
   const REQUEST_WAIT_TIMEOUT_MS = 30000;
   const REQUEST_ABORT_POLL_MS = 50;
+  const REQUEST_REPEAT_RESUME_LIMIT = 10;
   const RECORDING_FORMAT_VERSION = 3;
   const PERCENT_PRECISION = 6;
   const IMPORTABLE_EVENT_TYPES = new Set(["change", "click", "input", "scroll"]);
@@ -356,6 +357,8 @@
     screenMaskTimer: 0,
     pendingRequests: new Map(),
     requestWaiters: new Set(),
+    replayRequestRepeatCounts: new Map(),
+    ignoredReplayRequests: new Set(),
   };
 
   function readRecording() {
@@ -445,6 +448,7 @@
       replaySessionId: state.replaySessionId,
       replayCompletedEventCount: state.replayCompletedEventCount,
       pendingRequestCount: getPendingRequestCount(),
+      blockingRequestCount: getBlockingRequestCount(),
       isWaitingForRequests: Boolean(
         state.isReplaying && state.replayRequestWaitStartedAt,
       ),
@@ -1076,6 +1080,39 @@
     return requestCount;
   }
 
+  function getBlockingRequestCount() {
+    let requestCount = 0;
+
+    state.pendingRequests.forEach((count, requestId) => {
+      if (!state.ignoredReplayRequests.has(requestId)) {
+        requestCount += count;
+      }
+    });
+
+    return requestCount;
+  }
+
+  function hasBlockingRequests() {
+    return getBlockingRequestCount() > 0;
+  }
+
+  function clearReplayRequestTracking() {
+    state.replayRequestRepeatCounts.clear();
+    state.ignoredReplayRequests.clear();
+  }
+
+  function initializeReplayRequestTracking() {
+    clearReplayRequestTracking();
+
+    state.pendingRequests.forEach((count, requestId) => {
+      state.replayRequestRepeatCounts.set(requestId, count);
+
+      if (count >= REQUEST_REPEAT_RESUME_LIMIT) {
+        state.ignoredReplayRequests.add(requestId);
+      }
+    });
+  }
+
   function normalizeRequestId(requestId) {
     const normalizedId = String(requestId || "").trim().slice(0, 160);
     return normalizedId || `request-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1088,9 +1125,32 @@
   function requestStart(requestId) {
     const normalizedId = normalizeRequestId(requestId);
     const requestCount = state.pendingRequests.get(normalizedId) || 0;
+    let reachedRepeatLimit = false;
 
     state.pendingRequests.set(normalizedId, requestCount + 1);
-    notifyClients();
+
+    if (state.isReplaying) {
+      const repeatCount =
+        (state.replayRequestRepeatCounts.get(normalizedId) || 0) + 1;
+      state.replayRequestRepeatCounts.set(normalizedId, repeatCount);
+
+      if (
+        repeatCount >= REQUEST_REPEAT_RESUME_LIMIT &&
+        !state.ignoredReplayRequests.has(normalizedId)
+      ) {
+        state.ignoredReplayRequests.add(normalizedId);
+        reachedRepeatLimit = true;
+        console.info(
+          `UserFlowRecorder: ${normalizedId} 통신이 ${REQUEST_REPEAT_RESUME_LIMIT}회 반복되어 재생 대기에서 제외합니다.`,
+        );
+      }
+    }
+
+    if (!hasBlockingRequests()) {
+      settleRequestWaiters(true);
+    }
+
+    notifyClients({ immediate: reachedRepeatLimit });
     return normalizedId;
   }
 
@@ -1108,7 +1168,7 @@
       state.pendingRequests.delete(normalizedId);
     }
 
-    if (!state.pendingRequests.size) {
+    if (!hasBlockingRequests()) {
       settleRequestWaiters(true);
     }
 
@@ -1117,18 +1177,23 @@
   }
 
   function resetPendingRequests() {
-    if (!state.pendingRequests.size) {
+    if (
+      !state.pendingRequests.size &&
+      !state.replayRequestRepeatCounts.size &&
+      !state.ignoredReplayRequests.size
+    ) {
       return false;
     }
 
     state.pendingRequests.clear();
+    clearReplayRequestTracking();
     settleRequestWaiters(false);
     notifyClients();
     return true;
   }
 
   function waitForRequests(options = {}) {
-    if (!state.pendingRequests.size) {
+    if (!hasBlockingRequests()) {
       return Promise.resolve(true);
     }
 
@@ -1169,7 +1234,7 @@
         }, REQUEST_ABORT_POLL_MS);
       }
 
-      if (!state.pendingRequests.size) {
+      if (!hasBlockingRequests()) {
         finish(true);
       } else if (shouldAbort?.()) {
         finish(false);
@@ -1197,7 +1262,7 @@
   }
 
   async function waitForReplayRequests(replayRunId) {
-    if (!state.pendingRequests.size) {
+    if (!hasBlockingRequests()) {
       return true;
     }
 
@@ -1215,7 +1280,7 @@
       return false;
     }
 
-    if (!requestsCompleted && state.pendingRequests.size) {
+    if (!requestsCompleted && hasBlockingRequests()) {
       console.warn(
         `UserFlowRecorder: 통신 대기 시간이 ${REQUEST_WAIT_TIMEOUT_MS / 1000}초를 초과해 다음 행동을 계속합니다.`,
       );
@@ -1569,6 +1634,7 @@
     state.replayPausedMs = 0;
     state.replayRequestWaitStartedAt = 0;
     state.replayCompletedEventCount = 0;
+    clearReplayRequestTracking();
     stopReplayProgressNotifications();
     showRuntimeStatus("replaying", "stopped");
     hideScreenMask();
@@ -1597,6 +1663,7 @@
     state.replayRequestWaitStartedAt = 0;
     state.replayCompletedEventCount = 0;
     state.lastError = "";
+    initializeReplayRequestTracking();
     showScreenMask("replaying");
     showRuntimeStatus("replaying");
     startReplayProgressNotifications();
@@ -1654,6 +1721,7 @@
         state.replayPausedMs = 0;
         state.replayRequestWaitStartedAt = 0;
         state.replayCompletedEventCount = 0;
+        clearReplayRequestTracking();
         stopReplayProgressNotifications();
         showRuntimeStatus("replaying", "completed");
         hideScreenMask();
