@@ -13,7 +13,7 @@
   const PARENT_READY_EVENT = "response-mapping-popup-parent-ready";
   const DEFAULT_POPUP_URL = "./popup.html";
   const DEFAULT_MAPPING_DIRECTORY = "./data/";
-  const DEFAULT_POPUP_NAME = "responseMappingPopup";
+  const DEFAULT_POPUP_NAME = "_blank";
   const DEFAULT_POPUP_FEATURES = "popup=yes,width=720,height=760,left=140,top=80";
   const MAX_PENDING_RESPONSES = 50;
 
