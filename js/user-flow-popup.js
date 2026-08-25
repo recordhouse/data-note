@@ -341,7 +341,7 @@
       statusText = flowState.error;
       statusState = "error";
     } else if (flowState.isRecording) {
-      statusText = "녹음 중";
+      statusText = "녹화 중";
       statusState = "recording";
     } else if (flowState.isReplaying) {
       statusText = "재생 중";
@@ -354,7 +354,7 @@
     status.textContent = statusText;
     status.dataset.state = statusState;
 
-    recordButton.textContent = flowState.isRecording ? "녹음 중지" : "녹음";
+    recordButton.textContent = flowState.isRecording ? "녹화 중지" : "녹화";
     recordButton.setAttribute("aria-pressed", String(Boolean(flowState.isRecording)));
     recordButton.disabled = Boolean(flowState.isReplaying);
 
@@ -398,7 +398,7 @@
     if (!visibleSessions.length) {
       renderedUserFlowSessionSignature = "";
       sessionList.innerHTML = `<div class="user-flow-empty">${
-        sessions.length ? "이 탭에 저장된 녹음이 없습니다." : "저장된 녹음이 없습니다."
+        sessions.length ? "이 탭에 저장된 녹화가 없습니다." : "저장된 녹화가 없습니다."
       }</div>`;
       return;
     }
@@ -429,7 +429,7 @@
               minute: "2-digit",
               second: "2-digit",
             })
-          : "녹음 일시 없음";
+          : "녹화 일시 없음";
         const sessionName = String(session.name || "").trim();
         const assignedTabId =
           userFlowTabs.sessionTabs[session.id] || DEFAULT_USER_FLOW_TAB_ID;
@@ -460,8 +460,8 @@
                     type="text"
                     value="${escapeHtml(sessionName)}"
                     maxlength="40"
-                    placeholder="녹음 이름"
-                    aria-label="녹음 이름"
+                    placeholder="녹화 이름"
+                    aria-label="녹화 이름"
                     required
                     data-user-flow-name-input
                   />
@@ -515,7 +515,7 @@
                 type="button"
                 data-user-flow-command="export-recording"
                 data-session-id="${escapeHtml(session.id)}"
-                aria-label="${escapeHtml(sessionName || recordedAt)} 녹음 내보내기"
+                aria-label="${escapeHtml(sessionName || recordedAt)} 녹화 내보내기"
                 ${changeDisabled ? "disabled" : ""}
               >내보내기</button>
               <button
@@ -523,7 +523,7 @@
                 type="button"
                 data-user-flow-command="delete-session"
                 data-session-id="${escapeHtml(session.id)}"
-                aria-label="${escapeHtml(recordedAt)} 녹음 삭제"
+                aria-label="${escapeHtml(recordedAt)} 녹화 삭제"
                 ${changeDisabled ? "disabled" : ""}
               >삭제</button>
             </div>
@@ -713,7 +713,7 @@
       if (
         sessionCount &&
         !window.confirm(
-          `${tab.name} 탭을 삭제하면 녹음이 ${userFlowTabs.tabs[0].name} 탭으로 이동합니다.`,
+          `${tab.name} 탭을 삭제하면 녹화가 ${userFlowTabs.tabs[0].name} 탭으로 이동합니다.`,
         )
       ) {
         return;
@@ -1028,7 +1028,7 @@
 
           if (importedSessions.length >= MAX_USER_FLOW_IMPORT_SESSIONS) {
             throw new Error(
-              `한 번에 녹음 ${MAX_USER_FLOW_IMPORT_SESSIONS}개까지 가져올 수 있습니다.`,
+              `한 번에 녹화 ${MAX_USER_FLOW_IMPORT_SESSIONS}개까지 가져올 수 있습니다.`,
             );
           }
 
@@ -1072,7 +1072,7 @@
         folderNames.map((name) => name.toLowerCase()),
       ).size;
       showUserFlowImportStatus(
-        `탭 ${importedTabCount}개 · 녹음 ${importedSessions.length}개 가져오는 중`,
+        `탭 ${importedTabCount}개 · 녹화 ${importedSessions.length}개 가져오는 중`,
         "ready",
       );
 
@@ -1092,7 +1092,7 @@
 
   async function importUserFlowFile(file) {
     if (isUserFlowImportBlocked()) {
-      showUserFlowImportStatus("녹음 또는 재생 중에는 가져올 수 없습니다.");
+      showUserFlowImportStatus("녹화 또는 재생 중에는 가져올 수 없습니다.");
       return;
     }
 

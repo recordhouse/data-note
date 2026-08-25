@@ -113,7 +113,7 @@
       totalDataBytes += dataBytes.length;
 
       if (totalDataBytes > MAX_ZIP_BYTES) {
-        throw new Error("내보낼 녹음 데이터가 너무 큽니다.");
+        throw new Error("내보낼 녹화 데이터가 너무 큽니다.");
       }
 
       const crc32 = getCrc32(dataBytes);
@@ -294,7 +294,7 @@
       totalUncompressedBytes += uncompressedSize;
 
       if (totalUncompressedBytes > MAX_ZIP_BYTES) {
-        throw new Error("압축 해제된 녹음 데이터가 너무 큽니다.");
+        throw new Error("압축 해제된 녹화 데이터가 너무 큽니다.");
       }
 
       records.push({
@@ -345,7 +345,7 @@
         data.length !== record.uncompressedSize ||
         getCrc32(data) !== record.crc32
       ) {
-        throw new Error("ZIP 파일의 녹음 데이터가 손상되었습니다.");
+        throw new Error("ZIP 파일의 녹화 데이터가 손상되었습니다.");
       }
 
       extractedEntries.push({

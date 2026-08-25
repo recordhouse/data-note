@@ -23,6 +23,8 @@
   const STATE_NOTIFY_MS = 120;
   const REPLAY_PROGRESS_NOTIFY_MS = 250;
   const TARGET_WAIT_MS = 5000;
+  const REQUEST_WAIT_TIMEOUT_MS = 30000;
+  const REQUEST_ABORT_POLL_MS = 50;
   const RECORDING_FORMAT_VERSION = 3;
   const PERCENT_PRECISION = 6;
   const IMPORTABLE_EVENT_TYPES = new Set(["change", "click", "input", "scroll"]);
@@ -337,6 +339,8 @@
     replayAbort: false,
     replayRunId: 0,
     replayStartedAt: 0,
+    replayPausedMs: 0,
+    replayRequestWaitStartedAt: 0,
     replayCompletedEventCount: 0,
     replayProgressTimer: 0,
     lastError: "",
@@ -350,6 +354,8 @@
     screenMask: null,
     screenMaskFrame: 0,
     screenMaskTimer: 0,
+    pendingRequests: new Map(),
+    requestWaiters: new Set(),
   };
 
   function readRecording() {
@@ -390,7 +396,7 @@
         state.recordedAt = latestSession.recordedAt;
       }
     } catch (error) {
-      state.lastError = "저장된 녹음 데이터를 불러오지 못했습니다.";
+      state.lastError = "저장된 녹화 데이터를 불러오지 못했습니다.";
     }
   }
 
@@ -406,7 +412,7 @@
       state.lastError = "";
       return true;
     } catch (error) {
-      state.lastError = "녹음 데이터를 로컬 스토리지에 저장하지 못했습니다.";
+      state.lastError = "녹화 데이터를 로컬 스토리지에 저장하지 못했습니다.";
       return false;
     }
   }
@@ -417,8 +423,18 @@
 
   function getPublicState() {
     const replayDurationMs = getDurationMs();
+    const currentRequestWaitMs =
+      state.isReplaying && state.replayRequestWaitStartedAt
+        ? Math.max(0, performance.now() - state.replayRequestWaitStartedAt)
+        : 0;
     const replayElapsedMs = state.isReplaying
-      ? Math.max(0, performance.now() - state.replayStartedAt)
+      ? Math.max(
+          0,
+          performance.now() -
+            state.replayStartedAt -
+            state.replayPausedMs -
+            currentRequestWaitMs,
+        )
       : 0;
 
     return {
@@ -428,6 +444,10 @@
       activeRecordingSessionId: state.isRecording ? state.currentSessionId : "",
       replaySessionId: state.replaySessionId,
       replayCompletedEventCount: state.replayCompletedEventCount,
+      pendingRequestCount: getPendingRequestCount(),
+      isWaitingForRequests: Boolean(
+        state.isReplaying && state.replayRequestWaitStartedAt,
+      ),
       replayRemainingMs: state.isReplaying
         ? Math.max(0, replayDurationMs - replayElapsedMs)
         : 0,
@@ -593,14 +613,14 @@
     const isRecordingMode = mode === "recording";
     const label = isRecordingMode
       ? isActive
-        ? "녹음 중지"
-        : "녹음 시작"
+        ? "녹화 중지"
+        : "녹화 시작"
       : isActive
         ? "재생 중지"
         : statusState === "completed"
           ? "재생 완료"
           : "재생 시작";
-    const action = isActive ? "중지" : isRecordingMode ? "다시 녹음" : "다시 재생";
+    const action = isActive ? "중지" : isRecordingMode ? "다시 녹화" : "다시 재생";
 
     status.title = label;
     status.setAttribute("aria-label", status.title);
@@ -1046,6 +1066,174 @@
     return new Promise((resolve) => window.setTimeout(resolve, Math.max(0, ms)));
   }
 
+  function getPendingRequestCount() {
+    let requestCount = 0;
+
+    state.pendingRequests.forEach((count) => {
+      requestCount += count;
+    });
+
+    return requestCount;
+  }
+
+  function normalizeRequestId(requestId) {
+    const normalizedId = String(requestId || "").trim().slice(0, 160);
+    return normalizedId || `request-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function settleRequestWaiters(completed) {
+    Array.from(state.requestWaiters).forEach((finish) => finish(completed));
+  }
+
+  function requestStart(requestId) {
+    const normalizedId = normalizeRequestId(requestId);
+    const requestCount = state.pendingRequests.get(normalizedId) || 0;
+
+    state.pendingRequests.set(normalizedId, requestCount + 1);
+    notifyClients();
+    return normalizedId;
+  }
+
+  function requestEnd(requestId) {
+    const normalizedId = String(requestId || "").trim().slice(0, 160);
+    const requestCount = state.pendingRequests.get(normalizedId) || 0;
+
+    if (!normalizedId || !requestCount) {
+      return false;
+    }
+
+    if (requestCount > 1) {
+      state.pendingRequests.set(normalizedId, requestCount - 1);
+    } else {
+      state.pendingRequests.delete(normalizedId);
+    }
+
+    if (!state.pendingRequests.size) {
+      settleRequestWaiters(true);
+    }
+
+    notifyClients();
+    return true;
+  }
+
+  function resetPendingRequests() {
+    if (!state.pendingRequests.size) {
+      return false;
+    }
+
+    state.pendingRequests.clear();
+    settleRequestWaiters(false);
+    notifyClients();
+    return true;
+  }
+
+  function waitForRequests(options = {}) {
+    if (!state.pendingRequests.size) {
+      return Promise.resolve(true);
+    }
+
+    const requestedTimeout =
+      typeof options === "number" ? options : options?.timeoutMs;
+    const parsedTimeout = Number(requestedTimeout);
+    const timeoutMs = Number.isFinite(parsedTimeout)
+      ? Math.max(0, parsedTimeout)
+      : REQUEST_WAIT_TIMEOUT_MS;
+    const shouldAbort =
+      typeof options?.shouldAbort === "function" ? options.shouldAbort : null;
+
+    return new Promise((resolve) => {
+      let completed = false;
+      let timeoutTimer = 0;
+      let abortTimer = 0;
+
+      function finish(requestsCompleted) {
+        if (completed) {
+          return;
+        }
+
+        completed = true;
+        state.requestWaiters.delete(finish);
+        window.clearTimeout(timeoutTimer);
+        window.clearInterval(abortTimer);
+        resolve(requestsCompleted);
+      }
+
+      state.requestWaiters.add(finish);
+      timeoutTimer = window.setTimeout(() => finish(false), timeoutMs);
+
+      if (shouldAbort) {
+        abortTimer = window.setInterval(() => {
+          if (shouldAbort()) {
+            finish(false);
+          }
+        }, REQUEST_ABORT_POLL_MS);
+      }
+
+      if (!state.pendingRequests.size) {
+        finish(true);
+      } else if (shouldAbort?.()) {
+        finish(false);
+      }
+    });
+  }
+
+  function waitForRenderFrame() {
+    return new Promise((resolve) => {
+      let completed = false;
+      const fallbackTimer = window.setTimeout(finish, 100);
+
+      function finish() {
+        if (completed) {
+          return;
+        }
+
+        completed = true;
+        window.clearTimeout(fallbackTimer);
+        resolve();
+      }
+
+      window.requestAnimationFrame(finish);
+    });
+  }
+
+  async function waitForReplayRequests(replayRunId) {
+    if (!state.pendingRequests.size) {
+      return true;
+    }
+
+    const waitStartedAt = performance.now();
+    state.replayRequestWaitStartedAt = waitStartedAt;
+    notifyClients({ immediate: true });
+
+    const requestsCompleted = await waitForRequests({
+      timeoutMs: REQUEST_WAIT_TIMEOUT_MS,
+      shouldAbort: () => state.replayAbort || state.replayRunId !== replayRunId,
+    });
+    const replayIsActive = !state.replayAbort && state.replayRunId === replayRunId;
+
+    if (!replayIsActive) {
+      return false;
+    }
+
+    if (!requestsCompleted && state.pendingRequests.size) {
+      console.warn(
+        `UserFlowRecorder: 통신 대기 시간이 ${REQUEST_WAIT_TIMEOUT_MS / 1000}초를 초과해 다음 행동을 계속합니다.`,
+      );
+      resetPendingRequests();
+    }
+
+    await waitForRenderFrame();
+
+    if (state.replayRunId !== replayRunId) {
+      return false;
+    }
+
+    state.replayPausedMs += Math.max(0, performance.now() - waitStartedAt);
+    state.replayRequestWaitStartedAt = 0;
+    notifyClients({ immediate: true });
+    return true;
+  }
+
   async function waitForTarget(selector) {
     const startedAt = performance.now();
 
@@ -1289,7 +1477,7 @@
 
   function importRecordings(importData) {
     if (state.isRecording || state.isReplaying) {
-      state.lastError = "녹음 또는 재생 중에는 가져올 수 없습니다.";
+      state.lastError = "녹화 또는 재생 중에는 가져올 수 없습니다.";
       notifyClients({ immediate: true });
       return false;
     }
@@ -1297,7 +1485,7 @@
     const importedSessions = normalizeImportedSessions(importData);
 
     if (!importedSessions.length) {
-      state.lastError = "가져올 새 녹음이 없거나 이미 존재하는 녹음입니다.";
+      state.lastError = "가져올 새 녹화가 없거나 이미 존재하는 녹화입니다.";
       notifyClients({ immediate: true });
       return false;
     }
@@ -1378,6 +1566,8 @@
     state.lastReplaySessionId = state.replaySessionId || state.lastReplaySessionId;
     state.replaySessionId = "";
     state.replayStartedAt = 0;
+    state.replayPausedMs = 0;
+    state.replayRequestWaitStartedAt = 0;
     state.replayCompletedEventCount = 0;
     stopReplayProgressNotifications();
     showRuntimeStatus("replaying", "stopped");
@@ -1403,6 +1593,8 @@
     state.replaySessionId = session.id;
     state.lastReplaySessionId = session.id;
     state.replayStartedAt = performance.now();
+    state.replayPausedMs = 0;
+    state.replayRequestWaitStartedAt = 0;
     state.replayCompletedEventCount = 0;
     state.lastError = "";
     showScreenMask("replaying");
@@ -1419,12 +1611,18 @@
     try {
       const replayStartedAt = state.replayStartedAt;
 
+      if (!(await waitForReplayRequests(replayRunId))) {
+        return;
+      }
+
       for (const recordedEvent of state.events) {
         if (state.replayAbort || state.replayRunId !== replayRunId) {
           break;
         }
 
-        const waitMs = recordedEvent.at - (performance.now() - replayStartedAt);
+        const waitMs =
+          recordedEvent.at -
+          (performance.now() - replayStartedAt - state.replayPausedMs);
 
         if (waitMs > 0) {
           await sleep(waitMs);
@@ -1434,9 +1632,18 @@
           break;
         }
 
+        if (!(await waitForReplayRequests(replayRunId))) {
+          break;
+        }
+
         await playEvent(recordedEvent);
         state.replayCompletedEventCount += 1;
         notifyClients();
+        await sleep(0);
+      }
+
+      if (!state.replayAbort && state.replayRunId === replayRunId) {
+        await waitForReplayRequests(replayRunId);
       }
     } finally {
       if (state.replayRunId === replayRunId) {
@@ -1444,6 +1651,8 @@
         state.replayAbort = false;
         state.replaySessionId = "";
         state.replayStartedAt = 0;
+        state.replayPausedMs = 0;
+        state.replayRequestWaitStartedAt = 0;
         state.replayCompletedEventCount = 0;
         stopReplayProgressNotifications();
         showRuntimeStatus("replaying", "completed");
@@ -1618,7 +1827,7 @@
       notifyClients({ immediate: true });
       return true;
     } catch (error) {
-      state.lastError = error?.message || "전체 녹음을 ZIP 파일로 내보내지 못했습니다.";
+      state.lastError = error?.message || "전체 녹화를 ZIP 파일로 내보내지 못했습니다.";
       notifyClients({ immediate: true });
       return false;
     }
@@ -1654,7 +1863,7 @@
       state.lastError = "";
       return true;
     } catch (error) {
-      state.lastError = "선택한 녹음을 JSON 파일로 내보내지 못했습니다.";
+      state.lastError = "선택한 녹화를 JSON 파일로 내보내지 못했습니다.";
       notifyClients({ immediate: true });
       return false;
     }
@@ -1792,8 +2001,12 @@
     renameSession,
     replay,
     replaySession: replay,
+    requestEnd,
+    requestStart,
+    resetPendingRequests,
     start: startRecording,
     stop: stopRecording,
     stopReplay,
+    waitForRequests,
   });
 })();
