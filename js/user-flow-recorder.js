@@ -1479,6 +1479,151 @@
     return `${datePart}-${timePart}`;
   }
 
+  function downloadUserFlowFile(blob, fileName) {
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = downloadUrl;
+    link.download = fileName;
+    link.hidden = true;
+    link.setAttribute(IGNORE_ATTRIBUTE, "true");
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+  }
+
+  function sanitizeArchiveName(value, fallback) {
+    const sanitized = String(value || "")
+      .trim()
+      .replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_")
+      .replace(/[. ]+$/g, "")
+      .slice(0, 80);
+    return sanitized || fallback;
+  }
+
+  function createUniqueArchiveName(preferredName, usedNames) {
+    const extensionIndex = preferredName.toLowerCase().endsWith(".json")
+      ? preferredName.length - 5
+      : preferredName.length;
+    const baseName = preferredName.slice(0, extensionIndex);
+    const extension = preferredName.slice(extensionIndex);
+    let uniqueName = preferredName;
+    let suffix = 2;
+
+    while (usedNames.has(uniqueName.toLowerCase())) {
+      uniqueName = `${baseName} (${suffix})${extension}`;
+      suffix += 1;
+    }
+
+    usedNames.add(uniqueName.toLowerCase());
+    return uniqueName;
+  }
+
+  function normalizeExportTabs(tabOrganization) {
+    const requestedTabs = Array.isArray(tabOrganization?.tabs)
+      ? tabOrganization.tabs
+      : [];
+    const tabs = [];
+    const tabIds = new Set();
+    const usedFolderNames = new Set();
+
+    requestedTabs.forEach((tab, index) => {
+      const id = String(tab?.id || "").trim().slice(0, 120);
+
+      if (!id || tabIds.has(id)) {
+        return;
+      }
+
+      const requestedName = sanitizeArchiveName(
+        tab?.name,
+        `Tab ${String(index + 1).padStart(2, "0")}`,
+      );
+      const folderName = createUniqueArchiveName(requestedName, usedFolderNames);
+      tabIds.add(id);
+      tabs.push({ folderName, id });
+    });
+
+    if (!tabs.length) {
+      tabs.push({ folderName: "Tab 01", id: "default" });
+    }
+
+    return tabs;
+  }
+
+  function exportAllRecordings(tabOrganization = {}) {
+    if (state.isRecording || state.isReplaying || !state.sessions.length) {
+      return false;
+    }
+
+    try {
+      if (!window.UserFlowArchive) {
+        throw new Error("ZIP 모듈을 불러오지 못했습니다.");
+      }
+
+      const exportedAt = Date.now();
+      const tabs = normalizeExportTabs(tabOrganization);
+      const tabById = new Map(tabs.map((tab) => [tab.id, tab]));
+      const fallbackTab = tabs[0];
+      const sessionTabs =
+        tabOrganization?.sessionTabs && typeof tabOrganization.sessionTabs === "object"
+          ? tabOrganization.sessionTabs
+          : {};
+      const usedFileNames = new Map(
+        tabs.map((tab) => [tab.id, new Set()]),
+      );
+      const entries = tabs.map((tab) => ({
+        isDirectory: true,
+        modifiedAt: exportedAt,
+        name: `${tab.folderName}/`,
+      }));
+
+      state.sessions.forEach((session) => {
+        const assignedTab = tabById.get(sessionTabs[session.id]) || fallbackTab;
+        const usedNames = usedFileNames.get(assignedTab.id) || new Set();
+        const timestamp = getExportFileTimestamp(session.recordedAt || exportedAt);
+        const sessionIdSuffix = session.id
+          .slice(-6)
+          .replace(/[^a-zA-Z0-9_-]/g, "");
+        const requestedFileName = `${sanitizeArchiveName(
+          session.name,
+          `user-flow-${timestamp}`,
+        )}-${sessionIdSuffix || "recording"}.json`;
+        const fileName = createUniqueArchiveName(requestedFileName, usedNames);
+        const exportData = {
+          version: RECORDING_FORMAT_VERSION,
+          exportedAt: new Date(exportedAt).toISOString(),
+          session: {
+            id: session.id,
+            name: session.name || "",
+            recordedAt: session.recordedAt,
+            events: session.events,
+          },
+        };
+
+        usedFileNames.set(assignedTab.id, usedNames);
+        entries.push({
+          data: JSON.stringify(exportData, null, 2),
+          modifiedAt: session.recordedAt || exportedAt,
+          name: `${assignedTab.folderName}/${fileName}`,
+        });
+      });
+
+      const archive = window.UserFlowArchive.createArchive(entries);
+      downloadUserFlowFile(
+        archive,
+        `user-flow-all-${getExportFileTimestamp(exportedAt)}.zip`,
+      );
+      state.lastError = "";
+      notifyClients({ immediate: true });
+      return true;
+    } catch (error) {
+      state.lastError = error?.message || "전체 녹음을 ZIP 파일로 내보내지 못했습니다.";
+      notifyClients({ immediate: true });
+      return false;
+    }
+  }
+
   function exportRecording(sessionId) {
     const session = state.sessions.find((item) => item.id === sessionId);
 
@@ -1501,18 +1646,11 @@
       const blob = new Blob([JSON.stringify(exportData, null, 2)], {
         type: "application/json;charset=utf-8",
       });
-      const downloadUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-
-      link.href = downloadUrl;
       const sessionIdSuffix = session.id.slice(-6).replace(/[^a-zA-Z0-9_-]/g, "");
-      link.download = `user-flow-${getExportFileTimestamp(session.recordedAt || exportedAt)}-${sessionIdSuffix}.json`;
-      link.hidden = true;
-      link.setAttribute(IGNORE_ATTRIBUTE, "true");
-      document.body.append(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+      downloadUserFlowFile(
+        blob,
+        `user-flow-${getExportFileTimestamp(session.recordedAt || exportedAt)}-${sessionIdSuffix}.json`,
+      );
       state.lastError = "";
       return true;
     } catch (error) {
@@ -1606,6 +1744,9 @@
       case "export-recording":
         exportRecording(event.data.sessionId);
         break;
+      case "export-all-recordings":
+        exportAllRecordings(event.data.tabOrganization);
+        break;
       case "import-recordings":
         importRecordings(event.data.importData);
         break;
@@ -1641,6 +1782,7 @@
   window.UserFlowRecorder = Object.freeze({
     clear: clearRecording,
     deleteSession,
+    exportAllRecordings,
     exportRecording,
     getEvents: (sessionId = state.currentSessionId) => [
       ...(state.sessions.find((session) => session.id === sessionId)?.events || []),

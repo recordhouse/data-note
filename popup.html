@@ -146,6 +146,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
+        flex-wrap: wrap;
         gap: 12px;
         min-height: 44px;
         padding-bottom: 10px;
@@ -162,6 +163,8 @@
       }
 
       .user-flow-status::before {
+        box-sizing: border-box;
+        flex: 0 0 auto;
         width: 8px;
         height: 8px;
         border-radius: 50%;
@@ -174,8 +177,11 @@
       }
 
       .user-flow-status[data-state="recording"]::before {
-        background: #b42345;
-        box-shadow: 0 0 0 4px rgba(180, 35, 69, 0.12);
+        width: 10px;
+        height: 10px;
+        background: #dc174d;
+        box-shadow: 0 0 0 0 rgba(220, 23, 77, 0.38);
+        animation: popup-recording-pulse 900ms ease-in-out infinite;
       }
 
       .user-flow-status[data-state="replaying"],
@@ -183,9 +189,18 @@
         color: #0f766e;
       }
 
-      .user-flow-status[data-state="replaying"]::before,
       .user-flow-status[data-state="ready"]::before {
         background: #0f766e;
+      }
+
+      .user-flow-status[data-state="replaying"]::before {
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(15, 118, 110, 0.28);
+        border-top-color: #0f766e;
+        border-right-color: #0f766e;
+        background: transparent;
+        animation: popup-replaying-spin 650ms linear infinite;
       }
 
       .user-flow-status[data-state="error"] {
@@ -196,10 +211,33 @@
         background: #b42345;
       }
 
+      @keyframes popup-recording-pulse {
+        50% {
+          opacity: 0.55;
+          box-shadow: 0 0 0 5px rgba(220, 23, 77, 0);
+          transform: scale(0.78);
+        }
+      }
+
+      @keyframes popup-replaying-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .user-flow-status[data-state="recording"]::before,
+        .user-flow-status[data-state="replaying"]::before {
+          animation: none;
+        }
+      }
+
       .user-flow-actions {
         display: flex;
         align-items: center;
+        flex-wrap: wrap;
         gap: 6px;
+        min-width: 0;
       }
 
       .user-flow-action {
@@ -235,7 +273,7 @@
 
       .user-flow-sessions {
         display: grid;
-        grid-template-rows: auto minmax(0, 1fr);
+        grid-template-rows: auto auto minmax(0, 1fr);
         gap: 8px;
         min-height: 0;
       }
@@ -253,6 +291,184 @@
         color: #64748b;
         font-size: 12px;
         font-weight: 800;
+      }
+
+      .user-flow-list-tabbar {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+        padding-bottom: 0;
+        border-bottom: 1px solid #d9e1ea;
+      }
+
+      .user-flow-list-tabs {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        overflow-x: auto;
+        scrollbar-width: thin;
+      }
+
+      .user-flow-list-tab-wrap {
+        position: relative;
+        display: inline-flex;
+        flex: 0 0 auto;
+        align-items: center;
+        gap: 1px;
+        min-height: 32px;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        transition:
+          background-color 120ms ease,
+          box-shadow 120ms ease;
+      }
+
+      .user-flow-list-tab-wrap + .user-flow-list-tab-wrap::before {
+        position: absolute;
+        top: 8px;
+        bottom: 8px;
+        left: -5px;
+        width: 1px;
+        background: #d9e1ea;
+        content: "";
+      }
+
+      .user-flow-list-tab-wrap[data-active="true"] {
+        box-shadow: inset 0 -2px 0 #1266d6;
+      }
+
+      .user-flow-list-tab-wrap.is-drop-target {
+        background: #ecfdf5;
+        box-shadow: inset 0 -2px 0 #0f766e;
+      }
+
+      .user-flow-list-tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 31px;
+        padding: 4px 3px;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        color: #475569;
+        font-size: 12px;
+        font-weight: 800;
+        white-space: nowrap;
+        cursor: pointer;
+      }
+
+      .user-flow-list-tab[aria-selected="true"] {
+        color: #1266d6;
+      }
+
+      .user-flow-list-tab:focus-visible,
+      .user-flow-list-tab-input:focus-visible,
+      .user-flow-list-tab-edit:focus-visible,
+      .user-flow-list-tab-delete:focus-visible,
+      .user-flow-tab-add:focus-visible {
+        outline: 2px solid rgba(18, 102, 214, 0.35);
+        outline-offset: 1px;
+      }
+
+      .user-flow-list-tab-count {
+        color: #64748b;
+        font-size: 10px;
+        line-height: 1;
+        text-align: center;
+      }
+
+      .user-flow-list-tab-wrap[data-active="true"] .user-flow-list-tab-count {
+        color: #1258b8;
+      }
+
+      .user-flow-list-tab-input {
+        width: 86px;
+        height: 28px;
+        margin-left: 2px;
+        padding: 3px 2px;
+        border: 0;
+        border-bottom: 1px solid #1266d6;
+        border-radius: 0;
+        outline: none;
+        background: #ffffff;
+        color: #17202a;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .user-flow-list-tab-edit,
+      .user-flow-list-tab-delete {
+        display: inline-grid;
+        place-items: center;
+        width: 20px;
+        height: 28px;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        color: #7b8797;
+        line-height: 1;
+        opacity: 0.58;
+        cursor: pointer;
+        transition:
+          color 120ms ease,
+          opacity 120ms ease;
+      }
+
+      .user-flow-list-tab-edit {
+        font-size: 14px;
+      }
+
+      .user-flow-list-tab-edit:last-child {
+        border-radius: 0;
+      }
+
+      .user-flow-list-tab-delete {
+        font-size: 17px;
+      }
+
+      .user-flow-list-tab-edit:hover:not(:disabled) {
+        color: #1266d6;
+        opacity: 1;
+      }
+
+      .user-flow-list-tab-delete:hover:not(:disabled) {
+        color: #b42345;
+        opacity: 1;
+      }
+
+      .user-flow-list-tab-edit:disabled,
+      .user-flow-list-tab-delete:disabled,
+      .user-flow-tab-add:disabled {
+        cursor: not-allowed;
+        opacity: 0.4;
+      }
+
+      .user-flow-tab-add {
+        display: inline-grid;
+        flex: 0 0 28px;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: #334155;
+        font-size: 20px;
+        font-weight: 500;
+        line-height: 1;
+        cursor: pointer;
+      }
+
+      .user-flow-tab-add:hover:not(:disabled) {
+        background: #eef5ff;
+        color: #1266d6;
       }
 
       .user-flow-session-list {
@@ -275,6 +491,18 @@
         background: #fbfdff;
       }
 
+      .user-flow-session[draggable="true"] {
+        cursor: grab;
+      }
+
+      .user-flow-session[draggable="true"]:active {
+        cursor: grabbing;
+      }
+
+      .user-flow-session.is-dragging {
+        opacity: 0.45;
+      }
+
       .user-flow-session[data-state="recording"] {
         border-color: #d89aaa;
         background: #fff8fa;
@@ -283,7 +511,6 @@
       .user-flow-session[data-state="replaying"] {
         border-color: #8eaaa7;
         background: #e9efef;
-        box-shadow: inset 3px 0 0 #0f766e;
       }
 
       .user-flow-session[data-editing="true"] {
@@ -297,6 +524,10 @@
       }
 
       .user-flow-session-time {
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 5px;
         color: #17202a;
         font-size: 13px;
         font-weight: 800;
@@ -348,9 +579,16 @@
 
       .user-flow-name-editor {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto auto;
+        grid-template-columns: auto minmax(0, 1fr) auto auto;
         align-items: center;
         gap: 6px;
+      }
+
+      .user-flow-session-tab-prefix {
+        color: #1266d6;
+        font-size: 11px;
+        font-weight: 800;
+        white-space: nowrap;
       }
 
       .user-flow-name-input {
@@ -775,12 +1013,15 @@
         }
 
         .user-flow-actions {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           width: 100%;
         }
 
         .user-flow-action {
-          flex: 1 1 0;
-          width: auto;
+          min-width: 0;
+          width: 100%;
+          padding-inline: 6px;
         }
 
         .user-flow-session {
@@ -896,6 +1137,12 @@
               >가져오기</button>
               <button
                 class="user-flow-action"
+                id="userFlowExportAllButton"
+                type="button"
+                data-user-flow-command="export-all-recordings"
+              >모두 내보내기</button>
+              <button
+                class="user-flow-action"
                 id="userFlowRecordButton"
                 type="button"
                 data-action="toggle-record"
@@ -905,7 +1152,7 @@
               <input
                 id="userFlowImportInput"
                 type="file"
-                accept=".json,application/json"
+                accept=".json,.zip,application/json,application/zip"
                 hidden
               />
             </div>
@@ -916,7 +1163,53 @@
               <strong id="userFlowSessionTitle">녹음 목록</strong>
               <span id="userFlowSessionCount">0개</span>
             </div>
-            <div class="user-flow-session-list" id="userFlowSessionList">
+            <div class="user-flow-list-tabbar">
+              <div
+                class="user-flow-list-tabs"
+                id="userFlowListTabs"
+                role="tablist"
+                aria-label="녹음 목록 탭"
+              >
+                <div
+                  class="user-flow-list-tab-wrap"
+                  data-active="true"
+                  data-user-flow-tab-drop="default"
+                >
+                  <button
+                    class="user-flow-list-tab"
+                    id="userFlowListTab-default"
+                    type="button"
+                    role="tab"
+                    aria-selected="true"
+                    aria-controls="userFlowSessionList"
+                    data-user-flow-tab-select="default"
+                  >
+                    <span>Tab 01</span>
+                    <span class="user-flow-list-tab-count">0</span>
+                  </button>
+                  <button
+                    class="user-flow-list-tab-edit"
+                    type="button"
+                    title="Tab 01 탭 이름 수정"
+                    aria-label="Tab 01 탭 이름 수정"
+                    data-user-flow-tab-edit="default"
+                  >✎</button>
+                </div>
+              </div>
+              <button
+                class="user-flow-tab-add"
+                id="userFlowTabAddButton"
+                type="button"
+                title="녹음 목록 탭 추가"
+                aria-label="녹음 목록 탭 추가"
+              >+</button>
+            </div>
+            <div
+              class="user-flow-session-list"
+              id="userFlowSessionList"
+              role="tabpanel"
+              aria-labelledby="userFlowListTab-default"
+            >
               <div class="user-flow-empty">저장된 녹음이 없습니다.</div>
             </div>
           </section>

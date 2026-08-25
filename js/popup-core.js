@@ -198,6 +198,11 @@
 
     featureReadyPromise = Promise.all([
       loadFeatureScript(
+        "user-flow-archive.js",
+        "userFlowArchiveSrc",
+        "UserFlowArchive",
+      ),
+      loadFeatureScript(
         "user-flow-popup.js",
         "userFlowPopupSrc",
         "UserFlowPopup",
@@ -429,14 +434,23 @@
       return renderPromise;
     }
 
-    featureReadyPromise = loadFeatureScript(
-      "user-flow-recorder.js",
-      "userFlowRecorderSrc",
-      "UserFlowRecorder",
-    ).catch((error) => {
-      console.error(error);
-      return null;
-    });
+    featureReadyPromise = Promise.all([
+      loadFeatureScript(
+        "user-flow-archive.js",
+        "userFlowArchiveSrc",
+        "UserFlowArchive",
+      ),
+      loadFeatureScript(
+        "user-flow-recorder.js",
+        "userFlowRecorderSrc",
+        "UserFlowRecorder",
+      ),
+    ])
+      .then(([, recorder]) => recorder)
+      .catch((error) => {
+        console.error(error);
+        return null;
+      });
 
     window.addEventListener("message", handlePopupMessage);
     window.addEventListener("pagehide", closePopup);
