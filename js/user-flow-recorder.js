@@ -469,8 +469,10 @@
     }
 
     try {
+      window.ResponseMappingPopup?.preserveForNavigation?.();
       window.location.assign(targetPage);
     } catch (error) {
+      window.ResponseMappingPopup?.preserveForNavigation?.(false);
       clearPendingReplay();
       state.lastError = "녹화를 시작한 페이지로 이동하지 못했습니다.";
       notifyClients({ immediate: true });

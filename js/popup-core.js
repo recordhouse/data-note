@@ -16,6 +16,7 @@
   const DEFAULT_POPUP_NAME = "_blank";
   const DEFAULT_POPUP_FEATURES = "popup=yes,width=720,height=760,left=140,top=80";
   const MAX_PENDING_RESPONSES = 50;
+  const POPUP_RECONNECT_CHECK_MS = 400;
 
   const coreScript = document.currentScript;
   const coreBaseUrl = coreScript?.src
@@ -25,6 +26,8 @@
   const context = isPopupRuntime ? "popup" : "parent";
   const featureLoads = new Map();
   let featureReadyPromise = Promise.resolve();
+  let connectedOpenerDocument = null;
+  let popupReconnectTimer = 0;
 
   function getFeatureUrl(fileName, dataAttribute) {
     const configuredUrl = coreScript?.dataset?.[dataAttribute];
@@ -167,7 +170,20 @@
       return;
     }
 
+    connectedOpenerDocument = getOpenerDocument();
     document.dispatchEvent(new CustomEvent(PARENT_READY_EVENT));
+  }
+
+  function getOpenerDocument() {
+    try {
+      if (!window.opener || window.opener.closed) {
+        return null;
+      }
+
+      return window.opener.document;
+    } catch (error) {
+      return null;
+    }
   }
 
   function announcePopupReady() {
@@ -183,6 +199,16 @@
     );
   }
 
+  function monitorOpenerConnection() {
+    const openerDocument = getOpenerDocument();
+
+    if (!openerDocument || openerDocument === connectedOpenerDocument) {
+      return;
+    }
+
+    announcePopupReady();
+  }
+
   function showFeatureLoadError(error) {
     const status = document.querySelector("#userFlowStatus");
 
@@ -195,6 +221,15 @@
   function initializePopupRuntime() {
     document.addEventListener("click", handleTabClick);
     window.addEventListener("message", handleParentReadyMessage);
+    popupReconnectTimer = window.setInterval(
+      monitorOpenerConnection,
+      POPUP_RECONNECT_CHECK_MS,
+    );
+    window.addEventListener(
+      "pagehide",
+      () => window.clearInterval(popupReconnectTimer),
+      { once: true },
+    );
 
     featureReadyPromise = Promise.all([
       loadFeatureScript(
@@ -226,6 +261,8 @@
   function initializeParentRuntime() {
     let popupWindow = null;
     let popupReady = false;
+    let pendingReadySource = null;
+    let preservePopupOnPagehide = false;
     let popupOrigin = window.location.origin;
     let pendingPayloads = [];
     let renderRequestSequence = 0;
@@ -266,6 +303,34 @@
       return popupOrigin === "*" || event.origin === popupOrigin;
     }
 
+    function canAdoptPopup(event) {
+      if (
+        popupWindow ||
+        event.data?.type !== MESSAGE_READY ||
+        !event.source ||
+        event.origin !== window.location.origin
+      ) {
+        return false;
+      }
+
+      try {
+        return event.source.opener === window;
+      } catch (error) {
+        return false;
+      }
+    }
+
+    function adoptPopup(event) {
+      if (!canAdoptPopup(event)) {
+        return false;
+      }
+
+      popupWindow = event.source;
+      popupOrigin = event.origin === "null" ? "*" : event.origin;
+      popupReady = false;
+      return true;
+    }
+
     function sendParentReady() {
       if (!isPopupOpen()) {
         return;
@@ -286,10 +351,25 @@
 
       popupWindow = null;
       popupReady = false;
+      pendingReadySource = null;
       pendingPayloads = [];
       renderRequests.forEach(({ resolve }) => resolve([]));
       renderRequests.clear();
       readyResolvers.splice(0).forEach((resolve) => resolve(null));
+    }
+
+    function preserveForNavigation(enabled = true) {
+      preservePopupOnPagehide = Boolean(enabled) && isPopupOpen();
+      return preservePopupOnPagehide;
+    }
+
+    function handleParentPagehide() {
+      if (preservePopupOnPagehide && isPopupOpen()) {
+        preservePopupOnPagehide = false;
+        return;
+      }
+
+      closePopup();
     }
 
     function sendPendingPayloads() {
@@ -330,13 +410,42 @@
     }
 
     function handlePopupMessage(event) {
-      if (!event.data || !isAllowedPopupMessage(event)) {
+      if (!event.data) {
+        return;
+      }
+
+      if (
+        event.data.type === MESSAGE_READY &&
+        !isAllowedPopupMessage(event) &&
+        !adoptPopup(event)
+      ) {
+        return;
+      }
+
+      if (!isAllowedPopupMessage(event)) {
         return;
       }
 
       if (event.data.type === MESSAGE_READY) {
         const sourceWindow = event.source;
-        featureReadyPromise.finally(() => finalizePopupReady(sourceWindow));
+
+        if (popupReady) {
+          sendParentReady();
+          return;
+        }
+
+        if (pendingReadySource === sourceWindow) {
+          return;
+        }
+
+        pendingReadySource = sourceWindow;
+        featureReadyPromise.finally(() => {
+          if (pendingReadySource === sourceWindow) {
+            pendingReadySource = null;
+          }
+
+          finalizePopupReady(sourceWindow);
+        });
         return;
       }
 
@@ -369,6 +478,7 @@
       }
 
       popupReady = false;
+      pendingReadySource = null;
       popupWindow = window.open(
         popupOptions.popupUrl,
         popupOptions.popupName,
@@ -453,13 +563,14 @@
       });
 
     window.addEventListener("message", handlePopupMessage);
-    window.addEventListener("pagehide", closePopup);
+    window.addEventListener("pagehide", handleParentPagehide);
 
     window.ResponseMappingPopup = Object.freeze({
       closePopup,
       isOpen: isPopupOpen,
       openPopup,
       openWithResponse: renderResponse,
+      preserveForNavigation,
       ready: () => featureReadyPromise,
       renderResponse,
     });
