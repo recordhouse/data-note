@@ -29,6 +29,7 @@
   const REQUEST_WAIT_TIMEOUT_MS = 30000;
   const REQUEST_ABORT_POLL_MS = 50;
   const REQUEST_REPEAT_RESUME_LIMIT = 10;
+  const AUTO_REPLAY_REQUEST_IDLE_MS = 500;
   const CHECKABLE_EVENT_GROUP_MS = 150;
   const RECORDING_FORMAT_VERSION = 3;
   const PERCENT_PRECISION = 6;
@@ -1948,7 +1949,23 @@
     }
   }
 
-  function resumePendingReplay() {
+  async function waitForAutoReplayRequestIdle() {
+    clearReplayRequestTracking();
+
+    while (true) {
+      while (getPendingRequestCount() > 0) {
+        await waitForRequests({ timeoutMs: REQUEST_WAIT_TIMEOUT_MS });
+      }
+
+      await sleep(AUTO_REPLAY_REQUEST_IDLE_MS);
+
+      if (getPendingRequestCount() === 0) {
+        return;
+      }
+    }
+  }
+
+  async function resumePendingReplay() {
     const pendingReplay = consumePendingReplay();
 
     if (!pendingReplay) {
@@ -1975,12 +1992,18 @@
       return;
     }
 
-    window.setTimeout(() => replay(session.id), 0);
+    await waitForAutoReplayRequestIdle();
+
+    if (state.isRecording || state.isReplaying) {
+      return;
+    }
+
+    replay(session.id);
   }
 
   function schedulePendingReplay() {
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", resumePendingReplay, {
+    if (document.readyState !== "complete") {
+      window.addEventListener("load", resumePendingReplay, {
         once: true,
       });
       return;
