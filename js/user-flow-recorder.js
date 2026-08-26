@@ -10,6 +10,9 @@
   }
 
   const STORAGE_KEY = "response-mapping-user-flow-recording:v1";
+  const PENDING_REPLAY_STORAGE_KEY =
+    "response-mapping-user-flow-pending-replay:v1";
+  const PENDING_REPLAY_MAX_AGE_MS = 60 * 1000;
   const MESSAGE_COMMAND = "response-mapping-user-flow-command";
   const MESSAGE_STATE = "response-mapping-user-flow-state";
   const IGNORE_ATTRIBUTE = "data-user-flow-ignore";
@@ -361,6 +364,120 @@
     replayRequestRepeatCounts: new Map(),
     ignoredReplayRequests: new Set(),
   };
+
+  function getCurrentPage() {
+    return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  }
+
+  function normalizeReplayPage(page) {
+    if (typeof page !== "string" || !page.trim()) {
+      return "";
+    }
+
+    try {
+      const pageUrl = new URL(page.trim(), window.location.href);
+
+      if (pageUrl.origin !== window.location.origin) {
+        return "";
+      }
+
+      return `${pageUrl.pathname}${pageUrl.search}${pageUrl.hash}`;
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function getReplayStartPage(session) {
+    for (const recordedEvent of session?.events || []) {
+      const page = normalizeReplayPage(recordedEvent?.page);
+
+      if (page) {
+        return page;
+      }
+    }
+
+    return "";
+  }
+
+  function clearPendingReplay() {
+    try {
+      window.sessionStorage.removeItem(PENDING_REPLAY_STORAGE_KEY);
+    } catch (error) {
+      // sessionStorage may be unavailable under restrictive browser policies.
+    }
+  }
+
+  function consumePendingReplay() {
+    let pendingReplay = null;
+
+    try {
+      const storedValue = window.sessionStorage.getItem(PENDING_REPLAY_STORAGE_KEY);
+      window.sessionStorage.removeItem(PENDING_REPLAY_STORAGE_KEY);
+      pendingReplay = JSON.parse(storedValue || "null");
+    } catch (error) {
+      clearPendingReplay();
+      return null;
+    }
+
+    const createdAt = Number(pendingReplay?.createdAt);
+    const ageMs = Date.now() - createdAt;
+
+    if (
+      pendingReplay?.version !== 1 ||
+      typeof pendingReplay.sessionId !== "string" ||
+      !pendingReplay.sessionId ||
+      !Number.isFinite(createdAt) ||
+      ageMs < 0 ||
+      ageMs > PENDING_REPLAY_MAX_AGE_MS
+    ) {
+      return null;
+    }
+
+    const targetPage = normalizeReplayPage(pendingReplay.targetPage);
+
+    if (!targetPage) {
+      return null;
+    }
+
+    return {
+      sessionId: pendingReplay.sessionId,
+      targetPage,
+    };
+  }
+
+  function navigateToReplayStart(session) {
+    const targetPage = getReplayStartPage(session);
+
+    if (!targetPage || targetPage === getCurrentPage()) {
+      return false;
+    }
+
+    try {
+      window.sessionStorage.setItem(
+        PENDING_REPLAY_STORAGE_KEY,
+        JSON.stringify({
+          version: 1,
+          sessionId: session.id,
+          targetPage,
+          createdAt: Date.now(),
+        }),
+      );
+    } catch (error) {
+      state.lastError = "페이지 이동 후 재생할 정보를 임시 저장하지 못했습니다.";
+      notifyClients({ immediate: true });
+      return true;
+    }
+
+    try {
+      window.location.assign(targetPage);
+    } catch (error) {
+      clearPendingReplay();
+      state.lastError = "녹화를 시작한 페이지로 이동하지 못했습니다.";
+      notifyClients({ immediate: true });
+    }
+
+    return true;
+  }
 
   function readRecording() {
     try {
@@ -1742,6 +1859,11 @@
     }
 
     stopRecording();
+
+    if (navigateToReplayStart(session)) {
+      return;
+    }
+
     state.currentSessionId = session.id;
     state.events = session.events;
     state.recordedAt = session.recordedAt;
@@ -1824,9 +1946,51 @@
     }
   }
 
+  function resumePendingReplay() {
+    const pendingReplay = consumePendingReplay();
+
+    if (!pendingReplay) {
+      return;
+    }
+
+    const session = state.sessions.find(
+      (item) => item.id === pendingReplay.sessionId,
+    );
+    const replayStartPage = getReplayStartPage(session);
+
+    if (!session?.events.length) {
+      state.lastError = "이동 후 재생할 녹화 데이터를 찾지 못했습니다.";
+      notifyClients({ immediate: true });
+      return;
+    }
+
+    if (
+      replayStartPage !== pendingReplay.targetPage ||
+      replayStartPage !== getCurrentPage()
+    ) {
+      state.lastError = "녹화 시작 페이지와 현재 페이지가 달라 재생하지 못했습니다.";
+      notifyClients({ immediate: true });
+      return;
+    }
+
+    window.setTimeout(() => replay(session.id), 0);
+  }
+
+  function schedulePendingReplay() {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", resumePendingReplay, {
+        once: true,
+      });
+      return;
+    }
+
+    resumePendingReplay();
+  }
+
   function clearRecording() {
     stopRecording();
     stopReplay();
+    clearPendingReplay();
     state.events = [];
     state.sessions = [];
     state.currentSessionId = "";
@@ -2171,4 +2335,6 @@
     stopReplay,
     waitForRequests,
   });
+
+  schedulePendingReplay();
 })();
