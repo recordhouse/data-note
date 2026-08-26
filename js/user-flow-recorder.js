@@ -26,6 +26,7 @@
   const REQUEST_WAIT_TIMEOUT_MS = 30000;
   const REQUEST_ABORT_POLL_MS = 50;
   const REQUEST_REPEAT_RESUME_LIMIT = 10;
+  const CHECKABLE_EVENT_GROUP_MS = 150;
   const RECORDING_FORMAT_VERSION = 3;
   const PERCENT_PRECISION = 6;
   const IMPORTABLE_EVENT_TYPES = new Set(["change", "click", "input", "scroll"]);
@@ -1437,6 +1438,90 @@
     );
   }
 
+  function isCheckableInput(element) {
+    return Boolean(
+      element instanceof HTMLInputElement &&
+        (element.type === "checkbox" || element.type === "radio"),
+    );
+  }
+
+  function createReplayEvents(recordedEvents) {
+    const skippedEventIndexes = new Set();
+
+    return recordedEvents
+      .map((recordedEvent, eventIndex) => {
+        if (skippedEventIndexes.has(eventIndex)) {
+          return null;
+        }
+
+        const replayEvent = {
+          ...recordedEvent,
+          replaySourceEventCount: 1,
+        };
+
+        if (recordedEvent.type !== "click") {
+          return replayEvent;
+        }
+
+        for (
+          let relatedIndex = eventIndex + 1;
+          relatedIndex < recordedEvents.length;
+          relatedIndex += 1
+        ) {
+          const relatedEvent = recordedEvents[relatedIndex];
+          const elapsedMs = Number(relatedEvent.at) - Number(recordedEvent.at);
+
+          if (elapsedMs > CHECKABLE_EVENT_GROUP_MS || relatedEvent.type === "click") {
+            break;
+          }
+
+          if (
+            relatedEvent.selector === recordedEvent.selector &&
+            (relatedEvent.type === "input" || relatedEvent.type === "change") &&
+            typeof relatedEvent.detail?.checked === "boolean"
+          ) {
+            replayEvent.replayChecked = relatedEvent.detail.checked;
+            replayEvent.replaySourceEventCount += 1;
+            skippedEventIndexes.add(relatedIndex);
+          }
+        }
+
+        return replayEvent;
+      })
+      .filter(Boolean);
+  }
+
+  async function playCheckableClick(target, recordedEvent) {
+    const desiredChecked = recordedEvent.replayChecked;
+
+    if (target.type === "radio" && !desiredChecked) {
+      setNativeValue(target, "checked", false);
+      target.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+      target.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+      await waitForRenderFrame();
+      return;
+    }
+
+    setNativeValue(target, "checked", !desiredChecked);
+    playClick(target, recordedEvent);
+    await waitForRenderFrame();
+
+    const currentTarget = findTarget(recordedEvent.selector);
+
+    if (!isCheckableInput(currentTarget) || currentTarget.checked === desiredChecked) {
+      return;
+    }
+
+    setNativeValue(currentTarget, "checked", desiredChecked);
+    currentTarget.dispatchEvent(
+      new Event("input", { bubbles: true, composed: true }),
+    );
+    currentTarget.dispatchEvent(
+      new Event("change", { bubbles: true, composed: true }),
+    );
+    await waitForRenderFrame();
+  }
+
   async function playEvent(recordedEvent) {
     if (recordedEvent.type === "scroll") {
       await playScroll(recordedEvent);
@@ -1450,6 +1535,14 @@
     }
 
     if (recordedEvent.type === "click") {
+      if (
+        isCheckableInput(target) &&
+        typeof recordedEvent.replayChecked === "boolean"
+      ) {
+        await playCheckableClick(target, recordedEvent);
+        return;
+      }
+
       playClick(target, recordedEvent);
       return;
     }
@@ -1677,12 +1770,13 @@
 
     try {
       const replayStartedAt = state.replayStartedAt;
+      const replayEvents = createReplayEvents(state.events);
 
       if (!(await waitForReplayRequests(replayRunId))) {
         return;
       }
 
-      for (const recordedEvent of state.events) {
+      for (const recordedEvent of replayEvents) {
         if (state.replayAbort || state.replayRunId !== replayRunId) {
           break;
         }
@@ -1704,7 +1798,7 @@
         }
 
         await playEvent(recordedEvent);
-        state.replayCompletedEventCount += 1;
+        state.replayCompletedEventCount += recordedEvent.replaySourceEventCount || 1;
         notifyClients();
         await sleep(0);
       }
