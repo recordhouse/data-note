@@ -199,6 +199,44 @@
     );
   }
 
+  function ensureOpenerPopupCore(openerDocument) {
+    try {
+      if (
+        !window.opener ||
+        window.opener.closed ||
+        window.opener.PopupCore ||
+        !coreScript?.src
+      ) {
+        return Boolean(window.opener?.PopupCore);
+      }
+
+      const existingScript = Array.from(openerDocument.scripts || []).find(
+        (script) => script.src === coreScript.src,
+      );
+
+      if (existingScript) {
+        return false;
+      }
+
+      const scriptContainer = openerDocument.head || openerDocument.documentElement;
+
+      if (!scriptContainer) {
+        return false;
+      }
+
+      const script = openerDocument.createElement("script");
+      script.src = coreScript.src;
+      script.async = true;
+      Object.entries(coreScript.dataset || {}).forEach(([key, value]) => {
+        script.dataset[key] = value;
+      });
+      scriptContainer.append(script);
+      return false;
+    } catch (error) {
+      return false;
+    }
+  }
+
   function monitorOpenerConnection() {
     const openerDocument = getOpenerDocument();
 
@@ -206,6 +244,7 @@
       return;
     }
 
+    ensureOpenerPopupCore(openerDocument);
     announcePopupReady();
   }
 
