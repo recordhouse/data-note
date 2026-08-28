@@ -12,7 +12,8 @@
   const STORAGE_KEY = "response-mapping-user-flow-recording:v1";
   const PENDING_REPLAY_STORAGE_KEY =
     "response-mapping-user-flow-pending-replay:v1";
-  const PENDING_REPLAY_MAX_AGE_MS = 60 * 1000;
+  const PENDING_REPLAY_MAX_AGE_MS = 5 * 60 * 1000;
+  const PENDING_REPLAY_RECHECK_MS = 250;
   const MESSAGE_COMMAND = "response-mapping-user-flow-command";
   const MESSAGE_STATE = "response-mapping-user-flow-state";
   const IGNORE_ATTRIBUTE = "data-user-flow-ignore";
@@ -365,6 +366,8 @@
     replayRequestRepeatCounts: new Map(),
     ignoredReplayRequests: new Set(),
   };
+  let pendingReplayCheckTimer = 0;
+  let pendingReplayIsStarting = false;
 
   function getCurrentPage() {
     return `${window.location.pathname}${window.location.search}${window.location.hash}`;
@@ -400,7 +403,31 @@
     return "";
   }
 
+  function getComparableReplayPage(page) {
+    const normalizedPage = normalizeReplayPage(page);
+
+    if (!normalizedPage) {
+      return "";
+    }
+
+    const pageUrl = new URL(normalizedPage, window.location.href);
+    const pathname = pageUrl.pathname.replace(/\/+$/, "") || "/";
+    return `${pathname}${pageUrl.search}${pageUrl.hash}`;
+  }
+
+  function isSameReplayPage(firstPage, secondPage) {
+    const firstComparablePage = getComparableReplayPage(firstPage);
+    return Boolean(
+      firstComparablePage &&
+        firstComparablePage === getComparableReplayPage(secondPage),
+    );
+  }
+
   function clearPendingReplay() {
+    window.clearTimeout(pendingReplayCheckTimer);
+    pendingReplayCheckTimer = 0;
+    window.ResponseMappingPopup?.preserveForNavigation?.(false);
+
     try {
       window.sessionStorage.removeItem(PENDING_REPLAY_STORAGE_KEY);
     } catch (error) {
@@ -408,12 +435,11 @@
     }
   }
 
-  function consumePendingReplay() {
+  function readPendingReplay() {
     let pendingReplay = null;
 
     try {
       const storedValue = window.sessionStorage.getItem(PENDING_REPLAY_STORAGE_KEY);
-      window.sessionStorage.removeItem(PENDING_REPLAY_STORAGE_KEY);
       pendingReplay = JSON.parse(storedValue || "null");
     } catch (error) {
       clearPendingReplay();
@@ -431,12 +457,14 @@
       ageMs < 0 ||
       ageMs > PENDING_REPLAY_MAX_AGE_MS
     ) {
+      clearPendingReplay();
       return null;
     }
 
     const targetPage = normalizeReplayPage(pendingReplay.targetPage);
 
     if (!targetPage) {
+      clearPendingReplay();
       return null;
     }
 
@@ -449,7 +477,7 @@
   function navigateToReplayStart(session) {
     const targetPage = getReplayStartPage(session);
 
-    if (!targetPage || targetPage === getCurrentPage()) {
+    if (!targetPage || isSameReplayPage(targetPage, getCurrentPage())) {
       return false;
     }
 
@@ -1867,6 +1895,16 @@
       return;
     }
 
+    const pendingReplay = readPendingReplay();
+
+    if (
+      pendingReplay?.sessionId === session.id &&
+      isSameReplayPage(pendingReplay.targetPage, getCurrentPage())
+    ) {
+      clearPendingReplay();
+      pendingReplayIsStarting = false;
+    }
+
     state.currentSessionId = session.id;
     state.events = session.events;
     state.recordedAt = session.recordedAt;
@@ -1965,12 +2003,29 @@
     }
   }
 
+  function schedulePendingReplayRecheck() {
+    if (pendingReplayCheckTimer || pendingReplayIsStarting) {
+      return;
+    }
+
+    pendingReplayCheckTimer = window.setTimeout(() => {
+      pendingReplayCheckTimer = 0;
+      resumePendingReplay();
+    }, PENDING_REPLAY_RECHECK_MS);
+  }
+
   async function resumePendingReplay() {
-    const pendingReplay = consumePendingReplay();
+    if (pendingReplayIsStarting) {
+      return;
+    }
+
+    const pendingReplay = readPendingReplay();
 
     if (!pendingReplay) {
       return;
     }
+
+    window.ResponseMappingPopup?.preserveForNavigation?.();
 
     const session = state.sessions.find(
       (item) => item.id === pendingReplay.sessionId,
@@ -1978,26 +2033,41 @@
     const replayStartPage = getReplayStartPage(session);
 
     if (!session?.events.length) {
+      clearPendingReplay();
       state.lastError = "이동 후 재생할 녹화 데이터를 찾지 못했습니다.";
       notifyClients({ immediate: true });
       return;
     }
 
-    if (
-      replayStartPage !== pendingReplay.targetPage ||
-      replayStartPage !== getCurrentPage()
-    ) {
-      state.lastError = "녹화 시작 페이지와 현재 페이지가 달라 재생하지 못했습니다.";
+    if (!isSameReplayPage(replayStartPage, pendingReplay.targetPage)) {
+      clearPendingReplay();
+      state.lastError = "저장된 녹화 시작 페이지 정보가 올바르지 않습니다.";
       notifyClients({ immediate: true });
       return;
     }
 
-    await waitForAutoReplayRequestIdle();
-
-    if (state.isRecording || state.isReplaying) {
+    if (!isSameReplayPage(pendingReplay.targetPage, getCurrentPage())) {
+      schedulePendingReplayRecheck();
       return;
     }
 
+    pendingReplayIsStarting = true;
+    await waitForAutoReplayRequestIdle();
+
+    if (!isSameReplayPage(pendingReplay.targetPage, getCurrentPage())) {
+      pendingReplayIsStarting = false;
+      schedulePendingReplayRecheck();
+      return;
+    }
+
+    if (state.isRecording || state.isReplaying) {
+      clearPendingReplay();
+      pendingReplayIsStarting = false;
+      return;
+    }
+
+    clearPendingReplay();
+    pendingReplayIsStarting = false;
     replay(session.id);
   }
 
