@@ -29,7 +29,7 @@
       activeTabId: DEFAULT_USER_FLOW_TAB_ID,
       sessionTabs: {},
       tabs: [{ id: DEFAULT_USER_FLOW_TAB_ID, name: "Tab 01" }],
-      version: 3,
+      version: 4,
     };
   }
 
@@ -67,15 +67,8 @@
       }
 
       const isLegacyTabs = Number(stored.version || 0) < 3;
-      const storedDefaultTab = stored.tabs.find(
-        (tab) => tab?.id === DEFAULT_USER_FLOW_TAB_ID,
-      );
-      const storedDefaultName = String(storedDefaultTab?.name || "").trim().slice(0, 30);
-      const defaultName = isLegacyTabs
-        ? normalizeLegacyUserFlowTabName(storedDefaultName, "Tab 01")
-        : storedDefaultName || "Tab 01";
-      const tabIds = new Set([DEFAULT_USER_FLOW_TAB_ID]);
-      const tabs = [{ id: DEFAULT_USER_FLOW_TAB_ID, name: defaultName }];
+      const tabIds = new Set();
+      const tabs = [];
 
       stored.tabs.slice(0, MAX_USER_FLOW_TABS).forEach((tab) => {
         const id = typeof tab?.id === "string" ? tab.id.trim().slice(0, 120) : "";
@@ -85,13 +78,17 @@
           ? normalizeLegacyUserFlowTabName(storedName, "")
           : storedName;
 
-        if (!id || !name || tabIds.has(id) || id === DEFAULT_USER_FLOW_TAB_ID) {
+        if (!id || !name || tabIds.has(id)) {
           return;
         }
 
         tabIds.add(id);
         tabs.push({ id, name });
       });
+
+      if (!tabs.length) {
+        return fallback;
+      }
 
       const sessionTabs = {};
 
@@ -106,10 +103,10 @@
       return {
         activeTabId: tabIds.has(stored.activeTabId)
           ? stored.activeTabId
-          : DEFAULT_USER_FLOW_TAB_ID,
+          : tabs[0].id,
         sessionTabs,
         tabs,
-        version: 3,
+        version: 4,
       };
     } catch (error) {
       return fallback;
@@ -126,9 +123,32 @@
     }
   }
 
+  function getFirstUserFlowTab() {
+    return userFlowTabs.tabs[0] || {
+      id: DEFAULT_USER_FLOW_TAB_ID,
+      name: "Tab 01",
+    };
+  }
+
+  function getUserFlowSessionTabId(sessionId) {
+    const assignedTabId = userFlowTabs.sessionTabs[sessionId];
+    return userFlowTabs.tabs.some((tab) => tab.id === assignedTabId)
+      ? assignedTabId
+      : getFirstUserFlowTab().id;
+  }
+
   function reconcileUserFlowTabs(sessions, { removeMissingSessions = false } = {}) {
     const sessionIds = new Set(sessions.map((session) => session.id));
+    const tabIds = new Set(userFlowTabs.tabs.map((tab) => tab.id));
+    const fallbackTabId = tabIds.has(userFlowTabs.activeTabId)
+      ? userFlowTabs.activeTabId
+      : getFirstUserFlowTab().id;
     let changed = false;
+
+    if (userFlowTabs.activeTabId !== fallbackTabId) {
+      userFlowTabs.activeTabId = fallbackTabId;
+      changed = true;
+    }
 
     if (removeMissingSessions) {
       Object.keys(userFlowTabs.sessionTabs).forEach((sessionId) => {
@@ -140,8 +160,8 @@
     }
 
     sessions.forEach((session) => {
-      if (!userFlowTabs.sessionTabs[session.id]) {
-        userFlowTabs.sessionTabs[session.id] = userFlowTabs.activeTabId;
+      if (!tabIds.has(userFlowTabs.sessionTabs[session.id])) {
+        userFlowTabs.sessionTabs[session.id] = fallbackTabId;
         changed = true;
       }
     });
@@ -155,7 +175,7 @@
     const counts = new Map(userFlowTabs.tabs.map((tab) => [tab.id, 0]));
 
     sessions.forEach((session) => {
-      const tabId = userFlowTabs.sessionTabs[session.id] || DEFAULT_USER_FLOW_TAB_ID;
+      const tabId = getUserFlowSessionTabId(session.id);
       counts.set(tabId, (counts.get(tabId) || 0) + 1);
     });
 
@@ -178,7 +198,7 @@
       .map((tab) => {
         const isActive = tab.id === userFlowTabs.activeTabId;
         const isEditing = tab.id === editingUserFlowTabId;
-        const canDelete = tab.id !== DEFAULT_USER_FLOW_TAB_ID;
+        const canDelete = userFlowTabs.tabs.length > 1;
 
         return `
           <div
@@ -289,7 +309,7 @@
       replaySessionId: flowState.replaySessionId || "",
       sessionTabs: sessions.map((session) => [
         session.id,
-        userFlowTabs.sessionTabs[session.id] || DEFAULT_USER_FLOW_TAB_ID,
+        getUserFlowSessionTabId(session.id),
       ]),
       tabs: userFlowTabs.tabs,
       sessions: sessions.map((session) => ({
@@ -379,8 +399,11 @@
     renderUserFlowTabs(sessions);
     const visibleSessions = sessions.filter(
       (session) =>
-        (userFlowTabs.sessionTabs[session.id] || DEFAULT_USER_FLOW_TAB_ID) ===
-        userFlowTabs.activeTabId,
+        getUserFlowSessionTabId(session.id) === userFlowTabs.activeTabId,
+    );
+    sessionList.setAttribute(
+      "aria-labelledby",
+      getUserFlowTabElementId(userFlowTabs.activeTabId),
     );
 
     if (
@@ -412,10 +435,6 @@
 
     renderedUserFlowSessionSignature = sessionSignature;
 
-    sessionList.setAttribute(
-      "aria-labelledby",
-      getUserFlowTabElementId(userFlowTabs.activeTabId),
-    );
     sessionList.innerHTML = visibleSessions
       .map((session) => {
         const isRecordingSession = flowState.activeRecordingSessionId === session.id;
@@ -431,10 +450,10 @@
             })
           : "녹화 일시 없음";
         const sessionName = String(session.name || "").trim();
-        const assignedTabId =
-          userFlowTabs.sessionTabs[session.id] || DEFAULT_USER_FLOW_TAB_ID;
+        const assignedTabId = getUserFlowSessionTabId(session.id);
         const assignedTabName =
-          userFlowTabs.tabs.find((tab) => tab.id === assignedTabId)?.name || "Tab 01";
+          userFlowTabs.tabs.find((tab) => tab.id === assignedTabId)?.name ||
+          getFirstUserFlowTab().name;
         const isEditing = editingUserFlowSessionId === session.id;
         const disabled =
           flowState.isRecording ||
@@ -701,8 +720,9 @@
 
       const tabId = deleteButton.dataset.userFlowTabDelete;
       const tab = userFlowTabs.tabs.find((item) => item.id === tabId);
+      const fallbackTab = userFlowTabs.tabs.find((item) => item.id !== tabId);
 
-      if (!tab || tab.id === DEFAULT_USER_FLOW_TAB_ID) {
+      if (!tab || !fallbackTab) {
         return;
       }
 
@@ -713,7 +733,7 @@
       if (
         sessionCount &&
         !window.confirm(
-          `${tab.name} 탭을 삭제하면 녹화가 ${userFlowTabs.tabs[0].name} 탭으로 이동합니다.`,
+          `${tab.name} 탭을 삭제하면 녹화가 ${fallbackTab.name} 탭으로 이동합니다.`,
         )
       ) {
         return;
@@ -721,13 +741,13 @@
 
       Object.keys(userFlowTabs.sessionTabs).forEach((sessionId) => {
         if (userFlowTabs.sessionTabs[sessionId] === tabId) {
-          userFlowTabs.sessionTabs[sessionId] = DEFAULT_USER_FLOW_TAB_ID;
+          userFlowTabs.sessionTabs[sessionId] = fallbackTab.id;
         }
       });
       userFlowTabs.tabs = userFlowTabs.tabs.filter((item) => item.id !== tabId);
 
       if (userFlowTabs.activeTabId === tabId) {
-        userFlowTabs.activeTabId = DEFAULT_USER_FLOW_TAB_ID;
+        userFlowTabs.activeTabId = fallbackTab.id;
       }
 
       editingUserFlowTabId = "";
