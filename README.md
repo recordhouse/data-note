@@ -46,5 +46,3 @@ openResponsePopup();
 // 서버 응답을 받은 시점
 renderResponsePopup("aaaaa", responseJson);
 ```
-
-`communicationName`이 `aaaaa`이면 `/data/aaaaa.json`을 매핑 데이터로 사용한다. 같은 통신명은 기존 통신 탭을 갱신하고, 다른 통신명은 응답 리스트에 새 탭으로 추가된다.
