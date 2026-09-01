@@ -480,6 +480,7 @@
       }
 
       .user-flow-session {
+        position: relative;
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         align-items: center;
@@ -501,6 +502,27 @@
 
       .user-flow-session.is-dragging {
         opacity: 0.45;
+      }
+
+      .user-flow-session.is-drop-before::before,
+      .user-flow-session.is-drop-after::after {
+        position: absolute;
+        right: 8px;
+        left: 8px;
+        z-index: 2;
+        height: 2px;
+        border-radius: 1px;
+        background: #1266d6;
+        content: "";
+        pointer-events: none;
+      }
+
+      .user-flow-session.is-drop-before::before {
+        top: -5px;
+      }
+
+      .user-flow-session.is-drop-after::after {
+        bottom: -5px;
       }
 
       .user-flow-session[data-state="recording"] {
@@ -660,6 +682,29 @@
       .user-flow-replay:disabled {
         cursor: not-allowed;
         opacity: 0.45;
+      }
+
+      .user-flow-replay[data-navigating="true"] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        border-color: #64748b;
+        color: #475569;
+      }
+
+      .user-flow-replay[data-navigating="true"]:disabled {
+        opacity: 1;
+      }
+
+      .user-flow-replay[data-navigating="true"]::before {
+        width: 10px;
+        height: 10px;
+        border: 2px solid #cbd5e1;
+        border-top-color: #475569;
+        border-radius: 50%;
+        animation: popup-replaying-spin 650ms linear infinite;
+        content: "";
       }
 
       .user-flow-delete {

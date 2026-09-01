@@ -20,7 +20,7 @@
   const CLICK_PULSE_MS = 420;
   const SCREEN_MASK_TRANSITION_MS = 160;
   const MAX_EVENTS = 10000;
-  const MAX_SESSIONS = 20;
+  const MAX_SESSIONS = 100;
   const MAX_SESSION_NAME_LENGTH = 40;
   const SCROLL_SAMPLE_MS = 80;
   const STATE_NOTIFY_MS = 120;
@@ -664,6 +664,7 @@
       durationMs: getDurationMs(),
       recordedAt: state.recordedAt,
       sessions: state.sessions.map((session) => ({
+        startPage: getReplayStartPage(session),
         id: session.id,
         name: session.name || "",
         recordedAt: session.recordedAt,
