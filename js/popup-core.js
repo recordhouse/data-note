@@ -14,7 +14,7 @@
   const DEFAULT_POPUP_URL = "./popup.html";
   const DEFAULT_MAPPING_DIRECTORY = "./data/";
   const DEFAULT_POPUP_NAME = "_blank";
-  const DEFAULT_POPUP_FEATURES = "popup=yes,width=720,height=760,left=0,top=0";
+  const DEFAULT_POPUP_FEATURES = "popup=yes,width=600,height=760,left=0,top=0";
   const MAX_PENDING_RESPONSES = 50;
   const POPUP_RECONNECT_CHECK_MS = 400;
 

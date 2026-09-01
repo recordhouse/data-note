@@ -1019,6 +1019,11 @@
 
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", draggedUserFlowSessionId);
+
+    if (typeof event.dataTransfer.setDragImage === "function") {
+      event.dataTransfer.setDragImage(session, 18, 18);
+    }
+
     session.classList.add("is-dragging");
   }
 
@@ -1089,7 +1094,12 @@
       return;
     }
 
-    const dropAfter = targetSession.classList.contains("is-drop-after");
+    const targetRect = targetSession.getBoundingClientRect();
+    const dropAfter = targetSession.classList.contains("is-drop-after")
+      ? true
+      : targetSession.classList.contains("is-drop-before")
+        ? false
+        : event.clientY >= targetRect.top + targetRect.height / 2;
     nextOrder.splice(targetIndex + (dropAfter ? 1 : 0), 0, draggedUserFlowSessionId);
     userFlowTabs.sessionOrder = nextOrder;
 
