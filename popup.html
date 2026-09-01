@@ -185,6 +185,7 @@
       }
 
       .user-flow-status[data-state="replaying"],
+      .user-flow-status[data-state="navigating"],
       .user-flow-status[data-state="ready"] {
         color: #0f766e;
       }
@@ -193,7 +194,8 @@
         background: #0f766e;
       }
 
-      .user-flow-status[data-state="replaying"]::before {
+      .user-flow-status[data-state="replaying"]::before,
+      .user-flow-status[data-state="navigating"]::before {
         width: 14px;
         height: 14px;
         border: 2px solid rgba(15, 118, 110, 0.28);
@@ -201,6 +203,16 @@
         border-right-color: #0f766e;
         background: transparent;
         animation: popup-replaying-spin 650ms linear infinite;
+      }
+
+      .user-flow-status[data-state="navigating"] {
+        color: #475569;
+      }
+
+      .user-flow-status[data-state="navigating"]::before {
+        border-color: rgba(71, 85, 105, 0.24);
+        border-top-color: #475569;
+        border-right-color: #475569;
       }
 
       .user-flow-status[data-state="error"] {
@@ -1172,7 +1184,7 @@
       >
         <div class="user-flow-content">
           <div class="user-flow-toolbar">
-            <span class="user-flow-status" id="userFlowStatus" data-state="idle">연결 대기</span>
+            <span class="user-flow-status" id="userFlowStatus" data-state="idle">연결 대기...</span>
             <div class="user-flow-actions">
               <button
                 class="user-flow-action"

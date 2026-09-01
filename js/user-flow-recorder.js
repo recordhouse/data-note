@@ -1984,6 +1984,7 @@
     state.replayPausedMs = 0;
     state.replayRequestWaitStartedAt = 0;
     state.replayCompletedEventCount = 0;
+    state.lastError = "";
     clearReplayRequestTracking();
     stopReplayProgressNotifications();
     showRuntimeStatus("replaying", "stopped");
@@ -2003,6 +2004,8 @@
       return;
     }
 
+    state.lastError = "";
+    notifyClients({ immediate: true });
     stopRecording();
 
     if (navigateToReplayStart(session)) {

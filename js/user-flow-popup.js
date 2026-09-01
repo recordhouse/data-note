@@ -467,15 +467,20 @@
     let statusText = "기록 없음";
     let statusState = "idle";
 
-    if (flowState.error) {
-      statusText = flowState.error;
-      statusState = "error";
+    if (replayNavigationSessionId) {
+      statusText = "페이지 이동 중...";
+      statusState = "navigating";
     } else if (flowState.isRecording) {
-      statusText = "녹화 중";
+      statusText = "녹화 중...";
       statusState = "recording";
     } else if (flowState.isReplaying) {
-      statusText = "재생 중";
+      statusText = flowState.isWaitingForRequests
+        ? "통신 완료 대기 중..."
+        : "재생 중...";
       statusState = "replaying";
+    } else if (flowState.error) {
+      statusText = flowState.error;
+      statusState = "error";
     } else if (flowState.canReplay) {
       statusText = "재생 준비";
       statusState = "ready";
@@ -635,7 +640,7 @@
                 aria-busy="${String(isNavigatingSession)}"
                 data-navigating="${String(isNavigatingSession)}"
                 ${replayDisabled ? "disabled" : ""}
-              >${isNavigatingSession ? "이동 중" : isReplayingSession ? "재생 중지" : "재생"}</button>
+              >${isNavigatingSession ? "이동 중..." : isReplayingSession ? "재생 중지" : "재생"}</button>
               <button
                 class="user-flow-name-action"
                 type="button"
