@@ -365,6 +365,9 @@
     replayRequestRepeatCounts: new Map(),
     ignoredReplayRequests: new Set(),
   };
+  const dirtySessionIds = new Set();
+  const deletedSessionIds = new Set();
+  let pendingRecordingSync = false;
 
   function getCurrentPage() {
     return `${window.location.pathname}${window.location.search}${window.location.hash}`;
@@ -481,57 +484,139 @@
     return true;
   }
 
-  function readRecording() {
+  function normalizeStoredRecordingSessions(recording) {
+    if (Array.isArray(recording?.sessions)) {
+      return recording.sessions
+        .filter((session) => session && Array.isArray(session.events))
+        .map((session, index) => ({
+          id: session.id || `recording-${session.recordedAt || Date.now()}-${index}`,
+          name: typeof session.name === "string" ? session.name : "",
+          recordedAt: session.recordedAt || null,
+          events: session.events,
+        }));
+    }
+
+    if (Array.isArray(recording?.events) && recording.events.length) {
+      const recordedAt = recording.recordedAt || Date.now();
+      return [
+        {
+          id: `recording-${recordedAt}`,
+          name: "",
+          recordedAt,
+          events: recording.events,
+        },
+      ];
+    }
+
+    return [];
+  }
+
+  function readStoredRecordingSessions() {
+    const recording = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "null");
+    return normalizeStoredRecordingSessions(recording);
+  }
+
+  function sortRecordingSessions(sessions) {
+    return [...sessions].sort(
+      (first, second) =>
+        Number(second.recordedAt || 0) - Number(first.recordedAt || 0),
+    );
+  }
+
+  function setRecordingSessions(sessions) {
+    state.sessions = sortRecordingSessions(sessions).slice(0, MAX_SESSIONS);
+    const currentSession = state.sessions.find(
+      (session) => session.id === state.currentSessionId,
+    );
+    const selectedSession = currentSession || state.sessions[0] || null;
+
+    state.currentSessionId = selectedSession?.id || "";
+    state.events = selectedSession?.events || [];
+    state.recordedAt = selectedSession?.recordedAt || null;
+  }
+
+  function mergeRecordingSessions(storedSessions) {
+    const sessionsById = new Map();
+
+    storedSessions.forEach((session) => {
+      if (session?.id && !sessionsById.has(session.id)) {
+        sessionsById.set(session.id, session);
+      }
+    });
+
+    deletedSessionIds.forEach((sessionId) => sessionsById.delete(sessionId));
+    state.sessions.forEach((session) => {
+      if (session?.id && dirtySessionIds.has(session.id)) {
+        sessionsById.set(session.id, session);
+      }
+    });
+
+    return sortRecordingSessions(Array.from(sessionsById.values()));
+  }
+
+  function synchronizeRecordingFromStorage({ notify = true } = {}) {
+    if (state.isReplaying) {
+      pendingRecordingSync = true;
+      return false;
+    }
+
     try {
-      const recording = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "null");
+      const storedSessions = readStoredRecordingSessions();
+      const sessions =
+        dirtySessionIds.size || deletedSessionIds.size
+          ? mergeRecordingSessions(storedSessions)
+          : storedSessions;
+      setRecordingSessions(sessions);
+      pendingRecordingSync = false;
 
-      if (!recording) {
-        return;
+      if (notify) {
+        notifyClients({ immediate: true });
       }
 
-      if (Array.isArray(recording.sessions)) {
-        state.sessions = recording.sessions
-          .filter((session) => session && Array.isArray(session.events))
-          .slice(0, MAX_SESSIONS)
-          .map((session, index) => ({
-            id: session.id || `recording-${session.recordedAt || Date.now()}-${index}`,
-            name: typeof session.name === "string" ? session.name : "",
-            recordedAt: session.recordedAt || null,
-            events: session.events,
-          }));
-      } else if (Array.isArray(recording.events) && recording.events.length) {
-        const recordedAt = recording.recordedAt || Date.now();
-        state.sessions = [
-          {
-            id: `recording-${recordedAt}`,
-            name: "",
-            recordedAt,
-            events: recording.events,
-          },
-        ];
-      }
-
-      const latestSession = state.sessions[0];
-
-      if (latestSession) {
-        state.currentSessionId = latestSession.id;
-        state.events = latestSession.events;
-        state.recordedAt = latestSession.recordedAt;
-      }
+      return true;
     } catch (error) {
       state.lastError = "저장된 녹화 데이터를 불러오지 못했습니다.";
+
+      if (notify) {
+        notifyClients({ immediate: true });
+      }
+
+      return false;
+    }
+  }
+
+  function readRecording() {
+    if (synchronizeRecordingFromStorage({ notify: false })) {
+      dirtySessionIds.clear();
+      deletedSessionIds.clear();
     }
   }
 
   function persistRecording() {
     try {
+      const mergedSessions = mergeRecordingSessions(readStoredRecordingSessions());
+
+      if (mergedSessions.length > MAX_SESSIONS) {
+        state.lastError = `녹화는 최대 ${MAX_SESSIONS.toLocaleString("ko-KR")}개까지 저장할 수 있습니다. 기존 녹화를 삭제하거나 내보내 주세요.`;
+        return false;
+      }
+
       window.localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify({
           version: RECORDING_FORMAT_VERSION,
-          sessions: state.sessions,
+          sessions: mergedSessions,
         }),
       );
+      setRecordingSessions(mergedSessions);
+      dirtySessionIds.clear();
+      deletedSessionIds.clear();
+
+      if (state.isRecording && state.currentSessionId) {
+        dirtySessionIds.add(state.currentSessionId);
+      }
+
+      pendingRecordingSync = false;
       state.lastError = "";
       return true;
     } catch (error) {
@@ -1056,6 +1141,7 @@
       page: `${window.location.pathname}${window.location.search}${window.location.hash}`,
       ...recordedEvent,
     });
+    dirtySessionIds.add(state.currentSessionId);
 
     if (persist) {
       persistRecording();
@@ -1759,10 +1845,21 @@
       return false;
     }
 
+    if (!synchronizeRecordingFromStorage({ notify: false })) {
+      notifyClients({ immediate: true });
+      return false;
+    }
+
     const importedSessions = normalizeImportedSessions(importData);
 
     if (!importedSessions.length) {
       state.lastError = "가져올 새 녹화가 없거나 이미 존재하는 녹화입니다.";
+      notifyClients({ immediate: true });
+      return false;
+    }
+
+    if (state.sessions.length + importedSessions.length > MAX_SESSIONS) {
+      state.lastError = `녹화는 최대 ${MAX_SESSIONS.toLocaleString("ko-KR")}개까지 저장할 수 있습니다. 기존 녹화를 삭제하거나 내보내 주세요.`;
       notifyClients({ immediate: true });
       return false;
     }
@@ -1773,17 +1870,26 @@
       recordedAt: state.recordedAt,
       sessions: state.sessions,
     };
+    const previousDirtySessionIds = new Set(dirtySessionIds);
+    const previousDeletedSessionIds = new Set(deletedSessionIds);
 
-    state.sessions = [...importedSessions, ...state.sessions].slice(0, MAX_SESSIONS);
+    state.sessions = [...importedSessions, ...state.sessions];
     state.currentSessionId = importedSessions[0].id;
     state.events = importedSessions[0].events;
     state.recordedAt = importedSessions[0].recordedAt;
+    importedSessions.forEach((session) => dirtySessionIds.add(session.id));
 
     if (!persistRecording()) {
       state.sessions = previousState.sessions;
       state.currentSessionId = previousState.currentSessionId;
       state.events = previousState.events;
       state.recordedAt = previousState.recordedAt;
+      dirtySessionIds.clear();
+      previousDirtySessionIds.forEach((sessionId) => dirtySessionIds.add(sessionId));
+      deletedSessionIds.clear();
+      previousDeletedSessionIds.forEach((sessionId) =>
+        deletedSessionIds.add(sessionId),
+      );
       notifyClients({ immediate: true });
       return false;
     }
@@ -1794,6 +1900,18 @@
 
   function startRecording() {
     stopReplay();
+
+    if (!synchronizeRecordingFromStorage({ notify: false })) {
+      notifyClients({ immediate: true });
+      return false;
+    }
+
+    if (state.sessions.length >= MAX_SESSIONS) {
+      state.lastError = `녹화는 최대 ${MAX_SESSIONS.toLocaleString("ko-KR")}개까지 저장할 수 있습니다. 기존 녹화를 삭제하거나 내보내 주세요.`;
+      notifyClients({ immediate: true });
+      return false;
+    }
+
     const recordedAt = Date.now();
     const session = {
       id: createUniqueSessionId(recordedAt),
@@ -1801,8 +1919,14 @@
       recordedAt,
       events: [],
     };
+    const previousState = {
+      currentSessionId: state.currentSessionId,
+      events: state.events,
+      recordedAt: state.recordedAt,
+      sessions: state.sessions,
+    };
 
-    state.sessions = [session, ...state.sessions].slice(0, MAX_SESSIONS);
+    state.sessions = [session, ...state.sessions];
     state.currentSessionId = session.id;
     state.events = session.events;
     state.isRecording = true;
@@ -1812,10 +1936,23 @@
     state.scrollLastAt.clear();
     state.scrollTimers.forEach((timer) => window.clearTimeout(timer));
     state.scrollTimers.clear();
+    dirtySessionIds.add(session.id);
+
+    if (!persistRecording()) {
+      dirtySessionIds.delete(session.id);
+      state.sessions = previousState.sessions;
+      state.currentSessionId = previousState.currentSessionId;
+      state.events = previousState.events;
+      state.recordedAt = previousState.recordedAt;
+      state.isRecording = false;
+      notifyClients({ immediate: true });
+      return false;
+    }
+
     showScreenMask("recording");
     showRuntimeStatus("recording");
-    persistRecording();
     notifyClients({ immediate: true });
+    return true;
   }
 
   function stopRecording() {
@@ -1850,6 +1987,11 @@
     stopReplayProgressNotifications();
     showRuntimeStatus("replaying", "stopped");
     hideScreenMask();
+
+    if (pendingRecordingSync) {
+      synchronizeRecordingFromStorage({ notify: false });
+    }
+
     notifyClients({ immediate: true });
   }
 
@@ -1943,6 +2085,11 @@
         stopReplayProgressNotifications();
         showRuntimeStatus("replaying", "completed");
         hideScreenMask();
+
+        if (pendingRecordingSync) {
+          synchronizeRecordingFromStorage({ notify: false });
+        }
+
         notifyClients({ immediate: true });
       }
     }
@@ -2021,6 +2168,9 @@
     state.recordedAt = null;
     state.lastError = "";
     state.lastReplaySessionId = "";
+    dirtySessionIds.clear();
+    deletedSessionIds.clear();
+    pendingRecordingSync = false;
     hideRuntimeStatus();
     window.localStorage.removeItem(STORAGE_KEY);
     notifyClients({ immediate: true });
@@ -2224,6 +2374,8 @@
       return false;
     }
 
+    synchronizeRecordingFromStorage({ notify: false });
+
     const session = state.sessions.find((item) => item.id === sessionId);
     const normalizedName = String(name || "").trim().slice(0, MAX_SESSION_NAME_LENGTH);
 
@@ -2231,8 +2383,22 @@
       return false;
     }
 
+    const previousName = session.name;
+    const wasDirty = dirtySessionIds.has(session.id);
     session.name = normalizedName;
-    persistRecording();
+    dirtySessionIds.add(session.id);
+
+    if (!persistRecording()) {
+      session.name = previousName;
+
+      if (!wasDirty) {
+        dirtySessionIds.delete(session.id);
+      }
+
+      notifyClients({ immediate: true });
+      return false;
+    }
+
     notifyClients({ immediate: true });
     return true;
   }
@@ -2242,13 +2408,21 @@
       return false;
     }
 
+    synchronizeRecordingFromStorage({ notify: false });
+
     const sessionIndex = state.sessions.findIndex((session) => session.id === sessionId);
 
     if (sessionIndex < 0) {
       return false;
     }
 
+    const deletedSession = state.sessions[sessionIndex];
+    const previousDirtySessionIds = new Set(dirtySessionIds);
+    const previousDeletedSessionIds = new Set(deletedSessionIds);
+
     state.sessions.splice(sessionIndex, 1);
+    dirtySessionIds.delete(sessionId);
+    deletedSessionIds.add(sessionId);
 
     if (state.currentSessionId === sessionId) {
       const latestSession = state.sessions[0];
@@ -2257,7 +2431,21 @@
       state.recordedAt = latestSession?.recordedAt || null;
     }
 
-    persistRecording();
+    if (!persistRecording()) {
+      state.sessions.splice(sessionIndex, 0, deletedSession);
+      dirtySessionIds.clear();
+      previousDirtySessionIds.forEach((dirtySessionId) =>
+        dirtySessionIds.add(dirtySessionId),
+      );
+      deletedSessionIds.clear();
+      previousDeletedSessionIds.forEach((deletedSessionId) =>
+        deletedSessionIds.add(deletedSessionId),
+      );
+      setRecordingSessions(state.sessions);
+      notifyClients({ immediate: true });
+      return false;
+    }
+
     notifyClients({ immediate: true });
     return true;
   }
@@ -2320,13 +2508,36 @@
     }
   }
 
+  function handleRecordingStorage(event) {
+    if (
+      (event.key !== STORAGE_KEY && event.key !== null) ||
+      (event.storageArea && event.storageArea !== window.localStorage)
+    ) {
+      return;
+    }
+
+    synchronizeRecordingFromStorage();
+  }
+
+  function handleRecordingPageShow() {
+    synchronizeRecordingFromStorage();
+  }
+
+  function handleRecordingPageHide() {
+    if (dirtySessionIds.size || deletedSessionIds.size) {
+      persistRecording();
+    }
+  }
+
   function attachListeners() {
     document.addEventListener("click", handleClick, true);
     document.addEventListener("input", handleFormChange, true);
     document.addEventListener("change", handleFormChange, true);
     document.addEventListener("scroll", handleScroll, true);
     window.addEventListener("message", handleCommandMessage);
-    window.addEventListener("pagehide", persistRecording);
+    window.addEventListener("storage", handleRecordingStorage);
+    window.addEventListener("pageshow", handleRecordingPageShow);
+    window.addEventListener("pagehide", handleRecordingPageHide);
   }
 
   readRecording();
