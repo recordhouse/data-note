@@ -563,10 +563,6 @@
             })
           : "녹화 일시 없음";
         const sessionName = String(session.name || "").trim();
-        const assignedTabId = getUserFlowSessionTabId(session.id);
-        const assignedTabName =
-          userFlowTabs.tabs.find((tab) => tab.id === assignedTabId)?.name ||
-          getFirstUserFlowTab().name;
         const isEditing = editingUserFlowSessionId === session.id;
         const isNavigatingSession = replayNavigationSessionId === session.id;
         const disabled =
@@ -588,7 +584,6 @@
             >
               <div class="user-flow-session-main">
                 <form class="user-flow-name-editor" data-user-flow-name-form>
-                  <span class="user-flow-session-tab-prefix">${escapeHtml(assignedTabName)} ·</span>
                   <input
                     class="user-flow-name-input"
                     type="text"
@@ -620,7 +615,6 @@
           >
             <div class="user-flow-session-main">
               <strong class="user-flow-session-time">
-                <span class="user-flow-session-tab-prefix">${escapeHtml(assignedTabName)} ·</span>
                 <span>${escapeHtml(sessionName || recordedAt)}</span>
               </strong>
               ${sessionName ? `<span class="user-flow-session-recorded-at">${escapeHtml(recordedAt)}</span>` : ""}
