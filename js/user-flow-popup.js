@@ -16,6 +16,7 @@
   const DEFAULT_USER_FLOW_TAB_ID = "default";
   const MAX_USER_FLOW_TABS = 10;
   const MAX_USER_FLOW_SESSIONS_PER_TAB = 10;
+  const REPLAY_NAVIGATION_IDLE_MS = 500;
   const REPLAY_NAVIGATION_TIMEOUT_MS = 60 * 1000;
 
   let currentUserFlowState = {};
@@ -24,6 +25,8 @@
   let renderedUserFlowSessionSignature = "";
   let userFlowDragDepth = 0;
   let draggedUserFlowSessionId = "";
+  let replayNavigationIdleTimer = 0;
+  let replayNavigationParentReady = false;
   let replayNavigationSessionId = "";
   let replayNavigationTimer = 0;
   let userFlowTabs = readUserFlowTabs();
@@ -443,15 +446,8 @@
   }
 
   function renderUserFlowState(flowState = {}) {
-    if (
-      replayNavigationSessionId &&
-      flowState.isReplaying &&
-      flowState.replaySessionId === replayNavigationSessionId
-    ) {
-      clearReplayNavigationState({ rerender: false });
-    }
-
     currentUserFlowState = flowState;
+    updateReplayNavigationState(flowState);
     const status = document.querySelector("#userFlowStatus");
     const recordButton = document.querySelector("#userFlowRecordButton");
     const importButton = document.querySelector("#userFlowImportButton");
@@ -711,8 +707,11 @@
   }
 
   function clearReplayNavigationState({ rerender = true } = {}) {
+    window.clearTimeout(replayNavigationIdleTimer);
     window.clearTimeout(replayNavigationTimer);
+    replayNavigationIdleTimer = 0;
     replayNavigationTimer = 0;
+    replayNavigationParentReady = false;
 
     if (!replayNavigationSessionId) {
       return;
@@ -726,13 +725,43 @@
   }
 
   function startReplayNavigationState(sessionId) {
+    window.clearTimeout(replayNavigationIdleTimer);
     window.clearTimeout(replayNavigationTimer);
+    replayNavigationIdleTimer = 0;
+    replayNavigationParentReady = false;
     replayNavigationSessionId = sessionId;
     replayNavigationTimer = window.setTimeout(() => {
       clearReplayNavigationState();
       sendUserFlowCommand("get-state");
     }, REPLAY_NAVIGATION_TIMEOUT_MS);
     rerenderUserFlowOrganization();
+  }
+
+  function updateReplayNavigationState(flowState) {
+    if (!replayNavigationSessionId || !replayNavigationParentReady) {
+      return;
+    }
+
+    window.clearTimeout(replayNavigationIdleTimer);
+    replayNavigationIdleTimer = 0;
+    const pendingRequestCount = Math.max(
+      0,
+      Number(flowState.pendingRequestCount || 0),
+    );
+
+    if (pendingRequestCount > 0 || flowState.isWaitingForRequests) {
+      return;
+    }
+
+    const expectedSessionId = replayNavigationSessionId;
+    replayNavigationIdleTimer = window.setTimeout(() => {
+      if (
+        replayNavigationSessionId === expectedSessionId &&
+        replayNavigationParentReady
+      ) {
+        clearReplayNavigationState();
+      }
+    }, REPLAY_NAVIGATION_IDLE_MS);
   }
 
   function handleUserFlowControl(event) {
@@ -1652,7 +1681,14 @@
   }
 
   function handleParentReady() {
-    clearReplayNavigationState();
+    if (replayNavigationSessionId) {
+      window.clearTimeout(replayNavigationTimer);
+      replayNavigationParentReady = true;
+      window.clearTimeout(replayNavigationIdleTimer);
+      replayNavigationIdleTimer = 0;
+      replayNavigationTimer = 0;
+    }
+
     sendUserFlowCommand("get-state");
   }
 
