@@ -11,11 +11,12 @@
   const PARENT_READY_EVENT = "response-mapping-popup-parent-ready";
   const MAX_USER_FLOW_IMPORT_BYTES = 10 * 1024 * 1024;
   const MAX_USER_FLOW_ARCHIVE_IMPORT_BYTES = 50 * 1024 * 1024;
-  const MAX_USER_FLOW_IMPORT_SESSIONS = 100;
+  const MAX_USER_FLOW_SESSIONS = 150;
+  const MAX_USER_FLOW_IMPORT_SESSIONS = MAX_USER_FLOW_SESSIONS;
   const USER_FLOW_TAB_STORAGE_KEY = "response-mapping-user-flow-tabs:v1";
   const DEFAULT_USER_FLOW_TAB_ID = "default";
   const MAX_USER_FLOW_TABS = 10;
-  const MAX_USER_FLOW_SESSIONS_PER_TAB = 10;
+  const MAX_USER_FLOW_SESSIONS_PER_TAB = 20;
   const REPLAY_NAVIGATION_IDLE_MS = 500;
   const REPLAY_NAVIGATION_TIMEOUT_MS = 60 * 1000;
   const USER_FLOW_DRAG_SCROLL_EDGE_PX = 48;
@@ -1457,10 +1458,10 @@
 
       if (
         (currentUserFlowState.sessions || []).length + importedSessions.length >
-        MAX_USER_FLOW_TABS * MAX_USER_FLOW_SESSIONS_PER_TAB
+        MAX_USER_FLOW_SESSIONS
       ) {
         throw new Error(
-          `전체 녹화는 최대 ${MAX_USER_FLOW_TABS * MAX_USER_FLOW_SESSIONS_PER_TAB}개까지 저장할 수 있습니다.`,
+          `전체 녹화는 최대 ${MAX_USER_FLOW_SESSIONS}개까지 저장할 수 있습니다.`,
         );
       }
 
