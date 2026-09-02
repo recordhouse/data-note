@@ -464,15 +464,15 @@
     let statusState = "idle";
 
     if (replayNavigationSessionId) {
-      statusText = "페이지 이동 중...";
+      statusText = "페이지 이동 중";
       statusState = "navigating";
     } else if (flowState.isRecording) {
-      statusText = "녹화 중...";
+      statusText = "녹화 중";
       statusState = "recording";
     } else if (flowState.isReplaying) {
       statusText = flowState.isWaitingForRequests
-        ? "통신 완료 대기 중..."
-        : "재생 중...";
+        ? "통신 완료 대기 중"
+        : "재생 중";
       statusState = "replaying";
     } else if (flowState.error) {
       statusText = flowState.error;
@@ -482,7 +482,29 @@
       statusState = "ready";
     }
 
-    status.textContent = statusText;
+    const hasProgressDots = ["navigating", "recording", "replaying"].includes(
+      statusState,
+    );
+
+    if (
+      status.dataset.statusText !== statusText ||
+      status.dataset.hasProgressDots !== String(hasProgressDots)
+    ) {
+      status.dataset.statusText = statusText;
+      status.dataset.hasProgressDots = String(hasProgressDots);
+
+      if (!hasProgressDots) {
+        status.textContent = statusText;
+      } else {
+        const statusLabel = document.createElement("span");
+        const progressDots = document.createElement("span");
+        statusLabel.textContent = statusText;
+        progressDots.className = "user-flow-progress-dots";
+        progressDots.setAttribute("aria-hidden", "true");
+        statusLabel.append(progressDots);
+        status.replaceChildren(statusLabel);
+      }
+    }
     status.dataset.state = statusState;
 
     recordButton.textContent = flowState.isRecording ? "녹화 중지" : "녹화";
@@ -636,7 +658,7 @@
                 aria-busy="${String(isNavigatingSession)}"
                 data-navigating="${String(isNavigatingSession)}"
                 ${replayDisabled ? "disabled" : ""}
-              >${isNavigatingSession ? "이동 중..." : isReplayingSession ? "재생 중지" : "재생"}</button>
+              >${isNavigatingSession ? '<span>이동 중<span class="user-flow-progress-dots" aria-hidden="true"></span></span>' : isReplayingSession ? "재생 중지" : "재생"}</button>
               <button
                 class="user-flow-name-action"
                 type="button"

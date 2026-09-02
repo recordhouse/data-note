@@ -719,6 +719,36 @@
         content: "";
       }
 
+      .user-flow-progress-dots {
+        display: inline-block;
+        width: 1.5em;
+        overflow: hidden;
+        text-align: left;
+        vertical-align: bottom;
+        white-space: nowrap;
+      }
+
+      .user-flow-progress-dots::after {
+        display: inline-block;
+        content: "...";
+        animation: user-flow-progress-dots 900ms steps(1, end) infinite;
+      }
+
+      @keyframes user-flow-progress-dots {
+        0%,
+        100% {
+          clip-path: inset(0 66% 0 0);
+        }
+
+        33% {
+          clip-path: inset(0 33% 0 0);
+        }
+
+        66% {
+          clip-path: inset(0);
+        }
+      }
+
       .user-flow-delete {
         min-width: 52px;
         height: 30px;
@@ -1184,7 +1214,9 @@
       >
         <div class="user-flow-content">
           <div class="user-flow-toolbar">
-            <span class="user-flow-status" id="userFlowStatus" data-state="idle">연결 대기...</span>
+            <span class="user-flow-status" id="userFlowStatus" data-state="idle">
+              <span>연결 대기<span class="user-flow-progress-dots" aria-hidden="true"></span></span>
+            </span>
             <div class="user-flow-actions">
               <button
                 class="user-flow-action"
