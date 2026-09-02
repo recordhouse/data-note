@@ -18,6 +18,8 @@
   const MAX_USER_FLOW_SESSIONS_PER_TAB = 10;
   const REPLAY_NAVIGATION_IDLE_MS = 500;
   const REPLAY_NAVIGATION_TIMEOUT_MS = 60 * 1000;
+  const USER_FLOW_DRAG_SCROLL_EDGE_PX = 48;
+  const USER_FLOW_DRAG_SCROLL_STEP_PX = 18;
 
   let currentUserFlowState = {};
   let editingUserFlowSessionId = "";
@@ -1093,14 +1095,81 @@
     });
   }
 
-  function handleUserFlowSessionOrderDragOver(event) {
-    const targetSession = event.target.closest("[data-user-flow-session-id]");
-    const targetSessionId = targetSession?.dataset.userFlowSessionId || "";
+  function getUserFlowSessionOrderDropPosition(event) {
+    const sessionList = document.querySelector("#userFlowSessionList");
+
+    if (!sessionList || event.target.closest("[data-user-flow-tab-drop]")) {
+      return null;
+    }
+
+    const listRect = sessionList.getBoundingClientRect();
+    const isInsideList = sessionList.contains(event.target);
+    const isWithinListWidth =
+      event.clientX >= listRect.left && event.clientX <= listRect.right;
 
     if (
-      !targetSession ||
+      !isInsideList &&
+      (!isWithinListWidth ||
+        (event.clientY > listRect.top && event.clientY < listRect.bottom))
+    ) {
+      return null;
+    }
+
+    const sessions = Array.from(
+      sessionList.querySelectorAll("[data-user-flow-session-id]"),
+    ).filter(
+      (session) =>
+        session.dataset.userFlowSessionId !== draggedUserFlowSessionId,
+    );
+
+    if (!sessions.length) {
+      return null;
+    }
+
+    const targetSession =
+      sessions.find((session) => {
+        const rect = session.getBoundingClientRect();
+        return event.clientY < rect.top + rect.height / 2;
+      }) || sessions[sessions.length - 1];
+    const targetRect = targetSession.getBoundingClientRect();
+
+    return {
+      dropBefore: event.clientY < targetRect.top + targetRect.height / 2,
+      targetSession,
+    };
+  }
+
+  function scrollUserFlowSessionListDuringDrag(event) {
+    const sessionList = document.querySelector("#userFlowSessionList");
+
+    if (!sessionList) {
+      return;
+    }
+
+    const listRect = sessionList.getBoundingClientRect();
+    const isWithinListWidth =
+      event.clientX >= listRect.left && event.clientX <= listRect.right;
+
+    if (!isWithinListWidth && !sessionList.contains(event.target)) {
+      return;
+    }
+
+    if (event.clientY <= listRect.top + USER_FLOW_DRAG_SCROLL_EDGE_PX) {
+      sessionList.scrollTop -= USER_FLOW_DRAG_SCROLL_STEP_PX;
+    } else if (
+      event.clientY >=
+      listRect.bottom - USER_FLOW_DRAG_SCROLL_EDGE_PX
+    ) {
+      sessionList.scrollTop += USER_FLOW_DRAG_SCROLL_STEP_PX;
+    }
+  }
+
+  function handleUserFlowSessionOrderDragOver(event) {
+    const dropPosition = getUserFlowSessionOrderDropPosition(event);
+
+    if (
+      !dropPosition ||
       !draggedUserFlowSessionId ||
-      targetSessionId === draggedUserFlowSessionId ||
       isUserFlowOrganizationBlocked() ||
       hasDraggedFiles(event)
     ) {
@@ -1109,8 +1178,8 @@
 
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
-    const targetRect = targetSession.getBoundingClientRect();
-    const dropBefore = event.clientY < targetRect.top + targetRect.height / 2;
+    scrollUserFlowSessionListDuringDrag(event);
+    const { dropBefore, targetSession } = dropPosition;
     clearUserFlowSessionDropIndicators(targetSession);
     targetSession.classList.toggle("is-drop-before", dropBefore);
     targetSession.classList.toggle("is-drop-after", !dropBefore);
@@ -1120,13 +1189,13 @@
   }
 
   function handleUserFlowSessionOrderDrop(event) {
-    const targetSession = event.target.closest("[data-user-flow-session-id]");
+    const dropPosition = getUserFlowSessionOrderDropPosition(event);
+    const targetSession = dropPosition?.targetSession;
     const targetSessionId = targetSession?.dataset.userFlowSessionId || "";
 
     if (
-      !targetSession ||
+      !dropPosition ||
       !draggedUserFlowSessionId ||
-      targetSessionId === draggedUserFlowSessionId ||
       isUserFlowOrganizationBlocked() ||
       hasDraggedFiles(event)
     ) {
@@ -1145,12 +1214,11 @@
       return;
     }
 
-    const targetRect = targetSession.getBoundingClientRect();
     const dropAfter = targetSession.classList.contains("is-drop-after")
       ? true
       : targetSession.classList.contains("is-drop-before")
         ? false
-        : event.clientY >= targetRect.top + targetRect.height / 2;
+        : !dropPosition.dropBefore;
     nextOrder.splice(targetIndex + (dropAfter ? 1 : 0), 0, draggedUserFlowSessionId);
     userFlowTabs.sessionOrder = nextOrder;
 
