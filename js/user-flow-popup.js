@@ -484,29 +484,7 @@
       statusState = "ready";
     }
 
-    const hasProgressDots = ["navigating", "recording", "replaying"].includes(
-      statusState,
-    );
-
-    if (
-      status.dataset.statusText !== statusText ||
-      status.dataset.hasProgressDots !== String(hasProgressDots)
-    ) {
-      status.dataset.statusText = statusText;
-      status.dataset.hasProgressDots = String(hasProgressDots);
-
-      if (!hasProgressDots) {
-        status.textContent = statusText;
-      } else {
-        const statusLabel = document.createElement("span");
-        const progressDots = document.createElement("span");
-        statusLabel.textContent = statusText;
-        progressDots.className = "user-flow-progress-dots";
-        progressDots.setAttribute("aria-hidden", "true");
-        statusLabel.append(progressDots);
-        status.replaceChildren(statusLabel);
-      }
-    }
+    status.textContent = statusText;
     status.dataset.state = statusState;
 
     recordButton.textContent = flowState.isRecording ? "녹화 중지" : "녹화";
@@ -660,7 +638,7 @@
                 aria-busy="${String(isNavigatingSession)}"
                 data-navigating="${String(isNavigatingSession)}"
                 ${replayDisabled ? "disabled" : ""}
-              >${isNavigatingSession ? '<span>이동 중<span class="user-flow-progress-dots" aria-hidden="true"></span></span>' : isReplayingSession ? "재생 중지" : "재생"}</button>
+              >${isNavigatingSession ? "이동 중" : isReplayingSession ? "재생 중지" : "재생"}</button>
               <button
                 class="user-flow-name-action"
                 type="button"
@@ -725,8 +703,16 @@
       (item) => item.id === sessionId,
     );
     const currentPage = getParentCurrentPage();
+    const resumesOnCurrentPage = Boolean(
+      currentUserFlowState.replayResumeSessionId === sessionId &&
+        currentUserFlowState.replayResumePage === currentPage,
+    );
+
     return Boolean(
-      session?.startPage && currentPage && session.startPage !== currentPage,
+      !resumesOnCurrentPage &&
+        session?.startPage &&
+        currentPage &&
+        session.startPage !== currentPage,
     );
   }
 

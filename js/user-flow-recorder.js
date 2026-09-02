@@ -348,6 +348,12 @@
     replayPausedMs: 0,
     replayRequestWaitStartedAt: 0,
     replayCompletedEventCount: 0,
+    replayNextEventIndex: 0,
+    replayResumeCompletedEventCount: 0,
+    replayResumeElapsedMs: 0,
+    replayResumeEventIndex: 0,
+    replayResumePage: "",
+    replayResumeSessionId: "",
     replayProgressTimer: 0,
     lastError: "",
     scrollLastAt: new Map(),
@@ -525,6 +531,14 @@
 
   function setRecordingSessions(sessions) {
     state.sessions = sortRecordingSessions(sessions).slice(0, MAX_SESSIONS);
+    const replayResumeSessionExists = state.sessions.some(
+      (session) => session.id === state.replayResumeSessionId,
+    );
+
+    if (state.replayResumeSessionId && !replayResumeSessionExists) {
+      clearReplayResumeState();
+    }
+
     const currentSession = state.sessions.find(
       (session) => session.id === state.currentSessionId,
     );
@@ -629,21 +643,27 @@
     return events.length ? events[events.length - 1].at : 0;
   }
 
+  function getReplayElapsedMs() {
+    if (!state.isReplaying) {
+      return 0;
+    }
+
+    const currentRequestWaitMs = state.replayRequestWaitStartedAt
+      ? Math.max(0, performance.now() - state.replayRequestWaitStartedAt)
+      : 0;
+
+    return Math.max(
+      0,
+      performance.now() -
+        state.replayStartedAt -
+        state.replayPausedMs -
+        currentRequestWaitMs,
+    );
+  }
+
   function getPublicState() {
     const replayDurationMs = getDurationMs();
-    const currentRequestWaitMs =
-      state.isReplaying && state.replayRequestWaitStartedAt
-        ? Math.max(0, performance.now() - state.replayRequestWaitStartedAt)
-        : 0;
-    const replayElapsedMs = state.isReplaying
-      ? Math.max(
-          0,
-          performance.now() -
-            state.replayStartedAt -
-            state.replayPausedMs -
-            currentRequestWaitMs,
-        )
-      : 0;
+    const replayElapsedMs = getReplayElapsedMs();
 
     return {
       isRecording: state.isRecording,
@@ -652,6 +672,8 @@
       activeRecordingSessionId: state.isRecording ? state.currentSessionId : "",
       replaySessionId: state.replaySessionId,
       replayCompletedEventCount: state.replayCompletedEventCount,
+      replayResumePage: state.replayResumePage,
+      replayResumeSessionId: state.replayResumeSessionId,
       pendingRequestCount: getPendingRequestCount(),
       blockingRequestCount: getBlockingRequestCount(),
       isWaitingForRequests: Boolean(
@@ -1506,10 +1528,18 @@
     return true;
   }
 
-  async function waitForTarget(selector) {
+  function isReplayRunActive(replayRunId) {
+    return !state.replayAbort && state.replayRunId === replayRunId;
+  }
+
+  async function waitForTarget(selector, replayRunId) {
     const startedAt = performance.now();
 
     while (performance.now() - startedAt < TARGET_WAIT_MS) {
+      if (!isReplayRunActive(replayRunId)) {
+        return null;
+      }
+
       const target = findTarget(selector);
 
       if (target) {
@@ -1522,8 +1552,8 @@
     return null;
   }
 
-  async function playScroll(recordedEvent) {
-    const target = await waitForTarget(recordedEvent.selector);
+  async function playScroll(recordedEvent, replayRunId, markPlayed) {
+    const target = await waitForTarget(recordedEvent.selector, replayRunId);
 
     if (target === window) {
       const { maxX, maxY } = getWindowScrollBounds();
@@ -1547,10 +1577,14 @@
       } catch (error) {
         window.scrollTo(left, top);
       }
+      markPlayed();
       return;
     }
 
     if (!target) {
+      if (isReplayRunActive(replayRunId)) {
+        markPlayed();
+      }
       return;
     }
 
@@ -1573,6 +1607,7 @@
           top,
           behavior: "smooth",
         });
+        markPlayed();
         return;
       } catch (error) {
         // Fall through for browsers that only support numeric scrollTo arguments.
@@ -1581,6 +1616,7 @@
 
     target.scrollLeft = left;
     target.scrollTop = top;
+    markPlayed();
   }
 
   function playClick(target, recordedEvent) {
@@ -1697,20 +1733,31 @@
       .filter(Boolean);
   }
 
-  async function playCheckableClick(target, recordedEvent) {
+  async function playCheckableClick(
+    target,
+    recordedEvent,
+    replayRunId,
+    markPlayed,
+  ) {
     const desiredChecked = recordedEvent.replayChecked;
 
     if (target.type === "radio" && !desiredChecked) {
       setNativeValue(target, "checked", false);
       target.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
       target.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+      markPlayed();
       await waitForRenderFrame();
       return;
     }
 
     setNativeValue(target, "checked", !desiredChecked);
     playClick(target, recordedEvent);
+    markPlayed();
     await waitForRenderFrame();
+
+    if (!isReplayRunActive(replayRunId)) {
+      return;
+    }
 
     const currentTarget = findTarget(recordedEvent.selector);
 
@@ -1728,15 +1775,18 @@
     await waitForRenderFrame();
   }
 
-  async function playEvent(recordedEvent) {
+  async function playEvent(recordedEvent, replayRunId, markPlayed) {
     if (recordedEvent.type === "scroll") {
-      await playScroll(recordedEvent);
+      await playScroll(recordedEvent, replayRunId, markPlayed);
       return;
     }
 
-    const target = await waitForTarget(recordedEvent.selector);
+    const target = await waitForTarget(recordedEvent.selector, replayRunId);
 
     if (!target || target === window) {
+      if (isReplayRunActive(replayRunId)) {
+        markPlayed();
+      }
       return;
     }
 
@@ -1745,16 +1795,23 @@
         isCheckableInput(target) &&
         typeof recordedEvent.replayChecked === "boolean"
       ) {
-        await playCheckableClick(target, recordedEvent);
+        await playCheckableClick(
+          target,
+          recordedEvent,
+          replayRunId,
+          markPlayed,
+        );
         return;
       }
 
       playClick(target, recordedEvent);
+      markPlayed();
       return;
     }
 
     if (recordedEvent.type === "input" || recordedEvent.type === "change") {
       playFormChange(target, recordedEvent);
+      markPlayed();
     }
   }
 
@@ -1900,7 +1957,7 @@
   }
 
   function startRecording() {
-    stopReplay();
+    stopReplay({ preserveProgress: false });
 
     if (!synchronizeRecordingFromStorage({ notify: false })) {
       notifyClients({ immediate: true });
@@ -1970,9 +2027,33 @@
     notifyClients({ immediate: true });
   }
 
-  function stopReplay() {
+  function clearReplayResumeState() {
+    state.replayResumeCompletedEventCount = 0;
+    state.replayResumeElapsedMs = 0;
+    state.replayResumeEventIndex = 0;
+    state.replayResumePage = "";
+    state.replayResumeSessionId = "";
+  }
+
+  function stopReplay({ preserveProgress = true } = {}) {
     if (!state.isReplaying) {
+      if (!preserveProgress) {
+        clearReplayResumeState();
+      }
       return;
+    }
+
+    if (preserveProgress && state.replaySessionId) {
+      state.replayResumeCompletedEventCount = state.replayCompletedEventCount;
+      state.replayResumeElapsedMs = Math.min(
+        getDurationMs(),
+        getReplayElapsedMs(),
+      );
+      state.replayResumeEventIndex = state.replayNextEventIndex;
+      state.replayResumePage = getCurrentPage();
+      state.replayResumeSessionId = state.replaySessionId;
+    } else {
+      clearReplayResumeState();
     }
 
     state.replayAbort = true;
@@ -1984,6 +2065,7 @@
     state.replayPausedMs = 0;
     state.replayRequestWaitStartedAt = 0;
     state.replayCompletedEventCount = 0;
+    state.replayNextEventIndex = 0;
     state.lastError = "";
     clearReplayRequestTracking();
     stopReplayProgressNotifications();
@@ -2004,13 +2086,38 @@
       return;
     }
 
+    const replayEvents = createReplayEvents(session.events);
+    const resumesPreviousReplay = Boolean(
+      state.replayResumeSessionId === session.id &&
+        state.replayResumePage === getCurrentPage() &&
+        state.replayResumeEventIndex <= replayEvents.length,
+    );
+
+    if (!resumesPreviousReplay) {
+      clearReplayResumeState();
+    }
+
     state.lastError = "";
     notifyClients({ immediate: true });
     stopRecording();
 
-    if (navigateToReplayStart(session)) {
+    if (!resumesPreviousReplay && navigateToReplayStart(session)) {
       return;
     }
+
+    const replayStartEventIndex = resumesPreviousReplay
+      ? state.replayResumeEventIndex
+      : 0;
+    const replayStartElapsedMs = resumesPreviousReplay
+      ? state.replayResumeElapsedMs
+      : 0;
+    const replayStartCompletedEventCount = resumesPreviousReplay
+      ? Math.min(
+          session.events.length,
+          Math.max(0, state.replayResumeCompletedEventCount),
+        )
+      : 0;
+    clearReplayResumeState();
 
     state.currentSessionId = session.id;
     state.events = session.events;
@@ -2021,10 +2128,11 @@
     state.isReplaying = true;
     state.replaySessionId = session.id;
     state.lastReplaySessionId = session.id;
-    state.replayStartedAt = performance.now();
+    state.replayStartedAt = performance.now() - replayStartElapsedMs;
     state.replayPausedMs = 0;
     state.replayRequestWaitStartedAt = 0;
-    state.replayCompletedEventCount = 0;
+    state.replayCompletedEventCount = replayStartCompletedEventCount;
+    state.replayNextEventIndex = replayStartEventIndex;
     state.lastError = "";
     initializeReplayRequestTracking();
     showScreenMask("replaying");
@@ -2040,13 +2148,19 @@
 
     try {
       const replayStartedAt = state.replayStartedAt;
-      const replayEvents = createReplayEvents(state.events);
 
       if (!(await waitForReplayRequests(replayRunId))) {
         return;
       }
 
-      for (const recordedEvent of replayEvents) {
+      for (
+        let eventIndex = replayStartEventIndex;
+        eventIndex < replayEvents.length;
+        eventIndex += 1
+      ) {
+        const recordedEvent = replayEvents[eventIndex];
+        state.replayNextEventIndex = eventIndex;
+
         if (state.replayAbort || state.replayRunId !== replayRunId) {
           break;
         }
@@ -2067,9 +2181,25 @@
           break;
         }
 
-        await playEvent(recordedEvent);
-        state.replayCompletedEventCount += recordedEvent.replaySourceEventCount || 1;
-        notifyClients();
+        let eventMarkedPlayed = false;
+        const markPlayed = () => {
+          if (eventMarkedPlayed || !isReplayRunActive(replayRunId)) {
+            return;
+          }
+
+          eventMarkedPlayed = true;
+          state.replayCompletedEventCount +=
+            recordedEvent.replaySourceEventCount || 1;
+          state.replayNextEventIndex = eventIndex + 1;
+          notifyClients();
+        };
+        await playEvent(recordedEvent, replayRunId, markPlayed);
+
+        if (!isReplayRunActive(replayRunId)) {
+          break;
+        }
+
+        markPlayed();
         await sleep(0);
       }
 
@@ -2085,6 +2215,8 @@
         state.replayPausedMs = 0;
         state.replayRequestWaitStartedAt = 0;
         state.replayCompletedEventCount = 0;
+        state.replayNextEventIndex = 0;
+        clearReplayResumeState();
         clearReplayRequestTracking();
         stopReplayProgressNotifications();
         showRuntimeStatus("replaying", "completed");
@@ -2164,7 +2296,7 @@
 
   function clearRecording() {
     stopRecording();
-    stopReplay();
+    stopReplay({ preserveProgress: false });
     clearPendingReplay();
     state.events = [];
     state.sessions = [];
@@ -2172,6 +2304,7 @@
     state.recordedAt = null;
     state.lastError = "";
     state.lastReplaySessionId = "";
+    clearReplayResumeState();
     dirtySessionIds.clear();
     deletedSessionIds.clear();
     pendingRecordingSync = false;
