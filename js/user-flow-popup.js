@@ -703,16 +703,8 @@
       (item) => item.id === sessionId,
     );
     const currentPage = getParentCurrentPage();
-    const resumesOnCurrentPage = Boolean(
-      currentUserFlowState.replayResumeSessionId === sessionId &&
-        currentUserFlowState.replayResumePage === currentPage,
-    );
-
     return Boolean(
-      !resumesOnCurrentPage &&
-        session?.startPage &&
-        currentPage &&
-        session.startPage !== currentPage,
+      session?.startPage && currentPage && session.startPage !== currentPage,
     );
   }
 
