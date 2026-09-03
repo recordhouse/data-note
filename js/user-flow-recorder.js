@@ -83,7 +83,6 @@
       padding: 7px 11px;
       border: 1px solid currentColor;
       border-radius: 6px;
-      appearance: none;
       background: rgba(255, 255, 255, 0.94);
       box-shadow: 0 8px 22px rgba(23, 32, 42, 0.16);
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -115,36 +114,8 @@
       height: 20px;
     }
 
-    .user-flow-runtime-status[data-mode="recording"] .user-flow-runtime-action,
-    .user-flow-runtime-status[data-mode="replaying"] .user-flow-runtime-action {
-      display: none;
-    }
-
-    .user-flow-runtime-status[data-mode="recording"]:hover {
-      background: #fff1f4;
-    }
-
-    .user-flow-runtime-status[data-mode="recording"]:focus-visible {
-      outline: 2px solid rgba(180, 35, 69, 0.35);
-      outline-offset: 2px;
-    }
-
     .user-flow-runtime-status[data-mode="replaying"] {
       color: #0f766e;
-    }
-
-    .user-flow-runtime-status[data-mode="replaying"]:hover {
-      background: #ecfdf5;
-    }
-
-    .user-flow-runtime-status[data-mode="replaying"]:focus-visible {
-      outline: 2px solid rgba(15, 118, 110, 0.35);
-      outline-offset: 2px;
-    }
-
-    .user-flow-runtime-status[data-state] {
-      cursor: pointer;
-      pointer-events: auto;
     }
 
     .user-flow-runtime-status.is-visible {
@@ -214,15 +185,6 @@
     .user-flow-runtime-status[data-mode="replaying"][data-state="active"]
       .user-flow-runtime-icon::after {
       animation: user-flow-replay-spin 680ms linear infinite;
-    }
-
-    .user-flow-runtime-action {
-      margin-left: 2px;
-      padding-left: 9px;
-      border-left: 1px solid currentColor;
-      font-size: 12px;
-      font-weight: 700;
-      opacity: 0.8;
     }
 
     @keyframes user-flow-record-pulse {
@@ -339,7 +301,6 @@
     isRecording: false,
     isReplaying: false,
     replaySessionId: "",
-    lastReplaySessionId: "",
     recordedAt: null,
     startAt: 0,
     replayAbort: false,
@@ -782,37 +743,15 @@
     let status = state.runtimeStatus;
 
     if (!status || !status.isConnected) {
-      status = document.createElement("button");
-      status.type = "button";
+      status = document.createElement("div");
       status.className = "user-flow-runtime-status";
       status.setAttribute(IGNORE_ATTRIBUTE, "true");
+      status.setAttribute("role", "status");
       status.setAttribute("aria-live", "polite");
       status.innerHTML = `
         <span class="user-flow-runtime-icon" aria-hidden="true"></span>
         <span data-user-flow-runtime-label></span>
-        <span class="user-flow-runtime-action" data-user-flow-runtime-action></span>
       `;
-      status.addEventListener("click", () => {
-        if (status.dataset.mode === "recording") {
-          if (state.isRecording) {
-            stopRecording();
-          } else if (!state.isReplaying) {
-            startRecording();
-          }
-          return;
-        }
-
-        if (status.dataset.mode === "replaying") {
-          if (state.isReplaying) {
-            stopReplay();
-          } else if (!state.isRecording) {
-            const replaySessionExists = state.sessions.some(
-              (session) => session.id === state.lastReplaySessionId,
-            );
-            replay(replaySessionExists ? state.lastReplaySessionId : undefined);
-          }
-        }
-      });
       document.body.append(status);
       state.runtimeStatus = status;
     }
@@ -823,19 +762,17 @@
     const isRecordingMode = mode === "recording";
     const label = isRecordingMode
       ? isActive
-        ? "녹화 중지"
-        : "녹화 시작"
+        ? "녹화 중"
+        : "녹화 중지됨"
       : isActive
-        ? "재생 중지"
+        ? "재생 중"
         : statusState === "completed"
           ? "재생 완료"
-          : "재생 시작";
-    const action = isActive ? "중지" : isRecordingMode ? "다시 녹화" : "다시 재생";
+          : "재생 중지됨";
 
     status.title = label;
     status.setAttribute("aria-label", status.title);
     status.querySelector("[data-user-flow-runtime-label]").textContent = label;
-    status.querySelector("[data-user-flow-runtime-action]").textContent = action;
     status.hidden = false;
 
     window.clearTimeout(state.runtimeStatusTimer);
@@ -1978,7 +1915,6 @@
     state.replayAbort = true;
     state.replayRunId += 1;
     state.isReplaying = false;
-    state.lastReplaySessionId = state.replaySessionId || state.lastReplaySessionId;
     state.replaySessionId = "";
     state.replayStartedAt = 0;
     state.replayPausedMs = 0;
@@ -2020,7 +1956,6 @@
     const replayRunId = state.replayRunId;
     state.isReplaying = true;
     state.replaySessionId = session.id;
-    state.lastReplaySessionId = session.id;
     state.replayStartedAt = performance.now();
     state.replayPausedMs = 0;
     state.replayRequestWaitStartedAt = 0;
@@ -2171,7 +2106,6 @@
     state.currentSessionId = "";
     state.recordedAt = null;
     state.lastError = "";
-    state.lastReplaySessionId = "";
     dirtySessionIds.clear();
     deletedSessionIds.clear();
     pendingRecordingSync = false;

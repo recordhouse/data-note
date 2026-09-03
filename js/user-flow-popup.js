@@ -15,6 +15,8 @@
   const MAX_USER_FLOW_IMPORT_SESSIONS = MAX_USER_FLOW_SESSIONS;
   const USER_FLOW_TAB_STORAGE_KEY = "response-mapping-user-flow-tabs:v1";
   const DEFAULT_USER_FLOW_TAB_ID = "default";
+  const USER_FLOW_VIEW_RECORDINGS = "recordings";
+  const USER_FLOW_VIEW_TEST = "test";
   const MAX_USER_FLOW_TABS = 10;
   const MAX_USER_FLOW_SESSIONS_PER_TAB = 20;
   const REPLAY_NAVIGATION_IDLE_MS = 500;
@@ -23,9 +25,11 @@
   const USER_FLOW_DRAG_SCROLL_STEP_PX = 18;
 
   let currentUserFlowState = {};
+  let activeUserFlowView = USER_FLOW_VIEW_RECORDINGS;
   let editingUserFlowSessionId = "";
   let editingUserFlowTabId = "";
   let renderedUserFlowSessionSignature = "";
+  let renderedUserFlowTestSignature = "";
   let userFlowDragDepth = 0;
   let draggedUserFlowSessionId = "";
   let replayNavigationIdleTimer = 0;
@@ -39,8 +43,9 @@
       activeTabId: DEFAULT_USER_FLOW_TAB_ID,
       sessionOrder: [],
       sessionTabs: {},
+      testSessionIds: [],
       tabs: [{ id: DEFAULT_USER_FLOW_TAB_ID, name: "Tab 01" }],
-      version: 5,
+      version: 6,
     };
   }
 
@@ -104,6 +109,8 @@
       const sessionTabs = {};
       const sessionOrder = [];
       const orderedSessionIds = new Set();
+      const testSessionIds = [];
+      const testSessionIdSet = new Set();
 
       if (stored.sessionTabs && typeof stored.sessionTabs === "object") {
         Object.entries(stored.sessionTabs).forEach(([sessionId, tabId]) => {
@@ -124,14 +131,26 @@
         });
       }
 
+      if (Array.isArray(stored.testSessionIds)) {
+        stored.testSessionIds.slice(0, MAX_USER_FLOW_SESSIONS).forEach((sessionId) => {
+          const normalizedId = String(sessionId || "").trim().slice(0, 200);
+
+          if (normalizedId && !testSessionIdSet.has(normalizedId)) {
+            testSessionIdSet.add(normalizedId);
+            testSessionIds.push(normalizedId);
+          }
+        });
+      }
+
       return {
         activeTabId: tabIds.has(stored.activeTabId)
           ? stored.activeTabId
           : tabs[0].id,
         sessionOrder,
         sessionTabs,
+        testSessionIds,
         tabs,
-        version: 5,
+        version: 6,
       };
     } catch (error) {
       return fallback;
@@ -190,6 +209,15 @@
 
       if (nextSessionOrder.length !== userFlowTabs.sessionOrder.length) {
         userFlowTabs.sessionOrder = nextSessionOrder;
+        changed = true;
+      }
+
+      const nextTestSessionIds = userFlowTabs.testSessionIds.filter((sessionId) =>
+        sessionIds.has(sessionId),
+      );
+
+      if (nextTestSessionIds.length !== userFlowTabs.testSessionIds.length) {
+        userFlowTabs.testSessionIds = nextTestSessionIds;
         changed = true;
       }
     }
@@ -390,6 +418,19 @@
     return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }
 
+  function formatUserFlowRecordedAt(recordedAt) {
+    return recordedAt
+      ? new Date(recordedAt).toLocaleString("ko-KR", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        })
+      : "녹화 일시 없음";
+  }
+
   function getUserFlowSessionMeta(session, flowState, isReplayingSession) {
     const eventCount = Number(session.eventCount || 0);
 
@@ -419,6 +460,7 @@
         getUserFlowSessionTabId(session.id),
       ]),
       tabs: userFlowTabs.tabs,
+      testSessionIds: userFlowTabs.testSessionIds,
       sessions: sessions.map((session) => ({
         durationMs: session.durationMs,
         eventCount: session.eventCount,
@@ -446,6 +488,116 @@
         flowState.replaySessionId === session.id,
       );
     });
+  }
+
+  function renderUserFlowView() {
+    const isTestView = activeUserFlowView === USER_FLOW_VIEW_TEST;
+    const recordingsTab = document.querySelector("#userFlowRecordingsViewTab");
+    const testTab = document.querySelector("#userFlowTestViewTab");
+    const recordingsView = document.querySelector("#userFlowRecordingsView");
+    const testView = document.querySelector("#userFlowTestView");
+
+    if (!recordingsTab || !testTab || !recordingsView || !testView) {
+      return;
+    }
+
+    recordingsTab.setAttribute("aria-selected", String(!isTestView));
+    recordingsTab.tabIndex = isTestView ? -1 : 0;
+    testTab.setAttribute("aria-selected", String(isTestView));
+    testTab.tabIndex = isTestView ? 0 : -1;
+    recordingsView.hidden = isTestView;
+    testView.hidden = !isTestView;
+  }
+
+  function renderUserFlowTestSessions(flowState, sessions, sessionSignature) {
+    const sessionList = document.querySelector("#userFlowTestSessionList");
+    const sessionCount = document.querySelector("#userFlowTestSessionCount");
+    const viewCount = document.querySelector("#userFlowTestViewCount");
+    const sessionById = new Map(sessions.map((session) => [session.id, session]));
+    const testSessions = userFlowTabs.testSessionIds
+      .map((sessionId) => sessionById.get(sessionId))
+      .filter(Boolean);
+
+    if (!sessionList) {
+      return;
+    }
+
+    const countText = testSessions.length.toLocaleString("ko-KR");
+
+    if (sessionCount) {
+      sessionCount.textContent = `${countText}개`;
+    }
+
+    if (viewCount) {
+      viewCount.textContent = countText;
+    }
+
+    if (renderedUserFlowTestSignature === sessionSignature) {
+      return;
+    }
+
+    renderedUserFlowTestSignature = sessionSignature;
+
+    if (!testSessions.length) {
+      sessionList.innerHTML =
+        '<div class="user-flow-empty">녹화 목록을 이 탭으로 끌어다 놓아주세요.</div>';
+      return;
+    }
+
+    sessionList.innerHTML = testSessions
+      .map((session) => {
+        const isRecordingSession = flowState.activeRecordingSessionId === session.id;
+        const isReplayingSession = flowState.replaySessionId === session.id;
+        const isNavigatingSession = replayNavigationSessionId === session.id;
+        const recordedAt = formatUserFlowRecordedAt(session.recordedAt);
+        const sessionName = String(session.name || "").trim();
+        const disabled =
+          flowState.isRecording ||
+          (!session.eventCount && !isReplayingSession) ||
+          (flowState.isReplaying && !isReplayingSession);
+        const replayDisabled = disabled || Boolean(replayNavigationSessionId);
+        const changeDisabled = flowState.isRecording || flowState.isReplaying;
+        const sessionMeta = getUserFlowSessionMeta(session, flowState, isReplayingSession);
+
+        return `
+          <article
+            class="user-flow-session"
+            draggable="false"
+            data-state="${isRecordingSession ? "recording" : isReplayingSession ? "replaying" : "idle"}"
+            data-user-flow-session-id="${escapeHtml(session.id)}"
+          >
+            <div class="user-flow-session-main">
+              <strong class="user-flow-session-time">
+                <span>${escapeHtml(sessionName || recordedAt)}</span>
+              </strong>
+              ${sessionName ? `<span class="user-flow-session-recorded-at">${escapeHtml(recordedAt)}</span>` : ""}
+              <span class="user-flow-session-meta" data-user-flow-session-meta="${escapeHtml(session.id)}">
+                ${escapeHtml(sessionMeta)}
+              </span>
+            </div>
+            <div class="user-flow-session-controls">
+              <button
+                class="user-flow-replay"
+                type="button"
+                data-user-flow-command="toggle-replay-session"
+                data-session-id="${escapeHtml(session.id)}"
+                aria-pressed="${String(isReplayingSession)}"
+                aria-busy="${String(isNavigatingSession)}"
+                data-navigating="${String(isNavigatingSession)}"
+                ${replayDisabled ? "disabled" : ""}
+              >${isNavigatingSession ? "이동 중" : isReplayingSession ? "재생 중지" : "재생"}</button>
+              <button
+                class="user-flow-test-remove"
+                type="button"
+                data-user-flow-test-remove="${escapeHtml(session.id)}"
+                aria-label="${escapeHtml(sessionName || recordedAt)} 녹화 테스트 목록에서 제거"
+                ${changeDisabled ? "disabled" : ""}
+              >목록 제거</button>
+            </div>
+          </article>
+        `;
+      })
+      .join("");
   }
 
   function renderUserFlowState(flowState = {}) {
@@ -511,6 +663,7 @@
 
     reconcileUserFlowTabs(sessions, { removeMissingSessions: hasSessionState });
     renderUserFlowTabs(sessions);
+    renderUserFlowView();
     const visibleSessions = getOrderedUserFlowSessions(sessions).filter(
       (session) =>
         getUserFlowSessionTabId(session.id) === userFlowTabs.activeTabId,
@@ -532,15 +685,17 @@
       sessionCount.textContent = `${visibleSessions.length.toLocaleString("ko-KR")}개`;
     }
 
+    const sessionSignature = getUserFlowSessionSignature(flowState, sessions);
+    renderUserFlowTestSessions(flowState, sessions, sessionSignature);
+
     if (!visibleSessions.length) {
       renderedUserFlowSessionSignature = "";
       sessionList.innerHTML = `<div class="user-flow-empty">${
         sessions.length ? "이 탭에 저장된 녹화가 없습니다." : "저장된 녹화가 없습니다."
       }</div>`;
+      updateUserFlowSessionProgress(flowState, sessions);
       return;
     }
-
-    const sessionSignature = getUserFlowSessionSignature(flowState, sessions);
 
     if (renderedUserFlowSessionSignature === sessionSignature) {
       updateUserFlowSessionProgress(flowState, sessions);
@@ -553,16 +708,7 @@
       .map((session) => {
         const isRecordingSession = flowState.activeRecordingSessionId === session.id;
         const isReplayingSession = flowState.replaySessionId === session.id;
-        const recordedAt = session.recordedAt
-          ? new Date(session.recordedAt).toLocaleString("ko-KR", {
-              year: "numeric",
-              month: "2-digit",
-              day: "2-digit",
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-            })
-          : "녹화 일시 없음";
+        const recordedAt = formatUserFlowRecordedAt(session.recordedAt);
         const sessionName = String(session.name || "").trim();
         const isEditing = editingUserFlowSessionId === session.id;
         const isNavigatingSession = replayNavigationSessionId === session.id;
@@ -811,7 +957,45 @@
   function rerenderUserFlowOrganization() {
     editingUserFlowSessionId = "";
     renderedUserFlowSessionSignature = "";
+    renderedUserFlowTestSignature = "";
     renderUserFlowState(currentUserFlowState);
+  }
+
+  function handleUserFlowViewControl(event) {
+    const button = event.target.closest("[data-user-flow-view-select]");
+
+    if (!button) {
+      return;
+    }
+
+    const view = button.dataset.userFlowViewSelect;
+
+    if (![USER_FLOW_VIEW_RECORDINGS, USER_FLOW_VIEW_TEST].includes(view)) {
+      return;
+    }
+
+    activeUserFlowView = view;
+    renderUserFlowView();
+  }
+
+  function handleUserFlowTestSessionRemove(event) {
+    const button = event.target.closest("[data-user-flow-test-remove]");
+
+    if (!button || button.disabled || isUserFlowOrganizationBlocked()) {
+      return;
+    }
+
+    const sessionId = button.dataset.userFlowTestRemove || "";
+    const previousTestSessionIds = [...userFlowTabs.testSessionIds];
+    userFlowTabs.testSessionIds = userFlowTabs.testSessionIds.filter(
+      (item) => item !== sessionId,
+    );
+
+    if (!persistUserFlowTabs()) {
+      userFlowTabs.testSessionIds = previousTestSessionIds;
+    }
+
+    rerenderUserFlowOrganization();
   }
 
   function focusUserFlowTabNameInput() {
@@ -1011,6 +1195,9 @@
     document.querySelectorAll(".user-flow-list-tab-wrap.is-drop-target").forEach((tab) => {
       tab.classList.remove("is-drop-target");
     });
+    document.querySelectorAll(".user-flow-view-tab.is-drop-target").forEach((tab) => {
+      tab.classList.remove("is-drop-target");
+    });
   }
 
   function clearUserFlowSessionDropIndicators(exceptSession = null) {
@@ -1043,7 +1230,7 @@
       return;
     }
 
-    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.effectAllowed = "copyMove";
     event.dataTransfer.setData("text/plain", draggedUserFlowSessionId);
 
     if (typeof event.dataTransfer.setDragImage === "function") {
@@ -1066,12 +1253,34 @@
     document.querySelectorAll(".user-flow-list-tab-wrap.is-drop-target").forEach((item) => {
       item.classList.toggle("is-drop-target", item === tab);
     });
+    document.querySelectorAll(".user-flow-view-tab.is-drop-target").forEach((item) => {
+      item.classList.remove("is-drop-target");
+    });
+  }
+
+  function handleUserFlowTestDragOver(event) {
+    const tab = event.target.closest("[data-user-flow-test-drop]");
+
+    if (!tab || !draggedUserFlowSessionId || isUserFlowOrganizationBlocked()) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    clearUserFlowSessionDropIndicators();
+    document.querySelectorAll(".user-flow-list-tab-wrap.is-drop-target").forEach((item) => {
+      item.classList.remove("is-drop-target");
+    });
+    tab.classList.add("is-drop-target");
   }
 
   function getUserFlowSessionOrderDropPosition(event) {
     const sessionList = document.querySelector("#userFlowSessionList");
 
-    if (!sessionList || event.target.closest("[data-user-flow-tab-drop]")) {
+    if (
+      !sessionList ||
+      event.target.closest("[data-user-flow-tab-drop], [data-user-flow-test-drop]")
+    ) {
       return null;
     }
 
@@ -1159,6 +1368,38 @@
     document.querySelectorAll(".user-flow-list-tab-wrap.is-drop-target").forEach((tab) => {
       tab.classList.remove("is-drop-target");
     });
+    document.querySelectorAll(".user-flow-view-tab.is-drop-target").forEach((tab) => {
+      tab.classList.remove("is-drop-target");
+    });
+  }
+
+  function handleUserFlowTestDrop(event) {
+    const tab = event.target.closest("[data-user-flow-test-drop]");
+
+    if (!tab || !draggedUserFlowSessionId || isUserFlowOrganizationBlocked()) {
+      return;
+    }
+
+    event.preventDefault();
+    const sessionExists = (currentUserFlowState.sessions || []).some(
+      (session) => session.id === draggedUserFlowSessionId,
+    );
+
+    if (
+      sessionExists &&
+      !userFlowTabs.testSessionIds.includes(draggedUserFlowSessionId)
+    ) {
+      const previousTestSessionIds = [...userFlowTabs.testSessionIds];
+      userFlowTabs.testSessionIds.push(draggedUserFlowSessionId);
+
+      if (!persistUserFlowTabs()) {
+        userFlowTabs.testSessionIds = previousTestSessionIds;
+      }
+    }
+
+    activeUserFlowView = USER_FLOW_VIEW_TEST;
+    resetUserFlowSessionDrag();
+    rerenderUserFlowOrganization();
   }
 
   function handleUserFlowSessionOrderDrop(event) {
@@ -1756,6 +1997,8 @@
   }
 
   document.addEventListener("click", handleUserFlowControl);
+  document.addEventListener("click", handleUserFlowViewControl);
+  document.addEventListener("click", handleUserFlowTestSessionRemove);
   document.addEventListener("click", handleUserFlowTabControl);
   document.addEventListener("click", handleUserFlowImportTrigger);
   document.addEventListener("click", handleUserFlowNameControl);
@@ -1766,12 +2009,14 @@
   document.addEventListener("submit", handleUserFlowNameSubmit);
   document.addEventListener("dragstart", handleUserFlowSessionDragStart);
   document.addEventListener("dragenter", handleUserFlowDragEnter);
+  document.addEventListener("dragover", handleUserFlowTestDragOver);
   document.addEventListener("dragover", handleUserFlowTabDragOver);
   document.addEventListener("dragover", handleUserFlowSessionOrderDragOver);
   document.addEventListener("dragover", handleUserFlowDragOver);
   document.addEventListener("dragleave", handleUserFlowDragLeave);
   document.addEventListener("dragend", resetUserFlowSessionDrag);
   document.addEventListener("dragend", resetUserFlowFileDrag);
+  document.addEventListener("drop", handleUserFlowTestDrop);
   document.addEventListener("drop", handleUserFlowSessionDrop);
   document.addEventListener("drop", handleUserFlowSessionOrderDrop);
   document.addEventListener("drop", handleUserFlowDrop);

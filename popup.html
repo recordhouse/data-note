@@ -144,7 +144,7 @@
 
       .user-flow-content {
         display: grid;
-        grid-template-rows: auto minmax(0, 1fr);
+        grid-template-rows: auto auto minmax(0, 1fr);
         gap: 18px;
         height: 100%;
         min-width: 0;
@@ -292,6 +292,69 @@
       .user-flow-action:disabled {
         cursor: not-allowed;
         opacity: 0.45;
+      }
+
+      .user-flow-view-tabs {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        border-bottom: 1px solid #cbd5e1;
+      }
+
+      .user-flow-view-tab {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-width: 104px;
+        height: 34px;
+        padding: 4px 12px;
+        border: 0;
+        background: transparent;
+        color: #64748b;
+        font-size: 13px;
+        font-weight: 800;
+        cursor: pointer;
+        transition:
+          background-color 120ms ease,
+          color 120ms ease,
+          box-shadow 120ms ease;
+      }
+
+      .user-flow-view-tab + .user-flow-view-tab {
+        border-left: 1px solid #e2e8f0;
+      }
+
+      .user-flow-view-tab[aria-selected="true"] {
+        color: #1266d6;
+        box-shadow: inset 0 -2px 0 #1266d6;
+      }
+
+      .user-flow-view-tab.is-drop-target {
+        background: #ecfdf5;
+        color: #0f766e;
+        box-shadow: inset 0 -2px 0 #0f766e;
+      }
+
+      .user-flow-view-tab:focus-visible {
+        outline: 2px solid rgba(18, 102, 214, 0.35);
+        outline-offset: -2px;
+      }
+
+      .user-flow-view-tab-count {
+        min-width: 18px;
+        color: #7b8797;
+        font-size: 10px;
+        text-align: right;
+      }
+
+      .user-flow-view-tab[aria-selected="true"] .user-flow-view-tab-count,
+      .user-flow-view-tab.is-drop-target .user-flow-view-tab-count {
+        color: currentColor;
+      }
+
+      .user-flow-view-panel[hidden] {
+        display: none;
       }
 
       .user-flow-sessions {
@@ -752,6 +815,37 @@
       .user-flow-delete:disabled {
         cursor: not-allowed;
         opacity: 0.45;
+      }
+
+      .user-flow-test-remove {
+        min-width: 64px;
+        height: 30px;
+        padding: 4px 9px;
+        border: 1px solid #94a3b8;
+        border-radius: 5px;
+        background: #ffffff;
+        color: #475569;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .user-flow-test-remove:hover:not(:disabled) {
+        background: #f1f5f9;
+      }
+
+      .user-flow-test-remove:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
+
+      .user-flow-test-panel {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        gap: 8px;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
       }
 
       .user-flow-empty {
@@ -1235,7 +1329,39 @@
             </div>
           </div>
 
-          <section class="user-flow-sessions" aria-labelledby="userFlowSessionTitle">
+          <div class="user-flow-view-tabs" role="tablist" aria-label="녹화 화면">
+            <button
+              class="user-flow-view-tab"
+              id="userFlowRecordingsViewTab"
+              type="button"
+              role="tab"
+              aria-selected="true"
+              aria-controls="userFlowRecordingsView"
+              data-user-flow-view-select="recordings"
+            >
+              <span>녹화 목록</span>
+            </button>
+            <button
+              class="user-flow-view-tab"
+              id="userFlowTestViewTab"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="userFlowTestView"
+              data-user-flow-view-select="test"
+              data-user-flow-test-drop
+            >
+              <span>녹화 테스트</span>
+              <span class="user-flow-view-tab-count" id="userFlowTestViewCount">0</span>
+            </button>
+          </div>
+
+          <section
+            class="user-flow-view-panel user-flow-sessions"
+            id="userFlowRecordingsView"
+            role="tabpanel"
+            aria-labelledby="userFlowRecordingsViewTab"
+          >
             <div class="user-flow-session-heading">
               <strong id="userFlowSessionTitle">녹화 목록</strong>
               <span id="userFlowSessionCount">0개</span>
@@ -1288,6 +1414,26 @@
               aria-labelledby="userFlowListTab-default"
             >
               <div class="user-flow-empty">저장된 녹화가 없습니다.</div>
+            </div>
+          </section>
+
+          <section
+            class="user-flow-view-panel user-flow-test-panel"
+            id="userFlowTestView"
+            role="tabpanel"
+            aria-labelledby="userFlowTestViewTab"
+            hidden
+          >
+            <div class="user-flow-session-heading">
+              <strong>녹화 테스트 목록</strong>
+              <span id="userFlowTestSessionCount">0개</span>
+            </div>
+            <div
+              class="user-flow-session-list"
+              id="userFlowTestSessionList"
+              aria-live="polite"
+            >
+              <div class="user-flow-empty">녹화 목록을 이 탭으로 끌어다 놓아주세요.</div>
             </div>
           </section>
         </div>
