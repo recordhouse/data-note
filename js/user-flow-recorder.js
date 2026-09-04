@@ -2367,28 +2367,39 @@
     return true;
   }
 
-  function deleteSession(sessionId) {
-    if (!sessionId || state.isRecording || state.isReplaying) {
+  function deleteSessions(sessionIds) {
+    if (state.isRecording || state.isReplaying) {
       return false;
     }
 
     synchronizeRecordingFromStorage({ notify: false });
+    const requestedIds = new Set(
+      (Array.isArray(sessionIds) ? sessionIds : [sessionIds])
+        .map((sessionId) => String(sessionId || "").trim())
+        .filter(Boolean),
+    );
+    const deletedSessions = state.sessions.filter((session) =>
+      requestedIds.has(session.id),
+    );
 
-    const sessionIndex = state.sessions.findIndex((session) => session.id === sessionId);
-
-    if (sessionIndex < 0) {
+    if (!deletedSessions.length) {
       return false;
     }
 
-    const deletedSession = state.sessions[sessionIndex];
+    const previousSessions = state.sessions;
+    const previousCurrentSessionId = state.currentSessionId;
+    const previousEvents = state.events;
+    const previousRecordedAt = state.recordedAt;
     const previousDirtySessionIds = new Set(dirtySessionIds);
     const previousDeletedSessionIds = new Set(deletedSessionIds);
 
-    state.sessions.splice(sessionIndex, 1);
-    dirtySessionIds.delete(sessionId);
-    deletedSessionIds.add(sessionId);
+    state.sessions = state.sessions.filter((session) => !requestedIds.has(session.id));
+    deletedSessions.forEach((session) => {
+      dirtySessionIds.delete(session.id);
+      deletedSessionIds.add(session.id);
+    });
 
-    if (state.currentSessionId === sessionId) {
+    if (requestedIds.has(state.currentSessionId)) {
       const latestSession = state.sessions[0];
       state.currentSessionId = latestSession?.id || "";
       state.events = latestSession?.events || [];
@@ -2396,7 +2407,10 @@
     }
 
     if (!persistRecording()) {
-      state.sessions.splice(sessionIndex, 0, deletedSession);
+      state.sessions = previousSessions;
+      state.currentSessionId = previousCurrentSessionId;
+      state.events = previousEvents;
+      state.recordedAt = previousRecordedAt;
       dirtySessionIds.clear();
       previousDirtySessionIds.forEach((dirtySessionId) =>
         dirtySessionIds.add(dirtySessionId),
@@ -2412,6 +2426,10 @@
 
     notifyClients({ immediate: true });
     return true;
+  }
+
+  function deleteSession(sessionId) {
+    return deleteSessions([sessionId]);
   }
 
   function handleCommandMessage(event) {
@@ -2448,6 +2466,9 @@
         break;
       case "delete-session":
         deleteSession(event.data.sessionId);
+        break;
+      case "delete-sessions":
+        deleteSessions(event.data.sessionIds);
         break;
       case "rename-session":
         renameSession(event.data.sessionId, event.data.sessionName);
@@ -2516,6 +2537,7 @@
   window.UserFlowRecorder = Object.freeze({
     clear: clearRecording,
     deleteSession,
+    deleteSessions,
     exportAllRecordings,
     exportRecording,
     getEvents: (sessionId = state.currentSessionId) => [

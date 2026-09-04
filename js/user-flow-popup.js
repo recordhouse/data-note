@@ -1116,47 +1116,47 @@
 
       const tabId = deleteButton.dataset.userFlowTabDelete;
       const tab = userFlowTabs.tabs.find((item) => item.id === tabId);
-      const sessionCount = getUserFlowTabSessionCount(tabId);
-      const fallbackTab =
-        userFlowTabs.tabs.find(
-          (item) =>
-            item.id !== tabId &&
-            getUserFlowTabSessionCount(item.id) + sessionCount <=
-              MAX_USER_FLOW_SESSIONS_PER_TAB,
-        ) || userFlowTabs.tabs.find((item) => item.id !== tabId);
+      const tabIndex = userFlowTabs.tabs.findIndex((item) => item.id === tabId);
+      const sessionIds = (currentUserFlowState.sessions || [])
+        .filter((session) => getUserFlowSessionTabId(session.id) === tabId)
+        .map((session) => session.id);
 
-      if (!tab || !fallbackTab) {
-        return;
-      }
-
-      const fallbackSessionCount = getUserFlowTabSessionCount(fallbackTab.id);
-
-      if (
-        sessionCount &&
-        fallbackSessionCount + sessionCount > MAX_USER_FLOW_SESSIONS_PER_TAB
-      ) {
-        showUserFlowTabLimit(fallbackTab.id);
+      if (!tab || tabIndex < 0 || userFlowTabs.tabs.length <= 1) {
         return;
       }
 
       if (
-        sessionCount &&
         !window.confirm(
-          `${tab.name} 탭을 삭제하면 녹화가 ${fallbackTab.name} 탭으로 이동합니다.`,
+          `${tab.name} 탭을 삭제하면 탭 안의 녹화 ${sessionIds.length.toLocaleString("ko-KR")}개도 모두 삭제됩니다.\n삭제하시겠습니까?`,
         )
       ) {
         return;
       }
 
-      Object.keys(userFlowTabs.sessionTabs).forEach((sessionId) => {
-        if (userFlowTabs.sessionTabs[sessionId] === tabId) {
-          userFlowTabs.sessionTabs[sessionId] = fallbackTab.id;
-        }
+      if (
+        sessionIds.length &&
+        !sendUserFlowCommand("delete-sessions", { sessionIds })
+      ) {
+        return;
+      }
+
+      const deletedSessionIds = new Set(sessionIds);
+      sessionIds.forEach((sessionId) => {
+        delete userFlowTabs.sessionTabs[sessionId];
       });
+      userFlowTabs.sessionOrder = userFlowTabs.sessionOrder.filter(
+        (sessionId) => !deletedSessionIds.has(sessionId),
+      );
+      userFlowTabs.testSessionIds = userFlowTabs.testSessionIds.filter(
+        (sessionId) => !deletedSessionIds.has(sessionId),
+      );
       userFlowTabs.tabs = userFlowTabs.tabs.filter((item) => item.id !== tabId);
 
       if (userFlowTabs.activeTabId === tabId) {
-        userFlowTabs.activeTabId = fallbackTab.id;
+        userFlowTabs.activeTabId =
+          userFlowTabs.tabs[Math.min(tabIndex, userFlowTabs.tabs.length - 1)]?.id ||
+          userFlowTabs.tabs[0]?.id ||
+          DEFAULT_USER_FLOW_TAB_ID;
       }
 
       editingUserFlowTabId = "";
