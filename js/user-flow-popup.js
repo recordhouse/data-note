@@ -1785,7 +1785,11 @@
     const requestedId =
       typeof candidate?.id === "string" ? candidate.id.trim().slice(0, 160) : "";
 
-    if (requestedId && !reservedIds.has(requestedId)) {
+    if (requestedId) {
+      if (reservedIds.has(requestedId)) {
+        return "";
+      }
+
       reservedIds.add(requestedId);
       return requestedId;
     }
@@ -1844,6 +1848,19 @@
       throw new Error("ZIP 모듈을 불러오지 못했습니다.");
     }
 
+    const importSourceZipName = String(file?.name || "").trim().slice(0, 255);
+    const normalizedZipName = importSourceZipName.toLowerCase();
+    const isDuplicateZip = (currentUserFlowState.sessions || []).some(
+      (session) =>
+        normalizedZipName &&
+        String(session.importSourceZipName || "").trim().toLowerCase() ===
+          normalizedZipName,
+    );
+
+    if (isDuplicateZip) {
+      throw new Error(`${importSourceZipName} 파일은 이미 가져왔습니다.`);
+    }
+
     const entries = await window.UserFlowArchive.readArchive(file);
     const archiveEntries = entries.filter((entry) => getArchiveFolderName(entry.name));
     const folderNames = archiveEntries
@@ -1859,6 +1876,7 @@
     );
     const importedSessions = [];
     const importedSessionFolders = new Map();
+    let archiveSessionCount = 0;
 
     archiveEntries
       .filter(
@@ -1883,6 +1901,8 @@
             return;
           }
 
+          archiveSessionCount += 1;
+
           if (importedSessions.length >= MAX_USER_FLOW_IMPORT_SESSIONS) {
             throw new Error(
               `한 번에 녹화 ${MAX_USER_FLOW_IMPORT_SESSIONS}개까지 가져올 수 있습니다.`,
@@ -1890,10 +1910,23 @@
           }
 
           const sessionId = createArchiveImportSessionId(candidate, reservedIds);
-          importedSessions.push({ ...candidate, id: sessionId });
+
+          if (!sessionId) {
+            return;
+          }
+
+          importedSessions.push({
+            ...candidate,
+            id: sessionId,
+            importSourceZipName,
+          });
           importedSessionFolders.set(sessionId, folderName);
         });
       });
+
+    if (archiveSessionCount && !importedSessions.length) {
+      throw new Error("ZIP 파일의 녹화가 이미 목록에 추가되어 있습니다.");
+    }
 
     const previousTabs = JSON.parse(JSON.stringify(userFlowTabs));
 

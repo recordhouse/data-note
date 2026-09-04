@@ -452,6 +452,10 @@
         .map((session, index) => ({
           id: session.id || `recording-${session.recordedAt || Date.now()}-${index}`,
           name: typeof session.name === "string" ? session.name : "",
+          importSourceZipName:
+            typeof session.importSourceZipName === "string"
+              ? session.importSourceZipName
+              : "",
           recordedAt: session.recordedAt || null,
           events: session.events,
         }));
@@ -628,6 +632,7 @@
         startPage: getReplayStartPage(session),
         id: session.id,
         name: session.name || "",
+        importSourceZipName: session.importSourceZipName || "",
         recordedAt: session.recordedAt,
         eventCount: session.events.length,
         durationMs: getDurationMs(session.events),
@@ -1738,6 +1743,13 @@
           ? [importData]
           : [];
     const reservedIds = new Set(state.sessions.map((session) => String(session.id || "")));
+    const importedZipNames = new Set(
+      state.sessions
+        .map((session) =>
+          String(session.importSourceZipName || "").trim().toLowerCase(),
+        )
+        .filter(Boolean),
+    );
     const importedSessions = [];
 
     for (const candidate of candidates.slice(0, MAX_SESSIONS)) {
@@ -1758,8 +1770,16 @@
           : Date.now();
       const importedId =
         typeof candidate.id === "string" ? candidate.id.trim().slice(0, 160) : "";
+      const importSourceZipName =
+        typeof candidate.importSourceZipName === "string"
+          ? candidate.importSourceZipName.trim().slice(0, 255)
+          : "";
 
-      if (importedId && reservedIds.has(importedId)) {
+      if (
+        (importedId && reservedIds.has(importedId)) ||
+        (importSourceZipName &&
+          importedZipNames.has(importSourceZipName.toLowerCase()))
+      ) {
         continue;
       }
 
@@ -1768,6 +1788,7 @@
       importedSessions.push({
         id: sessionId,
         name: String(candidate.name || "").trim().slice(0, MAX_SESSION_NAME_LENGTH),
+        importSourceZipName,
         recordedAt,
         events,
       });
