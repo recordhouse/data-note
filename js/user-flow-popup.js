@@ -1582,14 +1582,15 @@
     renderedUserFlowImportUrls = getUserFlowImportUrls();
     select.replaceChildren();
 
-    const placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = renderedUserFlowImportUrls.length
-      ? "가져올 JSON 선택"
-      : "등록된 URL이 없습니다";
-    placeholder.selected = true;
-    placeholder.disabled = true;
-    select.appendChild(placeholder);
+    if (!renderedUserFlowImportUrls.length) {
+      const empty = document.createElement("option");
+      empty.textContent = "등록된 URL이 없습니다";
+      empty.disabled = true;
+      select.appendChild(empty);
+      select.size = 1;
+      select.disabled = true;
+      return;
+    }
 
     renderedUserFlowImportUrls.forEach((item, index) => {
       const option = document.createElement("option");
@@ -1598,11 +1599,9 @@
       select.appendChild(option);
     });
 
-    select.disabled = Boolean(
-      !renderedUserFlowImportUrls.length ||
-        isUserFlowUrlImporting ||
-        isUserFlowImportBlocked(),
-    );
+    select.size = Math.min(renderedUserFlowImportUrls.length, 6);
+    select.selectedIndex = 0;
+    select.disabled = Boolean(isUserFlowUrlImporting || isUserFlowImportBlocked());
   }
 
   function setUserFlowUrlImportOpen(isOpen) {
@@ -1625,23 +1624,59 @@
     }
   }
 
-  function getUserFlowImportFileName(url) {
-    let fileName = "user-flow.json";
+  function getContentDispositionFileName(headerValue) {
+    const encodedName = String(headerValue || "").match(
+      /filename\*\s*=\s*UTF-8''([^;]+)/i,
+    )?.[1];
 
-    try {
-      const pathname = new URL(url, window.location.href).pathname;
-      const pathnameFileName = decodeURIComponent(pathname.split("/").pop() || "");
-
-      if (pathnameFileName) {
-        fileName = pathnameFileName;
+    if (encodedName) {
+      try {
+        return decodeURIComponent(encodedName.trim().replace(/^"|"$/g, ""));
+      } catch (error) {
+        return encodedName.trim().replace(/^"|"$/g, "");
       }
-    } catch (error) {
-      // The URL validation below provides the visible error message.
     }
 
-    return fileName.toLowerCase().endsWith(".json")
-      ? fileName
-      : `${fileName}.json`;
+    return (
+      String(headerValue || "")
+        .match(/filename\s*=\s*(?:"([^"]+)"|([^;]+))/i)
+        ?.slice(1)
+        .find(Boolean)
+        ?.trim() || ""
+    );
+  }
+
+  function getUserFlowImportFileMeta(response, importUrl, blob) {
+    const contentType = String(blob.type || response.headers.get("content-type") || "")
+      .split(";", 1)[0]
+      .trim()
+      .toLowerCase();
+    const dispositionName = getContentDispositionFileName(
+      response.headers.get("content-disposition"),
+    );
+    const pathnameName = decodeURIComponent(
+      new URL(response.url || importUrl.href).pathname.split("/").pop() || "",
+    );
+    let fileName = (dispositionName || pathnameName || "user-flow")
+      .split(/[\\/]/)
+      .pop();
+    const isZip =
+      fileName.toLowerCase().endsWith(".zip") || contentType.includes("zip");
+    const isJson =
+      fileName.toLowerCase().endsWith(".json") || contentType.includes("json");
+
+    if (!isZip && !isJson) {
+      throw new Error("URL 응답이 JSON 또는 ZIP 파일이 아닙니다.");
+    }
+
+    const extension = isZip ? ".zip" : ".json";
+    const fileType = isZip ? "application/zip" : "application/json";
+
+    if (!fileName.toLowerCase().endsWith(extension)) {
+      fileName = `${fileName.replace(/\.(?:json|zip)$/i, "")}${extension}`;
+    }
+
+    return { fileName, fileType };
   }
 
   async function importUserFlowFromUrl(item) {
@@ -1675,16 +1710,22 @@
       });
 
       if (!response.ok) {
-        throw new Error(`JSON 요청에 실패했습니다. (${response.status})`);
+        throw new Error(`파일 요청에 실패했습니다. (${response.status})`);
       }
 
-      const file = new File([await response.text()], getUserFlowImportFileName(importUrl), {
-        type: "application/json",
+      const blob = await response.blob();
+      const { fileName, fileType } = getUserFlowImportFileMeta(
+        response,
+        importUrl,
+        blob,
+      );
+      const file = new File([blob], fileName, {
+        type: fileType,
       });
       await importUserFlowFile(file);
     } catch (error) {
       showUserFlowImportStatus(
-        error?.message || "URL의 JSON을 가져오지 못했습니다.",
+        error?.message || "URL의 JSON 또는 ZIP 파일을 가져오지 못했습니다.",
       );
     } finally {
       isUserFlowUrlImporting = false;
@@ -2001,15 +2042,22 @@
     }
   }
 
+  function handleUserFlowUrlImportPointerDown(event) {
+    const select = event.target.closest("#userFlowUrlImportSelect");
+
+    if (select && !select.disabled) {
+      select.selectedIndex = -1;
+    }
+  }
+
   function handleUserFlowUrlImportChange(event) {
     const select = event.target.closest("#userFlowUrlImportSelect");
 
-    if (!select || select.value === "") {
+    if (!select || select.disabled || select.selectedIndex < 0) {
       return;
     }
 
     const item = renderedUserFlowImportUrls[Number(select.value)];
-    select.value = "";
 
     if (item) {
       importUserFlowFromUrl(item);
@@ -2017,6 +2065,18 @@
   }
 
   function handleUserFlowUrlImportKeydown(event) {
+    const select = event.target.closest("#userFlowUrlImportSelect");
+
+    if (event.key === "Enter" && select && select.selectedIndex >= 0) {
+      event.preventDefault();
+      const item = renderedUserFlowImportUrls[Number(select.value)];
+
+      if (item) {
+        importUserFlowFromUrl(item);
+      }
+      return;
+    }
+
     if (event.key !== "Escape") {
       return;
     }
@@ -2210,6 +2270,7 @@
   document.addEventListener("click", handleUserFlowNameControl);
   document.addEventListener("change", handleUserFlowImportChange);
   document.addEventListener("change", handleUserFlowUrlImportChange);
+  document.addEventListener("pointerdown", handleUserFlowUrlImportPointerDown);
   document.addEventListener("focusout", handleUserFlowTabNameFocusOut);
   document.addEventListener("keydown", handleUserFlowTabNameKeydown);
   document.addEventListener("keydown", handleUserFlowNameKeydown);
