@@ -1592,6 +1592,13 @@
       return;
     }
 
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "선택하세요";
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    select.appendChild(placeholder);
+
     renderedUserFlowImportUrls.forEach((item, index) => {
       const option = document.createElement("option");
       option.value = String(index);
@@ -1599,8 +1606,7 @@
       select.appendChild(option);
     });
 
-    select.size = Math.min(renderedUserFlowImportUrls.length, 6);
-    select.selectedIndex = 0;
+    select.size = Math.min(renderedUserFlowImportUrls.length + 1, 6);
     select.disabled = Boolean(isUserFlowUrlImporting || isUserFlowImportBlocked());
   }
 
@@ -2042,18 +2048,10 @@
     }
   }
 
-  function handleUserFlowUrlImportPointerDown(event) {
-    const select = event.target.closest("#userFlowUrlImportSelect");
-
-    if (select && !select.disabled) {
-      select.selectedIndex = -1;
-    }
-  }
-
   function handleUserFlowUrlImportChange(event) {
     const select = event.target.closest("#userFlowUrlImportSelect");
 
-    if (!select || select.disabled || select.selectedIndex < 0) {
+    if (!select || select.disabled || select.selectedIndex < 0 || select.value === "") {
       return;
     }
 
@@ -2067,7 +2065,12 @@
   function handleUserFlowUrlImportKeydown(event) {
     const select = event.target.closest("#userFlowUrlImportSelect");
 
-    if (event.key === "Enter" && select && select.selectedIndex >= 0) {
+    if (
+      event.key === "Enter" &&
+      select &&
+      select.selectedIndex >= 0 &&
+      select.value !== ""
+    ) {
       event.preventDefault();
       const item = renderedUserFlowImportUrls[Number(select.value)];
 
@@ -2270,7 +2273,6 @@
   document.addEventListener("click", handleUserFlowNameControl);
   document.addEventListener("change", handleUserFlowImportChange);
   document.addEventListener("change", handleUserFlowUrlImportChange);
-  document.addEventListener("pointerdown", handleUserFlowUrlImportPointerDown);
   document.addEventListener("focusout", handleUserFlowTabNameFocusOut);
   document.addEventListener("keydown", handleUserFlowTabNameKeydown);
   document.addEventListener("keydown", handleUserFlowNameKeydown);
