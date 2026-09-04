@@ -492,9 +492,15 @@ async function renderResponseMappingPopup(communicationName, responseJson) {
       async function requestDummyResponse() {
         requestButton.disabled = true;
         statusBadge.textContent = "통신중";
+        const recorder =
+          window.UserFlowRecorder || (await ResponseMappingPopup.ready());
+        const trackedRequestId = recorder?.requestStart(testCommunicationName);
+        let requestEnded = false;
 
         try {
           const response = await fetch(`./network/${testCommunicationFile}`);
+          recorder?.requestEnd(trackedRequestId, response);
+          requestEnded = true;
 
           if (!response.ok) {
             throw new Error(`더미 응답을 불러오지 못했습니다. (${response.status})`);
@@ -510,6 +516,14 @@ async function renderResponseMappingPopup(communicationName, responseJson) {
           statusBadge.textContent =
             responsePopupWindow && !responsePopupWindow.closed ? "팝업 표시" : "응답 대기";
         } catch (error) {
+          if (!requestEnded) {
+            recorder?.requestEnd(trackedRequestId, {
+              ok: false,
+              status: 0,
+              message: error.message,
+            });
+          }
+
           rawResponse.textContent = error.message;
           statusBadge.textContent = "오류";
         } finally {

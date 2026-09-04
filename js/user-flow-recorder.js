@@ -309,6 +309,7 @@
     replayPausedMs: 0,
     replayRequestWaitStartedAt: 0,
     replayCompletedEventCount: 0,
+    responseError: "",
     replayProgressTimer: 0,
     lastError: "",
     scrollLastAt: new Map(),
@@ -617,6 +618,7 @@
       activeRecordingSessionId: state.isRecording ? state.currentSessionId : "",
       replaySessionId: state.replaySessionId,
       replayCompletedEventCount: state.replayCompletedEventCount,
+      responseError: state.responseError,
       pendingRequestCount: getPendingRequestCount(),
       blockingRequestCount: getBlockingRequestCount(),
       isWaitingForRequests: Boolean(
@@ -1303,7 +1305,32 @@
     return normalizedId;
   }
 
-  function requestEnd(requestId) {
+  function getResponseErrorMessage(responseInfo) {
+    if (!responseInfo || typeof responseInfo !== "object") {
+      return "";
+    }
+
+    const status = Number(responseInfo.status);
+    const hasStatus = Number.isFinite(status) && status > 0;
+    const isSuccessful =
+      typeof responseInfo.ok === "boolean"
+        ? responseInfo.ok
+        : !hasStatus || (status >= 200 && status < 300);
+
+    if (isSuccessful) {
+      return "";
+    }
+
+    const statusText = String(responseInfo.statusText || "").trim().slice(0, 100);
+    const detail = String(responseInfo.message || "").trim().slice(0, 240);
+    const statusLabel = hasStatus
+      ? `${Math.round(status)}${statusText ? ` ${statusText}` : ""}`
+      : "네트워크 오류";
+
+    return `응답 오류: ${statusLabel}${detail ? ` - ${detail}` : ""}`;
+  }
+
+  function requestEnd(requestId, responseInfo) {
     const normalizedId = String(requestId || "").trim().slice(0, 160);
     const requestCount = state.pendingRequests.get(normalizedId) || 0;
 
@@ -1317,11 +1344,17 @@
       state.pendingRequests.delete(normalizedId);
     }
 
+    const responseError = getResponseErrorMessage(responseInfo);
+
+    if (state.isReplaying && responseError) {
+      state.responseError = responseError;
+    }
+
     if (!hasBlockingRequests()) {
       settleRequestWaiters(true);
     }
 
-    notifyClients();
+    notifyClients({ immediate: Boolean(responseError) });
     return true;
   }
 
@@ -1891,6 +1924,7 @@
     state.isRecording = true;
     state.recordedAt = recordedAt;
     state.startAt = performance.now();
+    state.responseError = "";
     state.lastError = "";
     state.scrollLastAt.clear();
     state.scrollTimers.forEach((timer) => window.clearTimeout(timer));
@@ -1961,6 +1995,7 @@
       return;
     }
 
+    state.responseError = "";
     state.lastError = "";
     notifyClients({ immediate: true });
     stopRecording();
@@ -2131,6 +2166,7 @@
     state.sessions = [];
     state.currentSessionId = "";
     state.recordedAt = null;
+    state.responseError = "";
     state.lastError = "";
     dirtySessionIds.clear();
     deletedSessionIds.clear();

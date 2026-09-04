@@ -616,25 +616,28 @@
       return;
     }
 
-    let statusText = "기록 없음";
+    let statusText = "저장된 녹화가 없습니다";
     let statusState = "idle";
 
-    if (replayNavigationSessionId) {
-      statusText = "페이지 이동 중";
+    if (flowState.responseError) {
+      statusText = flowState.responseError;
+      statusState = "error";
+    } else if (replayNavigationSessionId) {
+      statusText = "녹화 시작 페이지로 이동 중입니다";
       statusState = "navigating";
     } else if (flowState.isRecording) {
-      statusText = "녹화 중";
+      statusText = "사용자 행동을 녹화하고 있습니다";
       statusState = "recording";
     } else if (flowState.isReplaying) {
       statusText = flowState.isWaitingForRequests
-        ? "통신 완료 대기 중"
-        : "재생 중";
+        ? "통신이 완료될 때까지 재생을 기다리고 있습니다"
+        : "녹화된 사용자 행동을 재생하고 있습니다";
       statusState = "replaying";
     } else if (flowState.error) {
       statusText = flowState.error;
       statusState = "error";
     } else if (flowState.canReplay) {
-      statusText = "재생 준비";
+      statusText = "녹화 재생을 준비했습니다";
       statusState = "ready";
     }
 

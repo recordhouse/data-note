@@ -154,23 +154,31 @@
       }
 
       .user-flow-toolbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        flex-wrap: wrap;
-        gap: 12px;
-        min-height: 44px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        align-items: stretch;
+        gap: 8px;
+        min-height: 76px;
         padding-bottom: 10px;
         border-bottom: 1px solid #e2e8f0;
       }
 
       .user-flow-status {
-        display: inline-flex;
+        box-sizing: border-box;
+        display: flex;
         align-items: center;
         gap: 7px;
+        width: 100%;
+        min-height: 42px;
+        padding: 9px 12px;
+        border: 1px solid #d9e1ea;
+        border-radius: 6px;
+        background: #f8fafc;
         color: #64748b;
         font-size: 13px;
         font-weight: 800;
+        line-height: 1.45;
+        overflow-wrap: anywhere;
       }
 
       .user-flow-status::before {
@@ -184,6 +192,8 @@
       }
 
       .user-flow-status[data-state="recording"] {
+        border-color: #efb8c6;
+        background: #fff5f7;
         color: #b42345;
       }
 
@@ -199,6 +209,12 @@
       .user-flow-status[data-state="navigating"],
       .user-flow-status[data-state="ready"] {
         color: #0f766e;
+      }
+
+      .user-flow-status[data-state="replaying"],
+      .user-flow-status[data-state="ready"] {
+        border-color: #b7d8d3;
+        background: #f2faf8;
       }
 
       .user-flow-status[data-state="ready"]::before {
@@ -217,6 +233,8 @@
       }
 
       .user-flow-status[data-state="navigating"] {
+        border-color: #cbd5e1;
+        background: #f8fafc;
         color: #475569;
       }
 
@@ -227,6 +245,8 @@
       }
 
       .user-flow-status[data-state="error"] {
+        border-color: #efb8c6;
+        background: #fff5f7;
         color: #b42345;
       }
 
@@ -258,8 +278,10 @@
       .user-flow-actions {
         display: flex;
         align-items: center;
+        justify-content: flex-end;
         flex-wrap: wrap;
         gap: 6px;
+        width: 100%;
         min-width: 0;
       }
 
@@ -380,7 +402,6 @@
       }
 
       .user-flow-view-tab[aria-selected="true"] {
-        background: #f7faff;
         color: #1258b8;
         box-shadow: inset 0 -2px 0 #1266d6;
       }
@@ -1241,7 +1262,6 @@
 
         .user-flow-toolbar {
           align-items: stretch;
-          flex-direction: column;
         }
 
         .user-flow-actions {
