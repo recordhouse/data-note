@@ -264,7 +264,7 @@
       }
 
       .user-flow-action {
-        min-width: 76px;
+        min-width: 88px;
         height: 32px;
         padding: 5px 10px;
         border: 1px solid #cbd5e1;
@@ -292,6 +292,49 @@
       .user-flow-action:disabled {
         cursor: not-allowed;
         opacity: 0.45;
+      }
+
+      .user-flow-url-import {
+        position: relative;
+        min-width: 0;
+      }
+
+      .user-flow-url-import-panel {
+        position: absolute;
+        z-index: 20;
+        top: calc(100% + 6px);
+        right: 0;
+        width: min(260px, calc(100vw - 32px));
+        padding: 7px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: #ffffff;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.14);
+      }
+
+      .user-flow-url-import-select {
+        width: 100%;
+        height: 34px;
+        padding: 5px 28px 5px 8px;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        background: #ffffff;
+        color: #334155;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .user-flow-url-import-select:focus-visible {
+        border-color: #1266d6;
+        outline: 2px solid rgba(18, 102, 214, 0.2);
+        outline-offset: 1px;
+      }
+
+      .user-flow-url-import-select:disabled {
+        cursor: not-allowed;
+        color: #94a3b8;
+        background: #f8fafc;
       }
 
       .user-flow-view-tabs {
@@ -1185,7 +1228,11 @@
 
         .user-flow-actions {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          width: 100%;
+        }
+
+        .user-flow-url-import {
           width: 100%;
         }
 
@@ -1305,7 +1352,28 @@
                 id="userFlowImportButton"
                 type="button"
                 data-user-flow-import-trigger
-              >가져오기</button>
+              >직접 가져오기</button>
+              <div class="user-flow-url-import">
+                <button
+                  class="user-flow-action"
+                  id="userFlowUrlImportButton"
+                  type="button"
+                  aria-expanded="false"
+                  aria-controls="userFlowUrlImportPanel"
+                  data-user-flow-url-import-trigger
+                >URL에서 가져오기</button>
+                <div
+                  class="user-flow-url-import-panel"
+                  id="userFlowUrlImportPanel"
+                  hidden
+                >
+                  <select
+                    class="user-flow-url-import-select"
+                    id="userFlowUrlImportSelect"
+                    aria-label="URL에서 가져올 녹화 선택"
+                  ></select>
+                </div>
+              </div>
               <button
                 class="user-flow-action"
                 id="userFlowExportAllButton"
@@ -1440,6 +1508,11 @@
       </section>
     </main>
 
+    <script>
+      window.USER_FLOW_IMPORT_URLS = [
+        // { name: "로그인 플로우", url: "/flowData/login.json" },
+      ];
+    </script>
     <script src="./js/popup-core.js"></script>
   </body>
 </html>

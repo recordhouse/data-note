@@ -36,6 +36,8 @@
   let replayNavigationParentReady = false;
   let replayNavigationSessionId = "";
   let replayNavigationTimer = 0;
+  let isUserFlowUrlImporting = false;
+  let renderedUserFlowImportUrls = [];
   let userFlowTabs = readUserFlowTabs();
 
   function createDefaultUserFlowTabs() {
@@ -605,7 +607,6 @@
     updateReplayNavigationState(flowState);
     const status = document.querySelector("#userFlowStatus");
     const recordButton = document.querySelector("#userFlowRecordButton");
-    const importButton = document.querySelector("#userFlowImportButton");
     const exportAllButton = document.querySelector("#userFlowExportAllButton");
     const tabAddButton = document.querySelector("#userFlowTabAddButton");
     const sessionCount = document.querySelector("#userFlowSessionCount");
@@ -644,9 +645,7 @@
     recordButton.setAttribute("aria-pressed", String(Boolean(flowState.isRecording)));
     recordButton.disabled = Boolean(flowState.isReplaying);
 
-    if (importButton) {
-      importButton.disabled = Boolean(flowState.isRecording || flowState.isReplaying);
-    }
+    updateUserFlowImportControls();
 
     if (tabAddButton) {
       tabAddButton.disabled = Boolean(flowState.isRecording || flowState.isReplaying);
@@ -1535,6 +1534,164 @@
     return Boolean(currentUserFlowState.isRecording || currentUserFlowState.isReplaying);
   }
 
+  function updateUserFlowImportControls() {
+    const importButton = document.querySelector("#userFlowImportButton");
+    const urlImportButton = document.querySelector("#userFlowUrlImportButton");
+    const urlImportSelect = document.querySelector("#userFlowUrlImportSelect");
+    const importDisabled = Boolean(
+      isUserFlowImportBlocked() || isUserFlowUrlImporting,
+    );
+
+    if (importButton) {
+      importButton.disabled = importDisabled;
+    }
+
+    if (urlImportButton) {
+      urlImportButton.disabled = importDisabled;
+    }
+
+    if (urlImportSelect) {
+      urlImportSelect.disabled = importDisabled || !renderedUserFlowImportUrls.length;
+    }
+
+    if (importDisabled) {
+      setUserFlowUrlImportOpen(false);
+    }
+  }
+
+  function getUserFlowImportUrls() {
+    if (!Array.isArray(window.USER_FLOW_IMPORT_URLS)) {
+      return [];
+    }
+
+    return window.USER_FLOW_IMPORT_URLS
+      .map((item) => ({
+        name: String(item?.name || "").trim().slice(0, 100),
+        url: String(item?.url || "").trim(),
+      }))
+      .filter((item) => item.name && item.url);
+  }
+
+  function renderUserFlowUrlImportOptions() {
+    const select = document.querySelector("#userFlowUrlImportSelect");
+
+    if (!select) {
+      return;
+    }
+
+    renderedUserFlowImportUrls = getUserFlowImportUrls();
+    select.replaceChildren();
+
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = renderedUserFlowImportUrls.length
+      ? "가져올 JSON 선택"
+      : "등록된 URL이 없습니다";
+    placeholder.selected = true;
+    placeholder.disabled = true;
+    select.appendChild(placeholder);
+
+    renderedUserFlowImportUrls.forEach((item, index) => {
+      const option = document.createElement("option");
+      option.value = String(index);
+      option.textContent = item.name;
+      select.appendChild(option);
+    });
+
+    select.disabled = Boolean(
+      !renderedUserFlowImportUrls.length ||
+        isUserFlowUrlImporting ||
+        isUserFlowImportBlocked(),
+    );
+  }
+
+  function setUserFlowUrlImportOpen(isOpen) {
+    const button = document.querySelector("#userFlowUrlImportButton");
+    const panel = document.querySelector("#userFlowUrlImportPanel");
+
+    if (!button || !panel) {
+      return;
+    }
+
+    const nextOpen = Boolean(isOpen && !button.disabled);
+    panel.hidden = !nextOpen;
+    button.setAttribute("aria-expanded", String(nextOpen));
+
+    if (nextOpen) {
+      renderUserFlowUrlImportOptions();
+      window.setTimeout(() => {
+        document.querySelector("#userFlowUrlImportSelect")?.focus();
+      }, 0);
+    }
+  }
+
+  function getUserFlowImportFileName(url) {
+    let fileName = "user-flow.json";
+
+    try {
+      const pathname = new URL(url, window.location.href).pathname;
+      const pathnameFileName = decodeURIComponent(pathname.split("/").pop() || "");
+
+      if (pathnameFileName) {
+        fileName = pathnameFileName;
+      }
+    } catch (error) {
+      // The URL validation below provides the visible error message.
+    }
+
+    return fileName.toLowerCase().endsWith(".json")
+      ? fileName
+      : `${fileName}.json`;
+  }
+
+  async function importUserFlowFromUrl(item) {
+    if (isUserFlowImportBlocked() || isUserFlowUrlImporting) {
+      showUserFlowImportStatus("녹화 또는 재생 중에는 가져올 수 없습니다.");
+      return;
+    }
+
+    let importUrl;
+
+    try {
+      importUrl = new URL(item?.url || "", window.location.href);
+
+      if (!["http:", "https:"].includes(importUrl.protocol)) {
+        throw new Error("HTTP 또는 HTTPS URL만 사용할 수 있습니다.");
+      }
+    } catch (error) {
+      showUserFlowImportStatus(error?.message || "등록된 URL이 올바르지 않습니다.");
+      return;
+    }
+
+    isUserFlowUrlImporting = true;
+    setUserFlowUrlImportOpen(false);
+    updateUserFlowImportControls();
+    showUserFlowImportStatus("URL에서 가져오는 중", "ready");
+
+    try {
+      const response = await fetch(importUrl.href, {
+        cache: "no-store",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(`JSON 요청에 실패했습니다. (${response.status})`);
+      }
+
+      const file = new File([await response.text()], getUserFlowImportFileName(importUrl), {
+        type: "application/json",
+      });
+      await importUserFlowFile(file);
+    } catch (error) {
+      showUserFlowImportStatus(
+        error?.message || "URL의 JSON을 가져오지 못했습니다.",
+      );
+    } finally {
+      isUserFlowUrlImporting = false;
+      updateUserFlowImportControls();
+    }
+  }
+
   function isJsonFile(file) {
     return Boolean(
       file &&
@@ -1826,6 +1983,54 @@
     document.querySelector("#userFlowImportInput")?.click();
   }
 
+  function handleUserFlowUrlImportTrigger(event) {
+    const button = event.target.closest("[data-user-flow-url-import-trigger]");
+
+    if (button) {
+      if (button.disabled) {
+        return;
+      }
+
+      const isOpen = button.getAttribute("aria-expanded") === "true";
+      setUserFlowUrlImportOpen(!isOpen);
+      return;
+    }
+
+    if (!event.target.closest("#userFlowUrlImportPanel")) {
+      setUserFlowUrlImportOpen(false);
+    }
+  }
+
+  function handleUserFlowUrlImportChange(event) {
+    const select = event.target.closest("#userFlowUrlImportSelect");
+
+    if (!select || select.value === "") {
+      return;
+    }
+
+    const item = renderedUserFlowImportUrls[Number(select.value)];
+    select.value = "";
+
+    if (item) {
+      importUserFlowFromUrl(item);
+    }
+  }
+
+  function handleUserFlowUrlImportKeydown(event) {
+    if (event.key !== "Escape") {
+      return;
+    }
+
+    const panel = document.querySelector("#userFlowUrlImportPanel");
+
+    if (!panel || panel.hidden) {
+      return;
+    }
+
+    setUserFlowUrlImportOpen(false);
+    document.querySelector("#userFlowUrlImportButton")?.focus();
+  }
+
   function handleUserFlowImportChange(event) {
     const input = event.target.closest("#userFlowImportInput");
 
@@ -2001,11 +2206,14 @@
   document.addEventListener("click", handleUserFlowTestSessionRemove);
   document.addEventListener("click", handleUserFlowTabControl);
   document.addEventListener("click", handleUserFlowImportTrigger);
+  document.addEventListener("click", handleUserFlowUrlImportTrigger);
   document.addEventListener("click", handleUserFlowNameControl);
   document.addEventListener("change", handleUserFlowImportChange);
+  document.addEventListener("change", handleUserFlowUrlImportChange);
   document.addEventListener("focusout", handleUserFlowTabNameFocusOut);
   document.addEventListener("keydown", handleUserFlowTabNameKeydown);
   document.addEventListener("keydown", handleUserFlowNameKeydown);
+  document.addEventListener("keydown", handleUserFlowUrlImportKeydown);
   document.addEventListener("submit", handleUserFlowNameSubmit);
   document.addEventListener("dragstart", handleUserFlowSessionDragStart);
   document.addEventListener("dragenter", handleUserFlowDragEnter);
@@ -2027,10 +2235,12 @@
   window.addEventListener("blur", resetUserFlowFileDrag);
 
   renderUserFlowTabs([]);
+  renderUserFlowUrlImportOptions();
   sendUserFlowCommand("get-state");
 
   window.UserFlowPopup = Object.freeze({
     importFile: importUserFlowFile,
+    importUrl: importUserFlowFromUrl,
     renderState: renderUserFlowState,
     requestState: () => sendUserFlowCommand("get-state"),
   });
