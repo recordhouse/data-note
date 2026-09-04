@@ -31,8 +31,6 @@
   const REQUEST_REPEAT_RESUME_LIMIT = 5;
   const AUTO_REPLAY_REQUEST_IDLE_MS = 500;
   const CHECKABLE_EVENT_GROUP_MS = 150;
-  const REPLAY_SCROLL_VERIFY_TIMEOUT_MS = 800;
-  const REPLAY_SCROLL_TOLERANCE_PX = 3;
   const RECORDING_FORMAT_VERSION = 3;
   const PERCENT_PRECISION = 6;
   const IMPORTABLE_EVENT_TYPES = new Set(["change", "click", "input", "scroll"]);
@@ -118,10 +116,6 @@
 
     .user-flow-runtime-status[data-mode="replaying"] {
       color: #0f766e;
-    }
-
-    .user-flow-runtime-status[data-mode="replaying"][data-state="failed"] {
-      color: #b42345;
     }
 
     .user-flow-runtime-status.is-visible {
@@ -315,7 +309,6 @@
     replayPausedMs: 0,
     replayRequestWaitStartedAt: 0,
     replayCompletedEventCount: 0,
-    replayOutcome: "",
     replayProgressTimer: 0,
     lastError: "",
     scrollLastAt: new Map(),
@@ -620,7 +613,6 @@
       activeRecordingSessionId: state.isRecording ? state.currentSessionId : "",
       replaySessionId: state.replaySessionId,
       replayCompletedEventCount: state.replayCompletedEventCount,
-      replayOutcome: state.replayOutcome,
       pendingRequestCount: getPendingRequestCount(),
       blockingRequestCount: getBlockingRequestCount(),
       isWaitingForRequests: Boolean(
@@ -774,11 +766,9 @@
         : "녹화 중지됨"
       : isActive
         ? "재생 중"
-        : statusState === "failed"
-          ? "재생 실패"
-          : statusState === "completed"
-            ? "재생 완료"
-            : "재생 중지됨";
+        : statusState === "completed"
+          ? "재생 완료"
+          : "재생 중지됨";
 
     status.title = label;
     status.setAttribute("aria-label", status.title);
@@ -1415,7 +1405,7 @@
     });
   }
 
-  async function waitForReplayRequests(replayRunId, onValidationFailure) {
+  async function waitForReplayRequests(replayRunId) {
     if (!hasBlockingRequests()) {
       return true;
     }
@@ -1435,14 +1425,8 @@
     }
 
     if (!requestsCompleted && hasBlockingRequests()) {
-      onValidationFailure?.({
-        eventIndex: null,
-        reason: `통신 완료 대기 시간이 ${REQUEST_WAIT_TIMEOUT_MS / 1000}초를 초과했습니다.`,
-        selector: "",
-        type: "request",
-      });
       console.warn(
-        `UserFlowRecorder: 통신 대기 시간이 ${REQUEST_WAIT_TIMEOUT_MS / 1000}초를 초과해 재생을 중지합니다.`,
+        `UserFlowRecorder: 통신 대기 시간이 ${REQUEST_WAIT_TIMEOUT_MS / 1000}초를 초과해 다음 행동을 계속합니다.`,
       );
       resetPendingRequests();
     }
@@ -1475,43 +1459,6 @@
     return null;
   }
 
-  function createReplayActionResult(ok, reason = "") {
-    return { ok, reason };
-  }
-
-  function isReplayPositionMatched(actualLeft, actualTop, expectedLeft, expectedTop) {
-    return (
-      Math.abs(actualLeft - expectedLeft) <= REPLAY_SCROLL_TOLERANCE_PX &&
-      Math.abs(actualTop - expectedTop) <= REPLAY_SCROLL_TOLERANCE_PX
-    );
-  }
-
-  async function waitForReplayScrollPosition(target, expectedLeft, expectedTop) {
-    const startedAt = performance.now();
-
-    while (performance.now() - startedAt < REPLAY_SCROLL_VERIFY_TIMEOUT_MS) {
-      const actualLeft = target === window ? window.scrollX : target.scrollLeft;
-      const actualTop = target === window ? window.scrollY : target.scrollTop;
-
-      if (
-        isReplayPositionMatched(actualLeft, actualTop, expectedLeft, expectedTop)
-      ) {
-        return true;
-      }
-
-      await sleep(50);
-    }
-
-    const actualLeft = target === window ? window.scrollX : target.scrollLeft;
-    const actualTop = target === window ? window.scrollY : target.scrollTop;
-    return isReplayPositionMatched(
-      actualLeft,
-      actualTop,
-      expectedLeft,
-      expectedTop,
-    );
-  }
-
   async function playScroll(recordedEvent) {
     const target = await waitForTarget(recordedEvent.selector);
 
@@ -1537,13 +1484,11 @@
       } catch (error) {
         window.scrollTo(left, top);
       }
-      return (await waitForReplayScrollPosition(window, left, top))
-        ? createReplayActionResult(true)
-        : createReplayActionResult(false, "화면 스크롤 위치가 녹화값과 다릅니다.");
+      return;
     }
 
     if (!target) {
-      return createReplayActionResult(false, "스크롤 대상 요소를 찾지 못했습니다.");
+      return;
     }
 
     const { maxLeft, maxTop } = getElementScrollBounds(target);
@@ -1565,19 +1510,14 @@
           top,
           behavior: "smooth",
         });
+        return;
       } catch (error) {
         // Fall through for browsers that only support numeric scrollTo arguments.
-        target.scrollLeft = left;
-        target.scrollTop = top;
       }
-    } else {
-      target.scrollLeft = left;
-      target.scrollTop = top;
     }
 
-    return (await waitForReplayScrollPosition(target, left, top))
-      ? createReplayActionResult(true)
-      : createReplayActionResult(false, "요소 스크롤 위치가 녹화값과 다릅니다.");
+    target.scrollLeft = left;
+    target.scrollTop = top;
   }
 
   function playClick(target, recordedEvent) {
@@ -1628,39 +1568,9 @@
     }
   }
 
-  function isFormReplayValueMatched(target, detail) {
-    if (!target || detail?.redacted || detail?.unsupported) {
-      return false;
-    }
-
-    if (isCheckableInput(target)) {
-      return target.checked === Boolean(detail.checked);
-    }
-
-    if (
-      target instanceof HTMLInputElement ||
-      target instanceof HTMLTextAreaElement ||
-      target instanceof HTMLSelectElement
-    ) {
-      return target.value === String(detail.value ?? "");
-    }
-
-    if (target.isContentEditable) {
-      return (target.textContent || "") === String(detail.text ?? "");
-    }
-
-    return false;
-  }
-
-  async function playFormChange(target, recordedEvent) {
-    const detail = recordedEvent.detail || {};
-
-    if (detail.redacted) {
-      return createReplayActionResult(false, "보안 입력값은 재생할 수 없습니다.");
-    }
-
+  function playFormChange(target, recordedEvent) {
     if (!applyFormValue(target, recordedEvent.detail || {})) {
-      return createReplayActionResult(false, "입력값을 대상 요소에 적용하지 못했습니다.");
+      return;
     }
 
     target.dispatchEvent(
@@ -1669,11 +1579,6 @@
         cancelable: true,
       }),
     );
-    await waitForRenderFrame();
-    const currentTarget = findTarget(recordedEvent.selector);
-    return isFormReplayValueMatched(currentTarget, detail)
-      ? createReplayActionResult(true)
-      : createReplayActionResult(false, "입력 후 실제 값이 녹화값과 다릅니다.");
   }
 
   function isCheckableInput(element) {
@@ -1694,7 +1599,6 @@
 
         const replayEvent = {
           ...recordedEvent,
-          replaySourceEventIndex: eventIndex,
           replaySourceEventCount: 1,
         };
 
@@ -1738,10 +1642,7 @@
       target.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
       target.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
       await waitForRenderFrame();
-      const currentTarget = findTarget(recordedEvent.selector);
-      return isCheckableInput(currentTarget) && currentTarget.checked === desiredChecked
-        ? createReplayActionResult(true)
-        : createReplayActionResult(false, "선택 상태가 녹화값과 다릅니다.");
+      return;
     }
 
     setNativeValue(target, "checked", !desiredChecked);
@@ -1751,9 +1652,7 @@
     const currentTarget = findTarget(recordedEvent.selector);
 
     if (!isCheckableInput(currentTarget) || currentTarget.checked === desiredChecked) {
-      return isCheckableInput(currentTarget)
-        ? createReplayActionResult(true)
-        : createReplayActionResult(false, "선택 요소가 실행 후 사라졌습니다.");
+      return;
     }
 
     setNativeValue(currentTarget, "checked", desiredChecked);
@@ -1764,30 +1663,18 @@
       new Event("change", { bubbles: true, composed: true }),
     );
     await waitForRenderFrame();
-    const verifiedTarget = findTarget(recordedEvent.selector);
-    return isCheckableInput(verifiedTarget) && verifiedTarget.checked === desiredChecked
-      ? createReplayActionResult(true)
-      : createReplayActionResult(false, "선택 상태가 녹화값과 다릅니다.");
   }
 
   async function playEvent(recordedEvent) {
-    const expectedPage = normalizeReplayPage(recordedEvent.page);
-
-    if (expectedPage && expectedPage !== getCurrentPage()) {
-      return createReplayActionResult(
-        false,
-        `행동 페이지가 현재 페이지와 다릅니다. (${expectedPage})`,
-      );
-    }
-
     if (recordedEvent.type === "scroll") {
-      return playScroll(recordedEvent);
+      await playScroll(recordedEvent);
+      return;
     }
 
     const target = await waitForTarget(recordedEvent.selector);
 
     if (!target || target === window) {
-      return createReplayActionResult(false, "대상 요소를 찾지 못했습니다.");
+      return;
     }
 
     if (recordedEvent.type === "click") {
@@ -1795,19 +1682,17 @@
         isCheckableInput(target) &&
         typeof recordedEvent.replayChecked === "boolean"
       ) {
-        return playCheckableClick(target, recordedEvent);
+        await playCheckableClick(target, recordedEvent);
+        return;
       }
 
       playClick(target, recordedEvent);
-      await waitForRenderFrame();
-      return createReplayActionResult(true);
+      return;
     }
 
     if (recordedEvent.type === "input" || recordedEvent.type === "change") {
-      return playFormChange(target, recordedEvent);
+      playFormChange(target, recordedEvent);
     }
-
-    return createReplayActionResult(false, "지원하지 않는 행동 유형입니다.");
   }
 
   function createUniqueSessionId(recordedAt = Date.now(), reservedIds) {
@@ -1985,7 +1870,6 @@
     state.isRecording = true;
     state.recordedAt = recordedAt;
     state.startAt = performance.now();
-    state.replayOutcome = "";
     state.lastError = "";
     state.scrollLastAt.clear();
     state.scrollTimers.forEach((timer) => window.clearTimeout(timer));
@@ -2036,7 +1920,6 @@
     state.replayPausedMs = 0;
     state.replayRequestWaitStartedAt = 0;
     state.replayCompletedEventCount = 0;
-    state.replayOutcome = "";
     state.lastError = "";
     clearReplayRequestTracking();
     stopReplayProgressNotifications();
@@ -2058,7 +1941,6 @@
     }
 
     state.lastError = "";
-    state.replayOutcome = "";
     notifyClients({ immediate: true });
     stopRecording();
 
@@ -2079,26 +1961,8 @@
     state.replayPausedMs = 0;
     state.replayRequestWaitStartedAt = 0;
     state.replayCompletedEventCount = 0;
-    state.replayOutcome = "";
     state.lastError = "";
     initializeReplayRequestTracking();
-    let replayFailure = null;
-    let replaySuccessfulEventCount = 0;
-
-    function recordReplayValidationFailure(failure = {}) {
-      if (replayFailure) {
-        return;
-      }
-
-      const hasEventIndex = failure.eventIndex !== null && failure.eventIndex !== undefined;
-      replayFailure = {
-        eventIndex: hasEventIndex
-          ? Math.max(1, Math.round(Number(failure.eventIndex) || 1))
-          : null,
-        reason: String(failure.reason || "재생 정합성 오류").slice(0, 240),
-      };
-    }
-
     showScreenMask("replaying");
     showRuntimeStatus("replaying");
     startReplayProgressNotifications();
@@ -2114,16 +1978,7 @@
       const replayStartedAt = state.replayStartedAt;
       const replayEvents = createReplayEvents(state.events);
 
-      if (
-        !(await waitForReplayRequests(
-          replayRunId,
-          recordReplayValidationFailure,
-        ))
-      ) {
-        return;
-      }
-
-      if (replayFailure) {
+      if (!(await waitForReplayRequests(replayRunId))) {
         return;
       }
 
@@ -2144,68 +1999,19 @@
           break;
         }
 
-        if (
-          !(await waitForReplayRequests(
-            replayRunId,
-            recordReplayValidationFailure,
-          ))
-        ) {
+        if (!(await waitForReplayRequests(replayRunId))) {
           break;
         }
 
-        if (replayFailure) {
-          break;
-        }
-
-        const replaySourceEventCount = recordedEvent.replaySourceEventCount || 1;
-        let actionResult;
-
-        try {
-          actionResult = await playEvent(recordedEvent);
-        } catch (error) {
-          actionResult = createReplayActionResult(
-            false,
-            error?.message || "행동 실행 중 예외가 발생했습니다.",
-          );
-        }
-
-        if (actionResult?.ok) {
-          replaySuccessfulEventCount += replaySourceEventCount;
-          state.replayCompletedEventCount += replaySourceEventCount;
-        } else {
-          recordReplayValidationFailure({
-            eventIndex: Number(recordedEvent.replaySourceEventIndex || 0) + 1,
-            reason: actionResult?.reason || "행동을 재생하지 못했습니다.",
-          });
-          break;
-        }
-
+        await playEvent(recordedEvent);
+        state.replayCompletedEventCount += recordedEvent.replaySourceEventCount || 1;
         notifyClients();
         await sleep(0);
       }
 
-      if (
-        !replayFailure &&
-        !state.replayAbort &&
-        state.replayRunId === replayRunId
-      ) {
-        await waitForReplayRequests(replayRunId, recordReplayValidationFailure);
+      if (!state.replayAbort && state.replayRunId === replayRunId) {
+        await waitForReplayRequests(replayRunId);
       }
-
-      if (
-        !replayFailure &&
-        replaySuccessfulEventCount !== session.events.length
-      ) {
-        recordReplayValidationFailure({
-          eventIndex: null,
-          reason: `완료된 행동 수가 녹화값과 다릅니다. (${replaySuccessfulEventCount}/${session.events.length})`,
-        });
-      }
-    } catch (error) {
-      recordReplayValidationFailure({
-        eventIndex: null,
-        reason: error?.message || "재생 처리 중 예외가 발생했습니다.",
-      });
     } finally {
       if (state.replayRunId === replayRunId) {
         state.isReplaying = false;
@@ -2215,15 +2021,9 @@
         state.replayPausedMs = 0;
         state.replayRequestWaitStartedAt = 0;
         state.replayCompletedEventCount = 0;
-        state.replayOutcome = replayFailure ? "failed" : "completed";
         clearReplayRequestTracking();
         stopReplayProgressNotifications();
-        state.lastError = replayFailure
-          ? `재생 실패: ${
-              replayFailure.eventIndex ? `${replayFailure.eventIndex}번째 행동 - ` : ""
-            }${replayFailure.reason}`
-          : "";
-        showRuntimeStatus("replaying", replayFailure ? "failed" : "completed");
+        showRuntimeStatus("replaying", "completed");
         hideScreenMask();
 
         if (pendingRecordingSync) {
@@ -2310,7 +2110,6 @@
     state.sessions = [];
     state.currentSessionId = "";
     state.recordedAt = null;
-    state.replayOutcome = "";
     state.lastError = "";
     dirtySessionIds.clear();
     deletedSessionIds.clear();

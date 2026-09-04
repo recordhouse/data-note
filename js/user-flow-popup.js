@@ -632,9 +632,6 @@
     } else if (flowState.error) {
       statusText = flowState.error;
       statusState = "error";
-    } else if (flowState.replayOutcome === "completed") {
-      statusText = "재생 완료";
-      statusState = "ready";
     } else if (flowState.canReplay) {
       statusText = "재생 준비";
       statusState = "ready";
