@@ -270,17 +270,28 @@
       { once: true },
     );
 
+    const userFlowReadyPromise = loadFeatureScript(
+      "user-flow-archive.js",
+      "userFlowArchiveSrc",
+      "UserFlowArchive",
+    )
+      .then(() =>
+        loadFeatureScript(
+          "user-flow-import.js",
+          "userFlowImportSrc",
+          "UserFlowImport",
+        ),
+      )
+      .then(() =>
+        loadFeatureScript(
+          "user-flow-popup.js",
+          "userFlowPopupSrc",
+          "UserFlowPopup",
+        ),
+      );
+
     featureReadyPromise = Promise.all([
-      loadFeatureScript(
-        "user-flow-archive.js",
-        "userFlowArchiveSrc",
-        "UserFlowArchive",
-      ),
-      loadFeatureScript(
-        "user-flow-popup.js",
-        "userFlowPopupSrc",
-        "UserFlowPopup",
-      ),
+      userFlowReadyPromise,
       loadFeatureScript(
         "response-mapping-popup.js",
         "responseMappingSrc",

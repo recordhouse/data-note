@@ -9,10 +9,7 @@
   const MESSAGE_USER_FLOW_STATE = "response-mapping-user-flow-state";
   const POPUP_TAB_CHANGE_EVENT = "response-mapping-popup-tab-change";
   const PARENT_READY_EVENT = "response-mapping-popup-parent-ready";
-  const MAX_USER_FLOW_IMPORT_BYTES = 10 * 1024 * 1024;
-  const MAX_USER_FLOW_ARCHIVE_IMPORT_BYTES = 50 * 1024 * 1024;
   const MAX_USER_FLOW_SESSIONS = 150;
-  const MAX_USER_FLOW_IMPORT_SESSIONS = MAX_USER_FLOW_SESSIONS;
   const USER_FLOW_TAB_STORAGE_KEY = "response-mapping-user-flow-tabs:v1";
   const DEFAULT_USER_FLOW_TAB_ID = "default";
   const USER_FLOW_VIEW_RECORDINGS = "recordings";
@@ -30,14 +27,12 @@
   let editingUserFlowTabId = "";
   let renderedUserFlowSessionSignature = "";
   let renderedUserFlowTestSignature = "";
-  let userFlowDragDepth = 0;
   let draggedUserFlowSessionId = "";
   let replayNavigationIdleTimer = 0;
   let replayNavigationParentReady = false;
   let replayNavigationSessionId = "";
   let replayNavigationTimer = 0;
-  let isUserFlowUrlImporting = false;
-  let renderedUserFlowImportUrls = [];
+  let userFlowImportController = null;
   let userFlowTabs = readUserFlowTabs();
 
   function createDefaultUserFlowTabs() {
@@ -324,7 +319,6 @@
       return;
     }
 
-    const tabCounts = getUserFlowTabCounts(sessions);
     const organizationDisabled = Boolean(
       currentUserFlowState.isRecording || currentUserFlowState.isReplaying,
     );
@@ -352,8 +346,7 @@
                     maxlength="30"
                     aria-label="탭 이름"
                     data-user-flow-tab-name-input="${escapeHtml(tab.id)}"
-                  />
-                  <span class="user-flow-list-tab-count">${Number(tabCounts.get(tab.id) || 0).toLocaleString("ko-KR")}</span>`
+                  />`
                 : `<button
                     class="user-flow-list-tab"
                     id="${escapeHtml(getUserFlowTabElementId(tab.id))}"
@@ -364,7 +357,6 @@
                     data-user-flow-tab-select="${escapeHtml(tab.id)}"
                   >
                     <span>${escapeHtml(tab.name)}</span>
-                    <span class="user-flow-list-tab-count">${Number(tabCounts.get(tab.id) || 0).toLocaleString("ko-KR")}</span>
                   </button>`
             }
             <button
@@ -514,7 +506,6 @@
   function renderUserFlowTestSessions(flowState, sessions, sessionSignature) {
     const sessionList = document.querySelector("#userFlowTestSessionList");
     const sessionCount = document.querySelector("#userFlowTestSessionCount");
-    const viewCount = document.querySelector("#userFlowTestViewCount");
     const sessionById = new Map(sessions.map((session) => [session.id, session]));
     const testSessions = userFlowTabs.testSessionIds
       .map((sessionId) => sessionById.get(sessionId))
@@ -528,10 +519,6 @@
 
     if (sessionCount) {
       sessionCount.textContent = `${countText}개`;
-    }
-
-    if (viewCount) {
-      viewCount.textContent = countText;
     }
 
     if (renderedUserFlowTestSignature === sessionSignature) {
@@ -608,6 +595,7 @@
     const status = document.querySelector("#userFlowStatus");
     const recordButton = document.querySelector("#userFlowRecordButton");
     const exportAllButton = document.querySelector("#userFlowExportAllButton");
+    const clearAllButton = document.querySelector("#userFlowClearAllButton");
     const tabAddButton = document.querySelector("#userFlowTabAddButton");
     const sessionCount = document.querySelector("#userFlowSessionCount");
     const sessionList = document.querySelector("#userFlowSessionList");
@@ -648,7 +636,7 @@
     recordButton.setAttribute("aria-pressed", String(Boolean(flowState.isRecording)));
     recordButton.disabled = Boolean(flowState.isReplaying);
 
-    updateUserFlowImportControls();
+    userFlowImportController?.updateControls();
 
     if (tabAddButton) {
       tabAddButton.disabled = Boolean(flowState.isRecording || flowState.isReplaying);
@@ -659,6 +647,12 @@
 
     if (exportAllButton) {
       exportAllButton.disabled = Boolean(
+        flowState.isRecording || flowState.isReplaying || !sessions.length,
+      );
+    }
+
+    if (clearAllButton) {
+      clearAllButton.disabled = Boolean(
         flowState.isRecording || flowState.isReplaying || !sessions.length,
       );
     }
@@ -918,6 +912,19 @@
 
     const command = button.dataset.userFlowCommand;
 
+    if (command === "clear") {
+      const sessionCount = (currentUserFlowState.sessions || []).length;
+
+      if (
+        !sessionCount ||
+        !window.confirm(
+          `현재 팝업에 저장된 녹화 ${sessionCount.toLocaleString("ko-KR")}개를 모두 삭제합니다.\n이 작업은 되돌릴 수 없습니다. 삭제하시겠습니까?`,
+        )
+      ) {
+        return;
+      }
+    }
+
     if (
       command === "toggle-record" &&
       !currentUserFlowState.isRecording &&
@@ -1058,7 +1065,11 @@
     const editButton = event.target.closest("[data-user-flow-tab-edit]");
     const deleteButton = event.target.closest("[data-user-flow-tab-delete]");
     const selectButton = event.target.closest("[data-user-flow-tab-select]");
-    const requestedEditTabId = editButton?.dataset.userFlowTabEdit || "";
+    const nameInput = event.target.closest("[data-user-flow-tab-name-input]");
+    const requestedEditTabId =
+      editButton?.dataset.userFlowTabEdit ||
+      nameInput?.dataset.userFlowTabNameInput ||
+      "";
 
     if (
       editingUserFlowTabId &&
@@ -1533,676 +1544,6 @@
     status.dataset.state = statusState;
   }
 
-  function isUserFlowImportBlocked() {
-    return Boolean(currentUserFlowState.isRecording || currentUserFlowState.isReplaying);
-  }
-
-  function updateUserFlowImportControls() {
-    const importButton = document.querySelector("#userFlowImportButton");
-    const urlImportButton = document.querySelector("#userFlowUrlImportButton");
-    const urlImportSelect = document.querySelector("#userFlowUrlImportSelect");
-    const importDisabled = Boolean(
-      isUserFlowImportBlocked() || isUserFlowUrlImporting,
-    );
-
-    if (importButton) {
-      importButton.disabled = importDisabled;
-    }
-
-    if (urlImportButton) {
-      urlImportButton.disabled = importDisabled;
-    }
-
-    if (urlImportSelect) {
-      urlImportSelect.disabled = importDisabled || !renderedUserFlowImportUrls.length;
-    }
-
-    if (importDisabled) {
-      setUserFlowUrlImportOpen(false);
-    }
-  }
-
-  function getUserFlowImportUrls() {
-    if (!Array.isArray(window.USER_FLOW_IMPORT_URLS)) {
-      return [];
-    }
-
-    return window.USER_FLOW_IMPORT_URLS
-      .map((item) => ({
-        name: String(item?.name || "").trim().slice(0, 100),
-        url: String(item?.url || "").trim(),
-      }))
-      .filter((item) => item.name && item.url);
-  }
-
-  function renderUserFlowUrlImportOptions() {
-    const select = document.querySelector("#userFlowUrlImportSelect");
-
-    if (!select) {
-      return;
-    }
-
-    renderedUserFlowImportUrls = getUserFlowImportUrls();
-    select.replaceChildren();
-
-    if (!renderedUserFlowImportUrls.length) {
-      const empty = document.createElement("option");
-      empty.textContent = "등록된 URL이 없습니다";
-      empty.disabled = true;
-      select.appendChild(empty);
-      select.size = 1;
-      select.disabled = true;
-      return;
-    }
-
-    const placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = "선택하세요";
-    placeholder.disabled = true;
-    placeholder.selected = true;
-    select.appendChild(placeholder);
-
-    renderedUserFlowImportUrls.forEach((item, index) => {
-      const option = document.createElement("option");
-      option.value = String(index);
-      option.textContent = item.name;
-      select.appendChild(option);
-    });
-
-    select.size = Math.min(renderedUserFlowImportUrls.length + 1, 6);
-    select.disabled = Boolean(isUserFlowUrlImporting || isUserFlowImportBlocked());
-  }
-
-  function setUserFlowUrlImportOpen(isOpen) {
-    const button = document.querySelector("#userFlowUrlImportButton");
-    const panel = document.querySelector("#userFlowUrlImportPanel");
-
-    if (!button || !panel) {
-      return;
-    }
-
-    const nextOpen = Boolean(isOpen && !button.disabled);
-    panel.hidden = !nextOpen;
-    button.setAttribute("aria-expanded", String(nextOpen));
-
-    if (nextOpen) {
-      renderUserFlowUrlImportOptions();
-      window.setTimeout(() => {
-        document.querySelector("#userFlowUrlImportSelect")?.focus();
-      }, 0);
-    }
-  }
-
-  function getContentDispositionFileName(headerValue) {
-    const encodedName = String(headerValue || "").match(
-      /filename\*\s*=\s*UTF-8''([^;]+)/i,
-    )?.[1];
-
-    if (encodedName) {
-      try {
-        return decodeURIComponent(encodedName.trim().replace(/^"|"$/g, ""));
-      } catch (error) {
-        return encodedName.trim().replace(/^"|"$/g, "");
-      }
-    }
-
-    return (
-      String(headerValue || "")
-        .match(/filename\s*=\s*(?:"([^"]+)"|([^;]+))/i)
-        ?.slice(1)
-        .find(Boolean)
-        ?.trim() || ""
-    );
-  }
-
-  function getUserFlowImportFileMeta(response, importUrl, blob) {
-    const contentType = String(blob.type || response.headers.get("content-type") || "")
-      .split(";", 1)[0]
-      .trim()
-      .toLowerCase();
-    const dispositionName = getContentDispositionFileName(
-      response.headers.get("content-disposition"),
-    );
-    const pathnameName = decodeURIComponent(
-      new URL(response.url || importUrl.href).pathname.split("/").pop() || "",
-    );
-    let fileName = (dispositionName || pathnameName || "user-flow")
-      .split(/[\\/]/)
-      .pop();
-    const isZip =
-      fileName.toLowerCase().endsWith(".zip") || contentType.includes("zip");
-    const isJson =
-      fileName.toLowerCase().endsWith(".json") || contentType.includes("json");
-
-    if (!isZip && !isJson) {
-      throw new Error("URL 응답이 JSON 또는 ZIP 파일이 아닙니다.");
-    }
-
-    const extension = isZip ? ".zip" : ".json";
-    const fileType = isZip ? "application/zip" : "application/json";
-
-    if (!fileName.toLowerCase().endsWith(extension)) {
-      fileName = `${fileName.replace(/\.(?:json|zip)$/i, "")}${extension}`;
-    }
-
-    return { fileName, fileType };
-  }
-
-  async function importUserFlowFromUrl(item) {
-    if (isUserFlowImportBlocked() || isUserFlowUrlImporting) {
-      showUserFlowImportStatus("녹화 또는 재생 중에는 가져올 수 없습니다.");
-      return;
-    }
-
-    let importUrl;
-
-    try {
-      importUrl = new URL(item?.url || "", window.location.href);
-
-      if (!["http:", "https:"].includes(importUrl.protocol)) {
-        throw new Error("HTTP 또는 HTTPS URL만 사용할 수 있습니다.");
-      }
-    } catch (error) {
-      showUserFlowImportStatus(error?.message || "등록된 URL이 올바르지 않습니다.");
-      return;
-    }
-
-    isUserFlowUrlImporting = true;
-    setUserFlowUrlImportOpen(false);
-    updateUserFlowImportControls();
-    showUserFlowImportStatus("URL에서 가져오는 중", "ready");
-
-    try {
-      const response = await fetch(importUrl.href, {
-        cache: "no-store",
-        credentials: "include",
-      });
-
-      if (!response.ok) {
-        throw new Error(`파일 요청에 실패했습니다. (${response.status})`);
-      }
-
-      const blob = await response.blob();
-      const { fileName, fileType } = getUserFlowImportFileMeta(
-        response,
-        importUrl,
-        blob,
-      );
-      const file = new File([blob], fileName, {
-        type: fileType,
-      });
-      await importUserFlowFile(file);
-    } catch (error) {
-      showUserFlowImportStatus(
-        error?.message || "URL의 JSON 또는 ZIP 파일을 가져오지 못했습니다.",
-      );
-    } finally {
-      isUserFlowUrlImporting = false;
-      updateUserFlowImportControls();
-    }
-  }
-
-  function isJsonFile(file) {
-    return Boolean(
-      file &&
-        (file.type === "application/json" || file.name.toLowerCase().endsWith(".json")),
-    );
-  }
-
-  function isZipFile(file) {
-    return Boolean(
-      file &&
-        (["application/zip", "application/x-zip-compressed"].includes(file.type) ||
-          file.name.toLowerCase().endsWith(".zip")),
-    );
-  }
-
-  function isUserFlowImportFile(file) {
-    return isJsonFile(file) || isZipFile(file);
-  }
-
-  function getArchiveFolderName(entryName) {
-    const [folderName = ""] = String(entryName || "").split("/");
-    const normalizedName = folderName.trim().slice(0, 30);
-
-    if (!normalizedName || normalizedName === "__MACOSX") {
-      return "";
-    }
-
-    return normalizedName;
-  }
-
-  function getImportCandidates(importData) {
-    if (Array.isArray(importData?.sessions)) {
-      return importData.sessions;
-    }
-
-    if (importData?.session) {
-      return [importData.session];
-    }
-
-    return Array.isArray(importData?.events) ? [importData] : [];
-  }
-
-  function createArchiveImportSessionId(candidate, reservedIds) {
-    const requestedId =
-      typeof candidate?.id === "string" ? candidate.id.trim().slice(0, 160) : "";
-
-    if (requestedId) {
-      if (reservedIds.has(requestedId)) {
-        return "";
-      }
-
-      reservedIds.add(requestedId);
-      return requestedId;
-    }
-
-    const recordedAt = Number(candidate?.recordedAt) || Date.now();
-    let sessionId = "";
-
-    do {
-      sessionId = `recording-${Math.round(recordedAt)}-import-${Math.random()
-        .toString(36)
-        .slice(2, 8)}`;
-    } while (reservedIds.has(sessionId));
-
-    reservedIds.add(sessionId);
-    return sessionId;
-  }
-
-  function ensureArchiveImportTabs(folderNames) {
-    const tabByName = new Map(
-      userFlowTabs.tabs.map((tab) => [tab.name.toLowerCase(), tab]),
-    );
-    const folderNameByKey = new Map();
-
-    folderNames.forEach((name) => {
-      const normalizedName = name.trim();
-
-      if (normalizedName && !folderNameByKey.has(normalizedName.toLowerCase())) {
-        folderNameByKey.set(normalizedName.toLowerCase(), normalizedName);
-      }
-    });
-
-    const normalizedFolderNames = Array.from(folderNameByKey.values());
-    const missingFolderNames = normalizedFolderNames.filter(
-      (name) => !tabByName.has(name.toLowerCase()),
-    );
-
-    if (userFlowTabs.tabs.length + missingFolderNames.length > MAX_USER_FLOW_TABS) {
-      throw new Error(`가져온 폴더를 추가하면 탭 ${MAX_USER_FLOW_TABS}개를 초과합니다.`);
-    }
-
-    missingFolderNames.forEach((name, index) => {
-      const tab = {
-        id: `tab-import-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
-        name,
-      };
-
-      userFlowTabs.tabs.push(tab);
-      tabByName.set(name.toLowerCase(), tab);
-    });
-
-    return tabByName;
-  }
-
-  async function importUserFlowArchive(file) {
-    if (!window.UserFlowArchive) {
-      throw new Error("ZIP 모듈을 불러오지 못했습니다.");
-    }
-
-    const importSourceZipName = String(file?.name || "").trim().slice(0, 255);
-    const normalizedZipName = importSourceZipName.toLowerCase();
-    const isDuplicateZip = (currentUserFlowState.sessions || []).some(
-      (session) =>
-        normalizedZipName &&
-        String(session.importSourceZipName || "").trim().toLowerCase() ===
-          normalizedZipName,
-    );
-
-    if (isDuplicateZip) {
-      throw new Error(`${importSourceZipName} 파일은 이미 가져왔습니다.`);
-    }
-
-    const entries = await window.UserFlowArchive.readArchive(file);
-    const archiveEntries = entries.filter((entry) => getArchiveFolderName(entry.name));
-    const folderNames = archiveEntries
-      .map((entry) => getArchiveFolderName(entry.name))
-      .filter(Boolean);
-
-    if (!folderNames.length) {
-      throw new Error("탭 폴더가 들어 있는 ZIP 파일이 아닙니다.");
-    }
-
-    const reservedIds = new Set(
-      (currentUserFlowState.sessions || []).map((session) => session.id),
-    );
-    const importedSessions = [];
-    const importedSessionFolders = new Map();
-    let archiveSessionCount = 0;
-
-    archiveEntries
-      .filter(
-        (entry) =>
-          !entry.isDirectory &&
-          entry.name.toLowerCase().endsWith(".json") &&
-          entry.name.split("/").filter(Boolean).length >= 2,
-      )
-      .forEach((entry) => {
-        let importData;
-
-        try {
-          importData = JSON.parse(entry.text());
-        } catch (error) {
-          throw new Error(`${entry.name} 파일의 JSON 형식이 올바르지 않습니다.`);
-        }
-
-        const folderName = getArchiveFolderName(entry.name);
-
-        getImportCandidates(importData).forEach((candidate) => {
-          if (!candidate || typeof candidate !== "object" || !Array.isArray(candidate.events)) {
-            return;
-          }
-
-          archiveSessionCount += 1;
-
-          if (importedSessions.length >= MAX_USER_FLOW_IMPORT_SESSIONS) {
-            throw new Error(
-              `한 번에 녹화 ${MAX_USER_FLOW_IMPORT_SESSIONS}개까지 가져올 수 있습니다.`,
-            );
-          }
-
-          const sessionId = createArchiveImportSessionId(candidate, reservedIds);
-
-          if (!sessionId) {
-            return;
-          }
-
-          importedSessions.push({
-            ...candidate,
-            id: sessionId,
-            importSourceZipName,
-          });
-          importedSessionFolders.set(sessionId, folderName);
-        });
-      });
-
-    if (archiveSessionCount && !importedSessions.length) {
-      throw new Error("ZIP 파일의 녹화가 이미 목록에 추가되어 있습니다.");
-    }
-
-    const previousTabs = JSON.parse(JSON.stringify(userFlowTabs));
-
-    try {
-      const tabByName = ensureArchiveImportTabs(folderNames);
-      const tabCounts = getUserFlowTabCounts(currentUserFlowState.sessions || []);
-
-      if (
-        (currentUserFlowState.sessions || []).length + importedSessions.length >
-        MAX_USER_FLOW_SESSIONS
-      ) {
-        throw new Error(
-          `전체 녹화는 최대 ${MAX_USER_FLOW_SESSIONS}개까지 저장할 수 있습니다.`,
-        );
-      }
-
-      importedSessions.forEach((session) => {
-        const folderName = importedSessionFolders.get(session.id);
-        const tab = tabByName.get(folderName.toLowerCase());
-
-        if (tab) {
-          const tabSessionCount = Number(tabCounts.get(tab.id) || 0);
-
-          if (tabSessionCount >= MAX_USER_FLOW_SESSIONS_PER_TAB) {
-            throw new Error(
-              `${tab.name} 탭에는 녹화를 최대 ${MAX_USER_FLOW_SESSIONS_PER_TAB}개까지 가져올 수 있습니다.`,
-            );
-          }
-
-          userFlowTabs.sessionTabs[session.id] = tab.id;
-          tabCounts.set(tab.id, tabSessionCount + 1);
-        }
-      });
-
-      const firstImportedTab = tabByName.get(folderNames[0].toLowerCase());
-
-      if (firstImportedTab) {
-        userFlowTabs.activeTabId = firstImportedTab.id;
-      }
-
-      if (!persistUserFlowTabs()) {
-        throw new Error("가져온 탭 구성을 저장하지 못했습니다.");
-      }
-
-      if (!importedSessions.length) {
-        rerenderUserFlowOrganization();
-        showUserFlowImportStatus("빈 탭 폴더를 가져왔습니다.", "ready");
-        return;
-      }
-
-      const importedTabCount = new Set(
-        folderNames.map((name) => name.toLowerCase()),
-      ).size;
-      showUserFlowImportStatus(
-        `탭 ${importedTabCount}개 · 녹화 ${importedSessions.length}개 가져오는 중`,
-        "ready",
-      );
-
-      if (
-        !sendUserFlowCommand("import-recordings", {
-          importData: { sessions: importedSessions },
-        })
-      ) {
-        throw new Error("부모 화면에 연결할 수 없습니다.");
-      }
-    } catch (error) {
-      userFlowTabs = previousTabs;
-      persistUserFlowTabs();
-      throw error;
-    }
-  }
-
-  async function importUserFlowFile(file) {
-    if (isUserFlowImportBlocked()) {
-      showUserFlowImportStatus("녹화 또는 재생 중에는 가져올 수 없습니다.");
-      return;
-    }
-
-    if (!isUserFlowImportFile(file)) {
-      showUserFlowImportStatus("JSON 또는 ZIP 파일만 가져올 수 있습니다.");
-      return;
-    }
-
-    const maxImportBytes = isZipFile(file)
-      ? MAX_USER_FLOW_ARCHIVE_IMPORT_BYTES
-      : MAX_USER_FLOW_IMPORT_BYTES;
-
-    if (file.size > maxImportBytes) {
-      showUserFlowImportStatus(
-        isZipFile(file)
-          ? "50MB 이하의 ZIP 파일만 가져올 수 있습니다."
-          : "10MB 이하의 JSON 파일만 가져올 수 있습니다.",
-      );
-      return;
-    }
-
-    try {
-      if (isZipFile(file)) {
-        showUserFlowImportStatus("ZIP 파일 확인 중", "ready");
-        await importUserFlowArchive(file);
-        return;
-      }
-
-      const importData = JSON.parse(await file.text());
-      const importSessionCount = getImportCandidates(importData).length;
-      const activeTabSessionCount = getUserFlowTabSessionCount(
-        userFlowTabs.activeTabId,
-      );
-
-      if (
-        activeTabSessionCount + importSessionCount >
-        MAX_USER_FLOW_SESSIONS_PER_TAB
-      ) {
-        showUserFlowTabLimit(userFlowTabs.activeTabId);
-        return;
-      }
-
-      showUserFlowImportStatus("가져오는 중", "ready");
-      sendUserFlowCommand("import-recordings", { importData });
-    } catch (error) {
-      showUserFlowImportStatus(
-        error?.message || "가져오기 파일을 읽지 못했습니다.",
-      );
-    }
-  }
-
-  function handleUserFlowImportTrigger(event) {
-    const button = event.target.closest("[data-user-flow-import-trigger]");
-
-    if (!button || button.disabled) {
-      return;
-    }
-
-    document.querySelector("#userFlowImportInput")?.click();
-  }
-
-  function handleUserFlowUrlImportTrigger(event) {
-    const button = event.target.closest("[data-user-flow-url-import-trigger]");
-
-    if (button) {
-      if (button.disabled) {
-        return;
-      }
-
-      const isOpen = button.getAttribute("aria-expanded") === "true";
-      setUserFlowUrlImportOpen(!isOpen);
-      return;
-    }
-
-    if (!event.target.closest("#userFlowUrlImportPanel")) {
-      setUserFlowUrlImportOpen(false);
-    }
-  }
-
-  function handleUserFlowUrlImportChange(event) {
-    const select = event.target.closest("#userFlowUrlImportSelect");
-
-    if (!select || select.disabled || select.selectedIndex < 0 || select.value === "") {
-      return;
-    }
-
-    const item = renderedUserFlowImportUrls[Number(select.value)];
-
-    if (item) {
-      importUserFlowFromUrl(item);
-    }
-  }
-
-  function handleUserFlowUrlImportKeydown(event) {
-    const select = event.target.closest("#userFlowUrlImportSelect");
-
-    if (
-      event.key === "Enter" &&
-      select &&
-      select.selectedIndex >= 0 &&
-      select.value !== ""
-    ) {
-      event.preventDefault();
-      const item = renderedUserFlowImportUrls[Number(select.value)];
-
-      if (item) {
-        importUserFlowFromUrl(item);
-      }
-      return;
-    }
-
-    if (event.key !== "Escape") {
-      return;
-    }
-
-    const panel = document.querySelector("#userFlowUrlImportPanel");
-
-    if (!panel || panel.hidden) {
-      return;
-    }
-
-    setUserFlowUrlImportOpen(false);
-    document.querySelector("#userFlowUrlImportButton")?.focus();
-  }
-
-  function handleUserFlowImportChange(event) {
-    const input = event.target.closest("#userFlowImportInput");
-
-    if (!input) {
-      return;
-    }
-
-    const [file] = Array.from(input.files || []);
-    input.value = "";
-
-    if (file) {
-      importUserFlowFile(file);
-    }
-  }
-
-  function hasDraggedFiles(event) {
-    return Array.from(event.dataTransfer?.types || []).includes("Files");
-  }
-
-  function resetUserFlowFileDrag() {
-    userFlowDragDepth = 0;
-    document.body.classList.remove("is-user-flow-file-dragging");
-  }
-
-  function handleUserFlowDragEnter(event) {
-    if (!hasDraggedFiles(event)) {
-      return;
-    }
-
-    event.preventDefault();
-    userFlowDragDepth += 1;
-    document.body.classList.add("is-user-flow-file-dragging");
-  }
-
-  function handleUserFlowDragOver(event) {
-    if (!hasDraggedFiles(event)) {
-      return;
-    }
-
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-  }
-
-  function handleUserFlowDragLeave(event) {
-    if (!hasDraggedFiles(event)) {
-      return;
-    }
-
-    userFlowDragDepth = Math.max(0, userFlowDragDepth - 1);
-
-    if (!userFlowDragDepth) {
-      document.body.classList.remove("is-user-flow-file-dragging");
-    }
-  }
-
-  function handleUserFlowDrop(event) {
-    if (!hasDraggedFiles(event)) {
-      return;
-    }
-
-    event.preventDefault();
-    const files = Array.from(event.dataTransfer?.files || []);
-    const importFile = files.find(isUserFlowImportFile);
-    resetUserFlowFileDrag();
-
-    if (!importFile) {
-      showUserFlowImportStatus("JSON 또는 ZIP 파일만 가져올 수 있습니다.");
-      return;
-    }
-
-    importUserFlowFile(importFile);
-  }
-
   function handleUserFlowNameControl(event) {
     const editButton = event.target.closest("[data-user-flow-name-edit]");
     const cancelButton = event.target.closest("[data-user-flow-name-cancel]");
@@ -2300,46 +1641,59 @@
     sendUserFlowCommand("get-state");
   }
 
+  if (!window.UserFlowImport) {
+    throw new Error("사용자 플로우 가져오기 모듈을 불러오지 못했습니다.");
+  }
+
+  userFlowImportController = window.UserFlowImport.createController({
+    getState: () => currentUserFlowState,
+    getTabs: () => userFlowTabs,
+    setTabs: (tabs) => {
+      userFlowTabs = tabs;
+    },
+    getTabCounts: getUserFlowTabCounts,
+    getTabSessionCount: getUserFlowTabSessionCount,
+    persistTabs: persistUserFlowTabs,
+    rerender: rerenderUserFlowOrganization,
+    sendCommand: sendUserFlowCommand,
+    showStatus: showUserFlowImportStatus,
+    showTabLimit: showUserFlowTabLimit,
+    limits: {
+      maxSessions: MAX_USER_FLOW_SESSIONS,
+      maxSessionsPerTab: MAX_USER_FLOW_SESSIONS_PER_TAB,
+      maxTabs: MAX_USER_FLOW_TABS,
+    },
+  });
+  userFlowImportController.attach();
+
   document.addEventListener("click", handleUserFlowControl);
   document.addEventListener("click", handleUserFlowViewControl);
   document.addEventListener("click", handleUserFlowTestSessionRemove);
   document.addEventListener("click", handleUserFlowTabControl);
-  document.addEventListener("click", handleUserFlowImportTrigger);
-  document.addEventListener("click", handleUserFlowUrlImportTrigger);
   document.addEventListener("click", handleUserFlowNameControl);
-  document.addEventListener("change", handleUserFlowImportChange);
-  document.addEventListener("change", handleUserFlowUrlImportChange);
   document.addEventListener("focusout", handleUserFlowTabNameFocusOut);
   document.addEventListener("keydown", handleUserFlowTabNameKeydown);
   document.addEventListener("keydown", handleUserFlowNameKeydown);
-  document.addEventListener("keydown", handleUserFlowUrlImportKeydown);
   document.addEventListener("submit", handleUserFlowNameSubmit);
   document.addEventListener("dragstart", handleUserFlowSessionDragStart);
-  document.addEventListener("dragenter", handleUserFlowDragEnter);
   document.addEventListener("dragover", handleUserFlowTestDragOver);
   document.addEventListener("dragover", handleUserFlowTabDragOver);
   document.addEventListener("dragover", handleUserFlowSessionOrderDragOver);
-  document.addEventListener("dragover", handleUserFlowDragOver);
-  document.addEventListener("dragleave", handleUserFlowDragLeave);
   document.addEventListener("dragend", resetUserFlowSessionDrag);
-  document.addEventListener("dragend", resetUserFlowFileDrag);
   document.addEventListener("drop", handleUserFlowTestDrop);
   document.addEventListener("drop", handleUserFlowSessionDrop);
   document.addEventListener("drop", handleUserFlowSessionOrderDrop);
-  document.addEventListener("drop", handleUserFlowDrop);
   document.addEventListener(POPUP_TAB_CHANGE_EVENT, handlePopupTabChange);
   document.addEventListener(PARENT_READY_EVENT, handleParentReady);
   window.addEventListener("message", handleUserFlowStateMessage);
   window.addEventListener("storage", handleUserFlowTabStorage);
-  window.addEventListener("blur", resetUserFlowFileDrag);
 
   renderUserFlowTabs([]);
-  renderUserFlowUrlImportOptions();
   sendUserFlowCommand("get-state");
 
   window.UserFlowPopup = Object.freeze({
-    importFile: importUserFlowFile,
-    importUrl: importUserFlowFromUrl,
+    importFile: userFlowImportController.importFile,
+    importUrl: userFlowImportController.importUrl,
     renderState: renderUserFlowState,
     requestState: () => sendUserFlowCommand("get-state"),
   });

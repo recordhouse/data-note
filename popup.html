@@ -303,6 +303,15 @@
         color: #b42345;
       }
 
+      .user-flow-action[data-action="clear-all"] {
+        border-color: #d8a0ad;
+        color: #b42345;
+      }
+
+      .user-flow-action[data-action="clear-all"]:hover:not(:disabled) {
+        background: #fff5f7;
+      }
+
       .user-flow-action[aria-pressed="true"] {
         color: #ffffff;
       }
@@ -417,19 +426,6 @@
         outline-offset: -2px;
       }
 
-      .user-flow-view-tab-count {
-        min-width: 18px;
-        color: #7b8797;
-        font-size: 10px;
-        font-variant-numeric: tabular-nums;
-        text-align: right;
-      }
-
-      .user-flow-view-tab[aria-selected="true"] .user-flow-view-tab-count,
-      .user-flow-view-tab.is-drop-target .user-flow-view-tab-count {
-        color: currentColor;
-      }
-
       .user-flow-view-panel[hidden] {
         display: none;
       }
@@ -482,7 +478,7 @@
         flex: 0 0 auto;
         align-items: center;
         gap: 1px;
-        min-height: 32px;
+        min-height: 38px;
         border: 0;
         border-radius: 0;
         background: transparent;
@@ -493,8 +489,8 @@
 
       .user-flow-list-tab-wrap + .user-flow-list-tab-wrap::before {
         position: absolute;
-        top: 8px;
-        bottom: 8px;
+        top: 9px;
+        bottom: 9px;
         left: -5px;
         width: 1px;
         background: #d9e1ea;
@@ -514,13 +510,13 @@
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        height: 31px;
-        padding: 4px 3px;
+        height: 37px;
+        padding: 5px 7px;
         border: 0;
         border-radius: 0;
         background: transparent;
         color: #475569;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 800;
         white-space: nowrap;
         cursor: pointer;
@@ -539,22 +535,11 @@
         outline-offset: 1px;
       }
 
-      .user-flow-list-tab-count {
-        color: #64748b;
-        font-size: 10px;
-        line-height: 1;
-        text-align: center;
-      }
-
-      .user-flow-list-tab-wrap[data-active="true"] .user-flow-list-tab-count {
-        color: #1258b8;
-      }
-
       .user-flow-list-tab-input {
-        width: 86px;
-        height: 28px;
-        margin-left: 2px;
-        padding: 3px 2px;
+        width: 100px;
+        height: 32px;
+        margin-left: 3px;
+        padding: 4px 5px;
         border: 0;
         border-bottom: 1px solid #1266d6;
         border-radius: 0;
@@ -562,7 +547,7 @@
         background: #ffffff;
         color: #17202a;
         font: inherit;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 800;
       }
 
@@ -570,8 +555,8 @@
       .user-flow-list-tab-delete {
         display: inline-grid;
         place-items: center;
-        width: 20px;
-        height: 28px;
+        width: 24px;
+        height: 32px;
         padding: 0;
         border: 0;
         border-radius: 0;
@@ -616,10 +601,10 @@
 
       .user-flow-tab-add {
         display: inline-grid;
-        flex: 0 0 28px;
+        flex: 0 0 32px;
         place-items: center;
-        width: 28px;
-        height: 28px;
+        width: 32px;
+        height: 32px;
         padding: 0;
         border: 0;
         border-radius: 4px;
@@ -1416,6 +1401,13 @@
               >모두 내보내기</button>
               <button
                 class="user-flow-action"
+                id="userFlowClearAllButton"
+                type="button"
+                data-action="clear-all"
+                data-user-flow-command="clear"
+              >모두 삭제</button>
+              <button
+                class="user-flow-action"
                 id="userFlowRecordButton"
                 type="button"
                 data-action="toggle-record"
@@ -1454,7 +1446,6 @@
               data-user-flow-test-drop
             >
               <span>녹화 테스트</span>
-              <span class="user-flow-view-tab-count" id="userFlowTestViewCount">0</span>
             </button>
           </div>
 
@@ -1490,7 +1481,6 @@
                     data-user-flow-tab-select="default"
                   >
                     <span>Tab 01</span>
-                    <span class="user-flow-list-tab-count">0</span>
                   </button>
                   <button
                     class="user-flow-list-tab-edit"
