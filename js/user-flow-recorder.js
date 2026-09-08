@@ -33,7 +33,7 @@
   const CHECKABLE_EVENT_GROUP_MS = 150;
   const RECORDING_FORMAT_VERSION = 3;
   const ARCHIVE_MANIFEST_FILE_NAME = "user-flow-manifest.json";
-  const MAX_NOTICE_LENGTH = 300;
+  const MAX_NOTICE_LENGTH = 1000;
   const PERCENT_PRECISION = 6;
   const IMPORTABLE_EVENT_TYPES = new Set(["change", "click", "input", "scroll"]);
   const SENSITIVE_AUTOCOMPLETE = new Set([

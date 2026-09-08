@@ -6,7 +6,7 @@
   }
 
   const ARCHIVE_MANIFEST_FILE_NAME = "user-flow-manifest.json";
-  const MAX_NOTICE_LENGTH = 300;
+  const MAX_NOTICE_LENGTH = 1000;
 
   const DEFAULT_LIMITS = Object.freeze({
     maxArchiveBytes: 50 * 1024 * 1024,

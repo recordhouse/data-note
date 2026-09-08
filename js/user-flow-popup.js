@@ -16,7 +16,7 @@
   const USER_FLOW_VIEW_TEST = "test";
   const MAX_USER_FLOW_TABS = 10;
   const MAX_USER_FLOW_SESSIONS_PER_TAB = 20;
-  const MAX_USER_FLOW_NOTICE_LENGTH = 300;
+  const MAX_USER_FLOW_NOTICE_LENGTH = 1000;
   const USER_FLOW_NOTICE_ALLOWED_TAGS = new Set([
     "A",
     "B",
@@ -78,7 +78,7 @@
     return {
       activeTabId: withInitialTab ? DEFAULT_USER_FLOW_TAB_ID : "",
       notice: "",
-      noticeCollapsed: false,
+      noticeCollapsed: true,
       sessionOrder: [],
       sessionTabs: {},
       testSessionIds: [],
@@ -276,7 +276,12 @@
           ? stored.activeTabId
           : tabs[0]?.id || "",
         notice: normalizeUserFlowNotice(stored.notice),
-        noticeCollapsed: Boolean(stored.noticeCollapsed),
+        noticeCollapsed: Object.prototype.hasOwnProperty.call(
+          stored,
+          "noticeCollapsed",
+        )
+          ? Boolean(stored.noticeCollapsed)
+          : true,
         sessionOrder,
         sessionTabs,
         testSessionIds,

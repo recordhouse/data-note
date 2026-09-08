@@ -195,9 +195,12 @@
         font-size: 12px;
         font-weight: 700;
         line-height: 1.5;
-        max-height: 180px;
+        max-height: 300px;
         opacity: 1;
+        overflow-x: hidden;
+        overflow-y: auto;
         overflow-wrap: anywhere;
+        scrollbar-gutter: stable;
         white-space: pre-wrap;
         transition:
           max-height 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
@@ -1637,7 +1640,7 @@
               class="user-flow-notice"
               id="userFlowNotice"
               data-empty="true"
-              data-collapsed="false"
+              data-collapsed="true"
               aria-label="유저 플로우 알림"
             >
               <div class="user-flow-notice-view" id="userFlowNoticeView">
@@ -1655,17 +1658,17 @@
                 class="user-flow-notice-toggle"
                 id="userFlowNoticeToggleButton"
                 type="button"
-                aria-expanded="true"
+                aria-expanded="false"
                 aria-controls="userFlowNoticeText userFlowNoticeForm"
-                title="알림 접기"
-                aria-label="알림 접기"
+                title="알림 펼치기"
+                aria-label="알림 펼치기"
                 data-user-flow-notice-toggle
               ></button>
               <form class="user-flow-notice-form" id="userFlowNoticeForm" hidden>
                 <textarea
                   class="user-flow-notice-input"
                   id="userFlowNoticeInput"
-                  maxlength="300"
+                  maxlength="1000"
                   placeholder="함께 전달할 알림 문구를 입력하세요."
                   aria-label="유저 플로우 알림 문구"
                 ></textarea>
