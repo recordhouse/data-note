@@ -214,7 +214,7 @@
       pointer-events: none;
       background-position: top, bottom, left, right;
       background-repeat: no-repeat;
-      background-size: 100% 22px, 100% 22px, 22px 100%, 22px 100%;
+      background-size: 100% 50px, 100% 50px, 50px 100%, 50px 100%;
       -webkit-mask-image: linear-gradient(
         135deg,
         rgba(0, 0, 0, 0.08) 0%,
