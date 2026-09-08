@@ -236,18 +236,18 @@
 
     .user-flow-screen-mask[data-mode="recording"] {
       background-image:
-        linear-gradient(to bottom, rgba(220, 23, 77, 0.84), transparent),
-        linear-gradient(to top, rgba(220, 23, 77, 0.84), transparent),
-        linear-gradient(to right, rgba(220, 23, 77, 0.84), transparent),
-        linear-gradient(to left, rgba(220, 23, 77, 0.84), transparent);
+        linear-gradient(to bottom, rgba(220, 23, 77, 0.58), transparent),
+        linear-gradient(to top, rgba(220, 23, 77, 0.58), transparent),
+        linear-gradient(to right, rgba(220, 23, 77, 0.58), transparent),
+        linear-gradient(to left, rgba(220, 23, 77, 0.58), transparent);
     }
 
     .user-flow-screen-mask[data-mode="replaying"] {
       background-image:
-        linear-gradient(to bottom, rgba(0, 168, 120, 0.84), transparent),
-        linear-gradient(to top, rgba(0, 168, 120, 0.84), transparent),
-        linear-gradient(to right, rgba(0, 168, 120, 0.84), transparent),
-        linear-gradient(to left, rgba(0, 168, 120, 0.84), transparent);
+        linear-gradient(to bottom, rgba(0, 168, 120, 0.58), transparent),
+        linear-gradient(to top, rgba(0, 168, 120, 0.58), transparent),
+        linear-gradient(to right, rgba(0, 168, 120, 0.58), transparent),
+        linear-gradient(to left, rgba(0, 168, 120, 0.58), transparent);
     }
 
     .user-flow-screen-mask.is-visible {

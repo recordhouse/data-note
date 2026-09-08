@@ -164,6 +164,19 @@
     }
   }
 
+  function resetUserFlowOrganization() {
+    userFlowTabs = createDefaultUserFlowTabs();
+    activeUserFlowView = USER_FLOW_VIEW_RECORDINGS;
+    editingUserFlowSessionId = "";
+    editingUserFlowTabId = "";
+    renderedUserFlowSessionSignature = "";
+    renderedUserFlowTestSignature = "";
+    resetUserFlowSessionDrag();
+    persistUserFlowTabs();
+    renderUserFlowView();
+    renderUserFlowTabs([]);
+  }
+
   function getFirstUserFlowTab() {
     return userFlowTabs.tabs[0] || {
       id: DEFAULT_USER_FLOW_TAB_ID,
@@ -918,7 +931,7 @@
       if (
         !sessionCount ||
         !window.confirm(
-          `현재 팝업에 저장된 녹화 ${sessionCount.toLocaleString("ko-KR")}개를 모두 삭제합니다.\n이 작업은 되돌릴 수 없습니다. 삭제하시겠습니까?`,
+          `현재 팝업에 저장된 녹화 ${sessionCount.toLocaleString("ko-KR")}개와 탭 구성을 모두 삭제하고 초기화합니다.\n이 작업은 되돌릴 수 없습니다. 삭제하시겠습니까?`,
         )
       ) {
         return;
@@ -954,8 +967,14 @@
       startReplayNavigationState(payload.sessionId);
     }
 
-    if (!sendUserFlowCommand(command, payload) && startsPageNavigation) {
+    const commandSent = sendUserFlowCommand(command, payload);
+
+    if (!commandSent && startsPageNavigation) {
       clearReplayNavigationState();
+    }
+
+    if (commandSent && command === "clear") {
+      resetUserFlowOrganization();
     }
   }
 
