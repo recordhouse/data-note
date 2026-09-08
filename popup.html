@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>통신 응답 매핑 리스트</title>
+    <title>DATA NOTE</title>
     <style>
       * {
         box-sizing: border-box;
@@ -163,6 +163,235 @@
         border-bottom: 1px solid #e2e8f0;
       }
 
+      .user-flow-notice {
+        box-sizing: border-box;
+        position: relative;
+        display: grid;
+        gap: 8px;
+        width: 100%;
+        overflow: hidden;
+        padding: 10px 47px 10px 12px;
+        border: 1px solid #d2d6dc;
+        border-radius: 6px;
+        background: #f5f6f7;
+        color: #4b5563;
+        transition:
+          background-color 180ms ease,
+          border-color 180ms ease;
+      }
+
+      .user-flow-notice-view {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .user-flow-notice-text {
+        flex: 1 1 auto;
+        min-width: 0;
+        margin: 0;
+        color: #4b5563;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.5;
+        max-height: 180px;
+        opacity: 1;
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
+        transition:
+          max-height 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+          opacity 140ms ease;
+      }
+
+      .user-flow-notice[data-empty="true"] .user-flow-notice-text {
+        color: #7b8490;
+        font-weight: 600;
+      }
+
+      .user-flow-notice-text a {
+        color: #245ea8;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+
+      .user-flow-notice-text a:hover {
+        color: #17447d;
+      }
+
+      .user-flow-notice-text p {
+        margin: 0 0 5px;
+      }
+
+      .user-flow-notice-text p:last-child {
+        margin-bottom: 0;
+      }
+
+      .user-flow-notice-text ul,
+      .user-flow-notice-text ol {
+        margin: 4px 0;
+        padding-left: 20px;
+      }
+
+      .user-flow-notice-text code {
+        padding: 1px 3px;
+        border-radius: 3px;
+        background: #e5e7eb;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 0.92em;
+      }
+
+      .user-flow-notice[data-collapsed="true"] .user-flow-notice-text {
+        max-height: 18px;
+        opacity: 0.84;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .user-flow-notice[data-collapsed="true"] .user-flow-notice-text * {
+        display: inline;
+        margin: 0;
+        padding: 0;
+      }
+
+      .user-flow-notice[data-collapsed="true"] .user-flow-notice-text br {
+        display: none;
+      }
+
+      .user-flow-notice[data-collapsed="true"] .user-flow-notice-edit {
+        pointer-events: none;
+        visibility: hidden;
+      }
+
+      .user-flow-notice-edit,
+      .user-flow-notice-save {
+        display: inline-grid;
+        flex: 0 0 auto;
+        place-items: center;
+        align-self: start;
+        min-width: 44px;
+        height: 28px;
+        padding: 0 9px;
+        border: 1px solid #b8bec6;
+        border-radius: 4px;
+        background: #ffffff;
+        box-shadow: 0 1px 2px rgba(31, 41, 55, 0.07);
+        color: #4b5563;
+        font-size: 11px;
+        font-weight: 800;
+        line-height: 1;
+        cursor: pointer;
+        transition:
+          background-color 140ms ease,
+          border-color 140ms ease,
+          box-shadow 140ms ease,
+          color 140ms ease;
+      }
+
+      .user-flow-notice-edit:hover:not(:disabled),
+      .user-flow-notice-save:hover:not(:disabled) {
+        border-color: #8f969f;
+        background: #f0f1f3;
+        box-shadow: 0 2px 4px rgba(31, 41, 55, 0.1);
+        color: #252b33;
+      }
+
+      .user-flow-notice-edit:active:not(:disabled),
+      .user-flow-notice-save:active:not(:disabled) {
+        box-shadow: none;
+      }
+
+      .user-flow-notice-edit:focus-visible,
+      .user-flow-notice-save:focus-visible {
+        outline: 2px solid rgba(75, 85, 99, 0.2);
+        outline-offset: 1px;
+      }
+
+      .user-flow-notice-edit:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+
+      .user-flow-notice-toggle {
+        position: absolute;
+        top: 10px;
+        right: 12px;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: #66707c;
+        cursor: pointer;
+      }
+
+      .user-flow-notice-toggle::before {
+        position: absolute;
+        top: 8px;
+        left: 9px;
+        width: 7px;
+        height: 7px;
+        border-right: 2px solid currentColor;
+        border-bottom: 2px solid currentColor;
+        content: "";
+        transform: rotate(225deg);
+      }
+
+      .user-flow-notice-toggle[aria-expanded="false"]::before {
+        transform: rotate(45deg);
+      }
+
+      .user-flow-notice-toggle:hover:not(:disabled) {
+        background: #e8eaed;
+      }
+
+      .user-flow-notice-toggle:disabled {
+        cursor: default;
+        opacity: 0.42;
+      }
+
+      .user-flow-notice-toggle:focus-visible {
+        outline: 2px solid rgba(75, 85, 99, 0.25);
+        outline-offset: -2px;
+      }
+
+      .user-flow-notice-form {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: start;
+        gap: 6px;
+      }
+
+      .user-flow-notice-form[hidden],
+      .user-flow-notice-view[hidden] {
+        display: none;
+      }
+
+      .user-flow-notice-input {
+        box-sizing: border-box;
+        width: 100%;
+        min-width: 0;
+        min-height: 54px;
+        max-height: 100px;
+        padding: 7px 8px;
+        border: 1px solid #aeb5bf;
+        border-radius: 4px;
+        outline: none;
+        resize: vertical;
+        background: #ffffff;
+        color: #303844;
+        font: inherit;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .user-flow-notice-input:focus {
+        border-color: #7b8490;
+        box-shadow: 0 0 0 2px rgba(75, 85, 99, 0.12);
+      }
+
       .user-flow-status {
         box-sizing: border-box;
         display: flex;
@@ -269,6 +498,13 @@
       }
 
       @media (prefers-reduced-motion: reduce) {
+        .user-flow-notice,
+        .user-flow-notice-text,
+        .user-flow-notice-edit,
+        .user-flow-notice-save {
+          transition: none;
+        }
+
         .user-flow-status[data-state="recording"]::before,
         .user-flow-status[data-state="replaying"]::before {
           animation: none;
@@ -1397,6 +1633,50 @@
       >
         <div class="user-flow-content">
           <div class="user-flow-toolbar">
+            <section
+              class="user-flow-notice"
+              id="userFlowNotice"
+              data-empty="true"
+              data-collapsed="false"
+              aria-label="유저 플로우 알림"
+            >
+              <div class="user-flow-notice-view" id="userFlowNoticeView">
+                <div class="user-flow-notice-text" id="userFlowNoticeText">등록된 알림이 없습니다.</div>
+                <button
+                  class="user-flow-notice-edit"
+                  id="userFlowNoticeEditButton"
+                  type="button"
+                  title="알림 수정"
+                  aria-label="알림 수정"
+                  data-user-flow-notice-edit
+                >수정</button>
+              </div>
+              <button
+                class="user-flow-notice-toggle"
+                id="userFlowNoticeToggleButton"
+                type="button"
+                aria-expanded="true"
+                aria-controls="userFlowNoticeText userFlowNoticeForm"
+                title="알림 접기"
+                aria-label="알림 접기"
+                data-user-flow-notice-toggle
+              ></button>
+              <form class="user-flow-notice-form" id="userFlowNoticeForm" hidden>
+                <textarea
+                  class="user-flow-notice-input"
+                  id="userFlowNoticeInput"
+                  maxlength="300"
+                  placeholder="함께 전달할 알림 문구를 입력하세요."
+                  aria-label="유저 플로우 알림 문구"
+                ></textarea>
+                <button
+                  class="user-flow-notice-save"
+                  type="submit"
+                  title="알림 저장"
+                  aria-label="알림 저장"
+                >저장</button>
+              </form>
+            </section>
             <span class="user-flow-status" id="userFlowStatus" data-state="idle">연결 대기</span>
             <div class="user-flow-actions">
               <button
@@ -1489,10 +1769,6 @@
             role="tabpanel"
             aria-labelledby="userFlowRecordingsViewTab"
           >
-            <div class="user-flow-session-heading">
-              <strong id="userFlowSessionTitle">녹화 목록</strong>
-              <span id="userFlowSessionCount">0개</span>
-            </div>
             <div class="user-flow-list-tabbar">
               <div
                 class="user-flow-list-tabs"

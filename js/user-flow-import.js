@@ -5,6 +5,9 @@
     return;
   }
 
+  const ARCHIVE_MANIFEST_FILE_NAME = "user-flow-manifest.json";
+  const MAX_NOTICE_LENGTH = 300;
+
   const DEFAULT_LIMITS = Object.freeze({
     maxArchiveBytes: 50 * 1024 * 1024,
     maxImportBytes: 10 * 1024 * 1024,
@@ -279,6 +282,58 @@
       return Array.isArray(importData?.events) ? [importData] : [];
     }
 
+    function normalizeNotice(value) {
+      return String(value || "")
+        .replace(/\r\n?/g, "\n")
+        .trim()
+        .slice(0, MAX_NOTICE_LENGTH);
+    }
+
+    function readArchiveManifest(entries) {
+      const manifestEntry = entries.find(
+        (entry) =>
+          !entry.isDirectory && entry.name === ARCHIVE_MANIFEST_FILE_NAME,
+      );
+
+      if (!manifestEntry) {
+        return { hasNotice: false, notice: "" };
+      }
+
+      let manifest;
+
+      try {
+        manifest = JSON.parse(manifestEntry.text());
+      } catch (error) {
+        throw new Error("ZIP 알림 메타데이터 형식이 올바르지 않습니다.");
+      }
+
+      return {
+        hasNotice: Object.prototype.hasOwnProperty.call(manifest || {}, "notice"),
+        notice: normalizeNotice(manifest?.notice),
+      };
+    }
+
+    function applyImportedNotice(importData) {
+      if (
+        !importData ||
+        typeof importData !== "object" ||
+        !Object.prototype.hasOwnProperty.call(importData, "notice")
+      ) {
+        return;
+      }
+
+      const tabsState = getTabs();
+      const previousNotice = tabsState.notice;
+      tabsState.notice = normalizeNotice(importData.notice);
+
+      if (!persistTabs()) {
+        tabsState.notice = previousNotice;
+        return;
+      }
+
+      rerender();
+    }
+
     function createArchiveSessionId(candidate, reservedIds) {
       const requestedId =
         typeof candidate?.id === "string" ? candidate.id.trim().slice(0, 160) : "";
@@ -370,8 +425,11 @@
       }
 
       const entries = await window.UserFlowArchive.readArchive(file);
-      const archiveEntries = entries.filter((entry) =>
-        getArchiveFolderName(entry.name),
+      const archiveManifest = readArchiveManifest(entries);
+      const archiveEntries = entries.filter(
+        (entry) =>
+          entry.name !== ARCHIVE_MANIFEST_FILE_NAME &&
+          getArchiveFolderName(entry.name),
       );
       const folderNames = archiveEntries
         .map((entry) => getArchiveFolderName(entry.name))
@@ -438,7 +496,11 @@
           });
         });
 
-      if (archiveSessionCount && !importedSessions.length) {
+      if (
+        archiveSessionCount &&
+        !importedSessions.length &&
+        !skipZipNameDuplicateCheck
+      ) {
         throw new Error("ZIP 파일의 녹화가 이미 목록에 추가되어 있습니다.");
       }
 
@@ -447,6 +509,10 @@
       try {
         const tabByName = ensureArchiveTabs(folderNames);
         const tabCounts = getTabCounts(state.sessions || []);
+
+        if (archiveManifest.hasNotice) {
+          tabsState.notice = archiveManifest.notice;
+        }
 
         if ((state.sessions || []).length + importedSessions.length > limits.maxSessions) {
           throw new Error(
@@ -486,7 +552,12 @@
 
         if (!importedSessions.length) {
           rerender();
-          showStatus("빈 탭 폴더를 가져왔습니다.", "ready");
+          showStatus(
+            archiveSessionCount
+              ? "새로 가져올 녹화가 없습니다. 알림과 탭 구성을 적용했습니다."
+              : "빈 탭 폴더를 가져왔습니다.",
+            "ready",
+          );
           return;
         }
 
@@ -557,7 +628,9 @@
         }
 
         showStatus("가져오는 중", "ready");
-        sendCommand("import-recordings", { importData });
+        if (sendCommand("import-recordings", { importData })) {
+          applyImportedNotice(importData);
+        }
       } catch (error) {
         showStatus(error?.message || "가져오기 파일을 읽지 못했습니다.");
       }

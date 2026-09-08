@@ -16,6 +16,41 @@
   const USER_FLOW_VIEW_TEST = "test";
   const MAX_USER_FLOW_TABS = 10;
   const MAX_USER_FLOW_SESSIONS_PER_TAB = 20;
+  const MAX_USER_FLOW_NOTICE_LENGTH = 300;
+  const USER_FLOW_NOTICE_ALLOWED_TAGS = new Set([
+    "A",
+    "B",
+    "BR",
+    "CODE",
+    "EM",
+    "I",
+    "LI",
+    "MARK",
+    "OL",
+    "P",
+    "S",
+    "SMALL",
+    "SPAN",
+    "STRONG",
+    "U",
+    "UL",
+  ]);
+  const USER_FLOW_NOTICE_DISCARDED_TAGS = new Set([
+    "EMBED",
+    "IFRAME",
+    "MATH",
+    "OBJECT",
+    "SCRIPT",
+    "STYLE",
+    "SVG",
+    "TEMPLATE",
+  ]);
+  const USER_FLOW_NOTICE_ALLOWED_PROTOCOLS = new Set([
+    "http:",
+    "https:",
+    "mailto:",
+    "tel:",
+  ]);
   const REPLAY_NAVIGATION_IDLE_MS = 500;
   const REPLAY_NAVIGATION_TIMEOUT_MS = 60 * 1000;
   const USER_FLOW_DRAG_SCROLL_EDGE_PX = 48;
@@ -26,6 +61,7 @@
   let activeUserFlowView = USER_FLOW_VIEW_RECORDINGS;
   let editingUserFlowSessionId = "";
   let editingUserFlowTabId = "";
+  let editingUserFlowNotice = false;
   let renderedUserFlowSessionSignature = "";
   let renderedUserFlowTestSignature = "";
   let draggedUserFlowSessionId = "";
@@ -41,12 +77,103 @@
   function createDefaultUserFlowTabs() {
     return {
       activeTabId: DEFAULT_USER_FLOW_TAB_ID,
+      notice: "",
+      noticeCollapsed: false,
       sessionOrder: [],
       sessionTabs: {},
       testSessionIds: [],
       tabs: [{ id: DEFAULT_USER_FLOW_TAB_ID, name: "Tab 01" }],
-      version: 6,
+      version: 8,
     };
+  }
+
+  function normalizeUserFlowNotice(value) {
+    return String(value || "")
+      .replace(/\r\n?/g, "\n")
+      .trim()
+      .slice(0, MAX_USER_FLOW_NOTICE_LENGTH);
+  }
+
+  function isSafeUserFlowNoticeHref(value) {
+    const href = String(value || "").trim();
+
+    if (!href) {
+      return false;
+    }
+
+    try {
+      return USER_FLOW_NOTICE_ALLOWED_PROTOCOLS.has(
+        new URL(href, window.location.href).protocol,
+      );
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function sanitizeUserFlowNoticeNode(node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return document.createTextNode(node.textContent || "");
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return document.createDocumentFragment();
+    }
+
+    const tagName = node.tagName.toUpperCase();
+    const fragment = document.createDocumentFragment();
+
+    if (USER_FLOW_NOTICE_DISCARDED_TAGS.has(tagName)) {
+      return fragment;
+    }
+
+    const sanitizedNode = USER_FLOW_NOTICE_ALLOWED_TAGS.has(tagName)
+      ? document.createElement(tagName.toLowerCase())
+      : fragment;
+
+    if (tagName === "A" && sanitizedNode instanceof HTMLElement) {
+      const href = node.getAttribute("href");
+      const title = node.getAttribute("title");
+      const target = node.getAttribute("target");
+
+      if (isSafeUserFlowNoticeHref(href)) {
+        sanitizedNode.setAttribute("href", href.trim());
+      }
+
+      if (title) {
+        sanitizedNode.setAttribute("title", title.slice(0, 100));
+      }
+
+      if (target === "_blank" || target === "_self") {
+        sanitizedNode.setAttribute("target", target);
+      }
+
+      if (target === "_blank") {
+        sanitizedNode.setAttribute("rel", "noopener noreferrer");
+      }
+    }
+
+    Array.from(node.childNodes).forEach((childNode) => {
+      sanitizedNode.appendChild(sanitizeUserFlowNoticeNode(childNode));
+    });
+
+    return sanitizedNode;
+  }
+
+  function renderUserFlowNoticeMarkup(container, noticeValue) {
+    if (!noticeValue) {
+      container.textContent = "등록된 알림이 없습니다.";
+      return;
+    }
+
+    const template = document.createElement("template");
+    template.innerHTML = noticeValue;
+    const fragment = document.createDocumentFragment();
+
+    Array.from(template.content.childNodes).forEach((node) => {
+      fragment.appendChild(sanitizeUserFlowNoticeNode(node));
+    });
+
+    container.replaceChildren(fragment);
   }
 
   function getDefaultUserFlowTabName(tabNumber) {
@@ -146,11 +273,13 @@
         activeTabId: tabIds.has(stored.activeTabId)
           ? stored.activeTabId
           : tabs[0].id,
+        notice: normalizeUserFlowNotice(stored.notice),
+        noticeCollapsed: Boolean(stored.noticeCollapsed),
         sessionOrder,
         sessionTabs,
         testSessionIds,
         tabs,
-        version: 6,
+        version: 8,
       };
     } catch (error) {
       return fallback;
@@ -172,6 +301,7 @@
     activeUserFlowView = USER_FLOW_VIEW_RECORDINGS;
     editingUserFlowSessionId = "";
     editingUserFlowTabId = "";
+    editingUserFlowNotice = false;
     renderedUserFlowSessionSignature = "";
     renderedUserFlowTestSignature = "";
     resetUserFlowSessionDrag();
@@ -605,6 +735,51 @@
       .join("");
   }
 
+  function renderUserFlowNotice(flowState = currentUserFlowState) {
+    const notice = document.querySelector("#userFlowNotice");
+    const noticeView = document.querySelector("#userFlowNoticeView");
+    const noticeText = document.querySelector("#userFlowNoticeText");
+    const noticeForm = document.querySelector("#userFlowNoticeForm");
+    const noticeInput = document.querySelector("#userFlowNoticeInput");
+    const editButton = document.querySelector("#userFlowNoticeEditButton");
+    const toggleButton = document.querySelector("#userFlowNoticeToggleButton");
+
+    if (
+      !notice ||
+      !noticeView ||
+      !noticeText ||
+      !noticeForm ||
+      !noticeInput ||
+      !editButton ||
+      !toggleButton
+    ) {
+      return;
+    }
+
+    const noticeValue = normalizeUserFlowNotice(userFlowTabs.notice);
+    const isBlocked = Boolean(flowState.isRecording || flowState.isReplaying);
+    const isCollapsed = Boolean(userFlowTabs.noticeCollapsed);
+    notice.dataset.empty = String(!noticeValue);
+    notice.dataset.collapsed = String(isCollapsed);
+    renderUserFlowNoticeMarkup(noticeText, noticeValue);
+    editButton.disabled = isBlocked;
+    toggleButton.disabled = editingUserFlowNotice;
+    toggleButton.setAttribute("aria-expanded", String(!isCollapsed));
+    const toggleLabel = editingUserFlowNotice
+      ? "알림 수정 중에는 접을 수 없습니다"
+      : isCollapsed
+        ? "알림 펼치기"
+        : "알림 접기";
+    toggleButton.setAttribute("aria-label", toggleLabel);
+    toggleButton.title = toggleLabel;
+    noticeView.hidden = editingUserFlowNotice;
+    noticeForm.hidden = !editingUserFlowNotice;
+
+    if (editingUserFlowNotice && document.activeElement !== noticeInput) {
+      noticeInput.value = noticeValue;
+    }
+  }
+
   function renderUserFlowState(flowState = {}) {
     currentUserFlowState = flowState;
     updateReplayNavigationState(flowState);
@@ -613,12 +788,13 @@
     const exportAllButton = document.querySelector("#userFlowExportAllButton");
     const clearAllButton = document.querySelector("#userFlowClearAllButton");
     const tabAddButton = document.querySelector("#userFlowTabAddButton");
-    const sessionCount = document.querySelector("#userFlowSessionCount");
     const sessionList = document.querySelector("#userFlowSessionList");
 
     if (!status || !recordButton || !sessionList) {
       return;
     }
+
+    renderUserFlowNotice(flowState);
 
     let statusText = "저장된 녹화가 없습니다";
     let statusState = "idle";
@@ -691,10 +867,6 @@
       !sessions.some((session) => session.id === editingUserFlowSessionId)
     ) {
       editingUserFlowSessionId = "";
-    }
-
-    if (sessionCount) {
-      sessionCount.textContent = `${visibleSessions.length.toLocaleString("ko-KR")}개`;
     }
 
     const sessionSignature = getUserFlowSessionSignature(flowState, sessions);
@@ -961,6 +1133,7 @@
 
     if (command === "export-all-recordings") {
       payload.tabOrganization = {
+        notice: normalizeUserFlowNotice(userFlowTabs.notice),
         sessionTabs: { ...userFlowTabs.sessionTabs },
         tabs: userFlowTabs.tabs.map((tab) => ({ ...tab })),
       };
@@ -1640,7 +1813,58 @@
 
     userFlowTabs = readUserFlowTabs();
     editingUserFlowTabId = "";
+    editingUserFlowNotice = false;
     rerenderUserFlowOrganization();
+  }
+
+  function handleUserFlowNoticeControl(event) {
+    const editButton = event.target.closest("[data-user-flow-notice-edit]");
+    const toggleButton = event.target.closest("[data-user-flow-notice-toggle]");
+
+    if (toggleButton && !toggleButton.disabled) {
+      const previousCollapsed = Boolean(userFlowTabs.noticeCollapsed);
+      userFlowTabs.noticeCollapsed = !previousCollapsed;
+      editingUserFlowNotice = false;
+
+      if (!persistUserFlowTabs()) {
+        userFlowTabs.noticeCollapsed = previousCollapsed;
+      }
+
+      renderUserFlowNotice();
+      return;
+    }
+
+    if (editButton && !editButton.disabled) {
+      editingUserFlowNotice = true;
+      renderUserFlowNotice();
+      window.requestAnimationFrame(() => {
+        const input = document.querySelector("#userFlowNoticeInput");
+        input?.focus();
+        input?.setSelectionRange(input.value.length, input.value.length);
+      });
+    }
+  }
+
+  function handleUserFlowNoticeSubmit(event) {
+    const form = event.target.closest("#userFlowNoticeForm");
+
+    if (!form) {
+      return;
+    }
+
+    event.preventDefault();
+    const input = form.querySelector("#userFlowNoticeInput");
+    const previousNotice = userFlowTabs.notice;
+    userFlowTabs.notice = normalizeUserFlowNotice(input?.value);
+
+    if (!persistUserFlowTabs()) {
+      userFlowTabs.notice = previousNotice;
+      input?.focus();
+      return;
+    }
+
+    editingUserFlowNotice = false;
+    renderUserFlowNotice();
   }
 
   function handleUserFlowTabNameKeydown(event) {
@@ -1815,10 +2039,12 @@
   document.addEventListener("click", handleUserFlowViewControl);
   document.addEventListener("click", handleUserFlowTestSessionRemove);
   document.addEventListener("click", handleUserFlowTabControl);
+  document.addEventListener("click", handleUserFlowNoticeControl);
   document.addEventListener("click", handleUserFlowNameControl);
   document.addEventListener("focusout", handleUserFlowTabNameFocusOut);
   document.addEventListener("keydown", handleUserFlowTabNameKeydown);
   document.addEventListener("keydown", handleUserFlowNameKeydown);
+  document.addEventListener("submit", handleUserFlowNoticeSubmit);
   document.addEventListener("submit", handleUserFlowNameSubmit);
   document.addEventListener("dragstart", handleUserFlowSessionDragStart);
   document.addEventListener("dragover", handleUserFlowTestDragOver);

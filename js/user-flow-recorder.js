@@ -32,6 +32,8 @@
   const AUTO_REPLAY_REQUEST_IDLE_MS = 500;
   const CHECKABLE_EVENT_GROUP_MS = 150;
   const RECORDING_FORMAT_VERSION = 3;
+  const ARCHIVE_MANIFEST_FILE_NAME = "user-flow-manifest.json";
+  const MAX_NOTICE_LENGTH = 300;
   const PERCENT_PRECISION = 6;
   const IMPORTABLE_EVENT_TYPES = new Set(["change", "click", "input", "scroll"]);
   const SENSITIVE_AUTOCOMPLETE = new Set([
@@ -2272,6 +2274,10 @@
 
       const exportedAt = Date.now();
       const tabs = normalizeExportTabs(tabOrganization);
+      const notice = String(tabOrganization?.notice || "")
+        .replace(/\r\n?/g, "\n")
+        .trim()
+        .slice(0, MAX_NOTICE_LENGTH);
       const tabById = new Map(tabs.map((tab) => [tab.id, tab]));
       const fallbackTab = tabs[0];
       const sessionTabs =
@@ -2281,11 +2287,27 @@
       const usedFileNames = new Map(
         tabs.map((tab) => [tab.id, new Set()]),
       );
-      const entries = tabs.map((tab) => ({
-        isDirectory: true,
-        modifiedAt: exportedAt,
-        name: `${tab.folderName}/`,
-      }));
+      const entries = [
+        {
+          data: JSON.stringify(
+            {
+              exportedAt: new Date(exportedAt).toISOString(),
+              notice,
+              type: "response-mapping-user-flow-archive",
+              version: 1,
+            },
+            null,
+            2,
+          ),
+          modifiedAt: exportedAt,
+          name: ARCHIVE_MANIFEST_FILE_NAME,
+        },
+        ...tabs.map((tab) => ({
+          isDirectory: true,
+          modifiedAt: exportedAt,
+          name: `${tab.folderName}/`,
+        })),
+      ];
 
       state.sessions.forEach((session) => {
         const assignedTab = tabById.get(sessionTabs[session.id]) || fallbackTab;
