@@ -224,7 +224,7 @@
         const blob = await response.blob();
         const { fileName, fileType } = getImportFileMeta(response, importUrl, blob);
         const file = new File([blob], fileName, { type: fileType });
-        await importFile(file);
+        await importFile(file, { skipZipNameDuplicateCheck: true });
       } catch (error) {
         showStatus(
           error?.message || "URL의 JSON 또는 ZIP 파일을 가져오지 못했습니다.",
@@ -346,7 +346,10 @@
       return tabByName;
     }
 
-    async function importArchive(file) {
+    async function importArchive(
+      file,
+      { skipZipNameDuplicateCheck = false } = {},
+    ) {
       if (!window.UserFlowArchive) {
         throw new Error("ZIP 모듈을 불러오지 못했습니다.");
       }
@@ -362,7 +365,7 @@
             normalizedZipName,
       );
 
-      if (isDuplicateZip) {
+      if (!skipZipNameDuplicateCheck && isDuplicateZip) {
         throw new Error(`${importSourceZipName} 파일은 이미 가져왔습니다.`);
       }
 
@@ -509,7 +512,7 @@
       }
     }
 
-    async function importFile(file) {
+    async function importFile(file, { skipZipNameDuplicateCheck = false } = {}) {
       if (isBlocked()) {
         showStatus("녹화 또는 재생 중에는 가져올 수 없습니다.");
         return;
@@ -536,7 +539,7 @@
       try {
         if (isZipFile(file)) {
           showStatus("ZIP 파일 확인 중", "ready");
-          await importArchive(file);
+          await importArchive(file, { skipZipNameDuplicateCheck });
           return;
         }
 
