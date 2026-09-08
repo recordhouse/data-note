@@ -617,6 +617,15 @@
         const importData = JSON.parse(await file.text());
         const importSessionCount = getImportCandidates(importData).length;
         const tabsState = getTabs();
+
+        if (
+          importSessionCount &&
+          !tabsState.tabs.some((tab) => tab.id === tabsState.activeTabId)
+        ) {
+          showStatus("녹화를 가져오려면 목록 탭을 먼저 추가해주세요.");
+          return;
+        }
+
         const activeTabSessionCount = getTabSessionCount(tabsState.activeTabId);
 
         if (

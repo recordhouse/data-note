@@ -74,16 +74,18 @@
   let userFlowImportController = null;
   let userFlowTabs = readUserFlowTabs();
 
-  function createDefaultUserFlowTabs() {
+  function createDefaultUserFlowTabs({ withInitialTab = true } = {}) {
     return {
-      activeTabId: DEFAULT_USER_FLOW_TAB_ID,
+      activeTabId: withInitialTab ? DEFAULT_USER_FLOW_TAB_ID : "",
       notice: "",
       noticeCollapsed: false,
       sessionOrder: [],
       sessionTabs: {},
       testSessionIds: [],
-      tabs: [{ id: DEFAULT_USER_FLOW_TAB_ID, name: "Tab 01" }],
-      version: 8,
+      tabs: withInitialTab
+        ? [{ id: DEFAULT_USER_FLOW_TAB_ID, name: "Tab 01" }]
+        : [],
+      version: 9,
     };
   }
 
@@ -229,7 +231,7 @@
         tabs.push({ id, name });
       });
 
-      if (!tabs.length) {
+      if (!tabs.length && Number(stored.version || 0) < 9) {
         return fallback;
       }
 
@@ -272,14 +274,14 @@
       return {
         activeTabId: tabIds.has(stored.activeTabId)
           ? stored.activeTabId
-          : tabs[0].id,
+          : tabs[0]?.id || "",
         notice: normalizeUserFlowNotice(stored.notice),
         noticeCollapsed: Boolean(stored.noticeCollapsed),
         sessionOrder,
         sessionTabs,
         testSessionIds,
         tabs,
-        version: 8,
+        version: 9,
       };
     } catch (error) {
       return fallback;
@@ -288,6 +290,7 @@
 
   function persistUserFlowTabs() {
     try {
+      userFlowTabs.version = 9;
       window.localStorage.setItem(USER_FLOW_TAB_STORAGE_KEY, JSON.stringify(userFlowTabs));
       return true;
     } catch (error) {
@@ -297,7 +300,7 @@
   }
 
   function resetUserFlowOrganization() {
-    userFlowTabs = createDefaultUserFlowTabs();
+    userFlowTabs = createDefaultUserFlowTabs({ withInitialTab: false });
     activeUserFlowView = USER_FLOW_VIEW_RECORDINGS;
     editingUserFlowSessionId = "";
     editingUserFlowTabId = "";
@@ -311,17 +314,14 @@
   }
 
   function getFirstUserFlowTab() {
-    return userFlowTabs.tabs[0] || {
-      id: DEFAULT_USER_FLOW_TAB_ID,
-      name: "Tab 01",
-    };
+    return userFlowTabs.tabs[0] || null;
   }
 
   function getUserFlowSessionTabId(sessionId) {
     const assignedTabId = userFlowTabs.sessionTabs[sessionId];
     return userFlowTabs.tabs.some((tab) => tab.id === assignedTabId)
       ? assignedTabId
-      : getFirstUserFlowTab().id;
+      : getFirstUserFlowTab()?.id || "";
   }
 
   function reconcileUserFlowTabs(sessions, { removeMissingSessions = false } = {}) {
@@ -329,7 +329,7 @@
     const tabIds = new Set(userFlowTabs.tabs.map((tab) => tab.id));
     const fallbackTabId = tabIds.has(userFlowTabs.activeTabId)
       ? userFlowTabs.activeTabId
-      : getFirstUserFlowTab().id;
+      : getFirstUserFlowTab()?.id || "";
     const tabSessionCounts = new Map(userFlowTabs.tabs.map((tab) => [tab.id, 0]));
     let changed = false;
 
@@ -363,6 +363,19 @@
         userFlowTabs.testSessionIds = nextTestSessionIds;
         changed = true;
       }
+    }
+
+    if (!fallbackTabId) {
+      if (Object.keys(userFlowTabs.sessionTabs).length) {
+        userFlowTabs.sessionTabs = {};
+        changed = true;
+      }
+
+      if (changed) {
+        persistUserFlowTabs();
+      }
+
+      return;
     }
 
     sessions.forEach((session) => {
@@ -473,7 +486,6 @@
       .map((tab) => {
         const isActive = tab.id === userFlowTabs.activeTabId;
         const isEditing = tab.id === editingUserFlowTabId;
-        const canDelete = userFlowTabs.tabs.length > 1;
 
         return `
           <div
@@ -514,7 +526,7 @@
               ${organizationDisabled ? "disabled" : ""}
             >${isEditing ? "✓" : "✎"}</button>
             ${
-              canDelete && !isEditing
+              !isEditing
                 ? `<button
                     class="user-flow-list-tab-delete"
                     type="button"
@@ -796,6 +808,7 @@
 
     renderUserFlowNotice(flowState);
 
+    const hasUserFlowTabs = userFlowTabs.tabs.length > 0;
     let statusText = "저장된 녹화가 없습니다";
     let statusState = "idle";
 
@@ -816,6 +829,8 @@
     } else if (flowState.error) {
       statusText = flowState.error;
       statusState = "error";
+    } else if (!hasUserFlowTabs) {
+      statusText = "녹화를 시작하려면 목록 탭을 추가해주세요";
     } else if (flowState.canReplay) {
       statusText = "녹화 재생을 준비했습니다";
       statusState = "ready";
@@ -826,7 +841,9 @@
 
     recordButton.textContent = flowState.isRecording ? "녹화 중지" : "녹화";
     recordButton.setAttribute("aria-pressed", String(Boolean(flowState.isRecording)));
-    recordButton.disabled = Boolean(flowState.isReplaying);
+    recordButton.disabled = Boolean(
+      flowState.isReplaying || (!flowState.isRecording && !hasUserFlowTabs),
+    );
 
     userFlowImportController?.updateControls();
 
@@ -845,21 +862,32 @@
 
     if (clearAllButton) {
       clearAllButton.disabled = Boolean(
-        flowState.isRecording || flowState.isReplaying || !sessions.length,
+        flowState.isRecording ||
+          flowState.isReplaying ||
+          (!sessions.length && !userFlowTabs.tabs.length),
       );
     }
 
     reconcileUserFlowTabs(sessions, { removeMissingSessions: hasSessionState });
     renderUserFlowTabs(sessions);
     renderUserFlowView();
-    const visibleSessions = getOrderedUserFlowSessions(sessions).filter(
-      (session) =>
-        getUserFlowSessionTabId(session.id) === userFlowTabs.activeTabId,
-    );
-    sessionList.setAttribute(
-      "aria-labelledby",
-      getUserFlowTabElementId(userFlowTabs.activeTabId),
-    );
+    const visibleSessions = userFlowTabs.tabs.length
+      ? getOrderedUserFlowSessions(sessions).filter(
+          (session) =>
+            getUserFlowSessionTabId(session.id) === userFlowTabs.activeTabId,
+        )
+      : [];
+
+    if (userFlowTabs.activeTabId) {
+      sessionList.setAttribute(
+        "aria-labelledby",
+        getUserFlowTabElementId(userFlowTabs.activeTabId),
+      );
+      sessionList.removeAttribute("aria-label");
+    } else {
+      sessionList.removeAttribute("aria-labelledby");
+      sessionList.setAttribute("aria-label", "녹화 목록");
+    }
 
     if (
       flowState.isRecording ||
@@ -874,9 +902,12 @@
 
     if (!visibleSessions.length) {
       renderedUserFlowSessionSignature = "";
-      sessionList.innerHTML = `<div class="user-flow-empty">${
-        sessions.length ? "이 탭에 저장된 녹화가 없습니다." : "저장된 녹화가 없습니다."
-      }</div>`;
+      const emptyMessage = !userFlowTabs.tabs.length
+        ? "탭을 추가하면 녹화를 시작할 수 있습니다."
+        : sessions.length
+          ? "이 탭에 저장된 녹화가 없습니다."
+          : "저장된 녹화가 없습니다.";
+      sessionList.innerHTML = `<div class="user-flow-empty">${emptyMessage}</div>`;
       updateUserFlowSessionProgress(flowState, sessions);
       return;
     }
@@ -1102,11 +1133,12 @@
 
     if (command === "clear") {
       const sessionCount = (currentUserFlowState.sessions || []).length;
+      const tabCount = userFlowTabs.tabs.length;
 
       if (
-        !sessionCount ||
+        (!sessionCount && !tabCount) ||
         !window.confirm(
-          `현재 팝업에 저장된 녹화 ${sessionCount.toLocaleString("ko-KR")}개와 탭 구성을 모두 삭제하고 초기화합니다.\n이 작업은 되돌릴 수 없습니다. 삭제하시겠습니까?`,
+          `현재 팝업에 저장된 녹화 ${sessionCount.toLocaleString("ko-KR")}개와 탭 ${tabCount.toLocaleString("ko-KR")}개를 모두 삭제합니다.\n이 작업은 되돌릴 수 없습니다. 삭제하시겠습니까?`,
         )
       ) {
         return;
@@ -1330,7 +1362,7 @@
         .filter((session) => getUserFlowSessionTabId(session.id) === tabId)
         .map((session) => session.id);
 
-      if (!tab || tabIndex < 0 || userFlowTabs.tabs.length <= 1) {
+      if (!tab || tabIndex < 0) {
         return;
       }
 
@@ -1365,7 +1397,7 @@
         userFlowTabs.activeTabId =
           userFlowTabs.tabs[Math.min(tabIndex, userFlowTabs.tabs.length - 1)]?.id ||
           userFlowTabs.tabs[0]?.id ||
-          DEFAULT_USER_FLOW_TAB_ID;
+          "";
       }
 
       editingUserFlowTabId = "";
