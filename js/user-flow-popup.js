@@ -20,6 +20,7 @@
   const REPLAY_NAVIGATION_TIMEOUT_MS = 60 * 1000;
   const USER_FLOW_DRAG_SCROLL_EDGE_PX = 48;
   const USER_FLOW_DRAG_SCROLL_STEP_PX = 18;
+  const USER_FLOW_MOVE_ANIMATION_MS = 260;
 
   let currentUserFlowState = {};
   let activeUserFlowView = USER_FLOW_VIEW_RECORDINGS;
@@ -28,6 +29,8 @@
   let renderedUserFlowSessionSignature = "";
   let renderedUserFlowTestSignature = "";
   let draggedUserFlowSessionId = "";
+  let userFlowMoveToastTimer = 0;
+  let userFlowMoveToastClearTimer = 0;
   let replayNavigationIdleTimer = 0;
   let replayNavigationParentReady = false;
   let replayNavigationSessionId = "";
@@ -1232,6 +1235,104 @@
     });
   }
 
+  function hasDraggedFiles(event) {
+    return Array.from(event.dataTransfer?.types || []).includes("Files");
+  }
+
+  function captureUserFlowSessionPositions() {
+    return new Map(
+      Array.from(
+        document.querySelectorAll(
+          ".user-flow-view-panel:not([hidden]) .user-flow-session-list [data-user-flow-session-id]",
+        ),
+      ).map((session) => [
+        session.dataset.userFlowSessionId,
+        session.getBoundingClientRect(),
+      ]),
+    );
+  }
+
+  function animateUserFlowSessionMove(previousPositions, movedSessionId) {
+    if (
+      !previousPositions?.size ||
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      document
+        .querySelectorAll(
+          ".user-flow-view-panel:not([hidden]) .user-flow-session-list [data-user-flow-session-id]",
+        )
+        .forEach((session) => {
+          if (typeof session.animate !== "function") {
+            return;
+          }
+
+          const sessionId = session.dataset.userFlowSessionId;
+          const previousRect = previousPositions.get(sessionId);
+
+          if (previousRect) {
+            const currentRect = session.getBoundingClientRect();
+            const translateX = previousRect.left - currentRect.left;
+            const translateY = previousRect.top - currentRect.top;
+
+            if (Math.abs(translateX) >= 1 || Math.abs(translateY) >= 1) {
+              session.animate(
+                [
+                  { transform: `translate3d(${translateX}px, ${translateY}px, 0)` },
+                  { transform: "translate3d(0, 0, 0)" },
+                ],
+                {
+                  duration: USER_FLOW_MOVE_ANIMATION_MS,
+                  easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+                },
+              );
+            }
+          }
+
+          if (sessionId === movedSessionId) {
+            session.animate(
+              [
+                { boxShadow: "0 0 0 2px rgba(18, 102, 214, 0.3)" },
+                { boxShadow: "0 0 0 0 rgba(18, 102, 214, 0)" },
+              ],
+              {
+                duration: USER_FLOW_MOVE_ANIMATION_MS + 80,
+                easing: "ease-out",
+              },
+            );
+          }
+        });
+    });
+  }
+
+  function showUserFlowMoveToast() {
+    const toast = document.querySelector("#userFlowMoveToast");
+
+    if (!toast) {
+      return;
+    }
+
+    window.clearTimeout(userFlowMoveToastTimer);
+    window.clearTimeout(userFlowMoveToastClearTimer);
+    toast.classList.remove("is-visible");
+    toast.textContent = "";
+    void toast.offsetWidth;
+    toast.textContent = "이동되었습니다";
+    toast.classList.add("is-visible");
+
+    userFlowMoveToastTimer = window.setTimeout(() => {
+      toast.classList.remove("is-visible");
+      userFlowMoveToastClearTimer = window.setTimeout(() => {
+        if (!toast.classList.contains("is-visible")) {
+          toast.textContent = "";
+        }
+      }, 160);
+    }, 1200);
+  }
+
   function clearUserFlowSessionDropIndicators(exceptSession = null) {
     document
       .querySelectorAll(".user-flow-session.is-drop-before, .user-flow-session.is-drop-after")
@@ -1413,6 +1514,9 @@
     }
 
     event.preventDefault();
+    const movedSessionId = draggedUserFlowSessionId;
+    const previousPositions = captureUserFlowSessionPositions();
+    let moveCompleted = false;
     const sessionExists = (currentUserFlowState.sessions || []).some(
       (session) => session.id === draggedUserFlowSessionId,
     );
@@ -1426,12 +1530,18 @@
 
       if (!persistUserFlowTabs()) {
         userFlowTabs.testSessionIds = previousTestSessionIds;
+      } else {
+        moveCompleted = true;
       }
     }
 
-    activeUserFlowView = USER_FLOW_VIEW_TEST;
     resetUserFlowSessionDrag();
     rerenderUserFlowOrganization();
+    animateUserFlowSessionMove(previousPositions, movedSessionId);
+
+    if (moveCompleted) {
+      showUserFlowMoveToast();
+    }
   }
 
   function handleUserFlowSessionOrderDrop(event) {
@@ -1449,6 +1559,8 @@
     }
 
     event.preventDefault();
+    const movedSessionId = draggedUserFlowSessionId;
+    const previousPositions = captureUserFlowSessionPositions();
     const previousOrder = [...userFlowTabs.sessionOrder];
     const nextOrder = userFlowTabs.sessionOrder.filter(
       (sessionId) => sessionId !== draggedUserFlowSessionId,
@@ -1474,6 +1586,7 @@
 
     resetUserFlowSessionDrag();
     rerenderUserFlowOrganization();
+    animateUserFlowSessionMove(previousPositions, movedSessionId);
   }
 
   function handleUserFlowSessionDrop(event) {
@@ -1484,13 +1597,19 @@
     }
 
     event.preventDefault();
+    const movedSessionId = draggedUserFlowSessionId;
+    const previousPositions = captureUserFlowSessionPositions();
     const targetTabId = tab.dataset.userFlowTabDrop;
 
     if (userFlowTabs.tabs.some((item) => item.id === targetTabId)) {
       const sourceTabId = getUserFlowSessionTabId(draggedUserFlowSessionId);
 
+      if (sourceTabId === targetTabId) {
+        resetUserFlowSessionDrag();
+        return;
+      }
+
       if (
-        sourceTabId !== targetTabId &&
         getUserFlowTabSessionCount(targetTabId) >= MAX_USER_FLOW_SESSIONS_PER_TAB
       ) {
         showUserFlowTabLimit(targetTabId);
@@ -1499,11 +1618,18 @@
       }
 
       userFlowTabs.sessionTabs[draggedUserFlowSessionId] = targetTabId;
-      userFlowTabs.activeTabId = targetTabId;
       editingUserFlowTabId = "";
-      persistUserFlowTabs();
+
+      if (!persistUserFlowTabs()) {
+        userFlowTabs.sessionTabs[draggedUserFlowSessionId] = sourceTabId;
+        resetUserFlowSessionDrag();
+        return;
+      }
+
       resetUserFlowSessionDrag();
       rerenderUserFlowOrganization();
+      animateUserFlowSessionMove(previousPositions, movedSessionId);
+      showUserFlowMoveToast();
     }
   }
 
