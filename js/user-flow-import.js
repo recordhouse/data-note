@@ -572,6 +572,7 @@
         if (
           !sendCommand("import-recordings", {
             importData: { sessions: importedSessions },
+            skipZipNameDuplicateCheck,
           })
         ) {
           throw new Error("부모 화면에 연결할 수 없습니다.");

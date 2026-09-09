@@ -1769,7 +1769,10 @@
       .sort((first, second) => first.at - second.at);
   }
 
-  function normalizeImportedSessions(importData) {
+  function normalizeImportedSessions(
+    importData,
+    { skipZipNameDuplicateCheck = false } = {},
+  ) {
     const candidates = Array.isArray(importData?.sessions)
       ? importData.sessions
       : importData?.session
@@ -1812,7 +1815,8 @@
 
       if (
         (importedId && reservedIds.has(importedId)) ||
-        (importSourceZipName &&
+        (!skipZipNameDuplicateCheck &&
+          importSourceZipName &&
           importedZipNames.has(importSourceZipName.toLowerCase()))
       ) {
         continue;
@@ -1832,7 +1836,7 @@
     return importedSessions;
   }
 
-  function importRecordings(importData) {
+  function importRecordings(importData, options = {}) {
     if (state.isRecording || state.isReplaying) {
       state.lastError = "녹화 또는 재생 중에는 가져올 수 없습니다.";
       notifyClients({ immediate: true });
@@ -1844,7 +1848,7 @@
       return false;
     }
 
-    const importedSessions = normalizeImportedSessions(importData);
+    const importedSessions = normalizeImportedSessions(importData, options);
 
     if (!importedSessions.length) {
       state.lastError = "가져올 새 녹화가 없거나 이미 존재하는 녹화입니다.";
@@ -2538,7 +2542,11 @@
         exportAllRecordings(event.data.tabOrganization);
         break;
       case "import-recordings":
-        importRecordings(event.data.importData);
+        importRecordings(event.data.importData, {
+          skipZipNameDuplicateCheck: Boolean(
+            event.data.skipZipNameDuplicateCheck,
+          ),
+        });
         break;
       case "clear":
         clearRecording();
