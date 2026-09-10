@@ -254,13 +254,17 @@
       .user-flow-screen-mask-layer[data-layer="primary"] {
       background-image:
         linear-gradient(to bottom, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 28px, rgba(220, 23, 77, 0.22) 78px, rgba(220, 23, 77, 0) 140px),
+        linear-gradient(to top, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 28px, rgba(220, 23, 77, 0.22) 78px, rgba(220, 23, 77, 0) 140px),
+        linear-gradient(to right, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 28px, rgba(220, 23, 77, 0.22) 78px, rgba(220, 23, 77, 0) 140px),
         linear-gradient(to left, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 28px, rgba(220, 23, 77, 0.22) 78px, rgba(220, 23, 77, 0) 140px);
     }
 
     .user-flow-screen-mask[data-mode="recording"]
       .user-flow-screen-mask-layer[data-layer="secondary"] {
       background-image:
+        linear-gradient(to bottom, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 28px, rgba(139, 92, 246, 0.22) 78px, rgba(139, 92, 246, 0) 140px),
         linear-gradient(to top, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 28px, rgba(139, 92, 246, 0.22) 78px, rgba(139, 92, 246, 0) 140px),
+        linear-gradient(to left, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 28px, rgba(139, 92, 246, 0.22) 78px, rgba(139, 92, 246, 0) 140px),
         linear-gradient(to right, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 28px, rgba(139, 92, 246, 0.22) 78px, rgba(139, 92, 246, 0) 140px);
     }
 
@@ -268,13 +272,17 @@
       .user-flow-screen-mask-layer[data-layer="primary"] {
       background-image:
         linear-gradient(to bottom, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 28px, rgba(0, 168, 120, 0.22) 78px, rgba(0, 168, 120, 0) 140px),
+        linear-gradient(to top, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 28px, rgba(0, 168, 120, 0.22) 78px, rgba(0, 168, 120, 0) 140px),
+        linear-gradient(to right, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 28px, rgba(0, 168, 120, 0.22) 78px, rgba(0, 168, 120, 0) 140px),
         linear-gradient(to left, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 28px, rgba(0, 168, 120, 0.22) 78px, rgba(0, 168, 120, 0) 140px);
     }
 
     .user-flow-screen-mask[data-mode="replaying"]
       .user-flow-screen-mask-layer[data-layer="secondary"] {
       background-image:
+        linear-gradient(to bottom, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 28px, rgba(0, 160, 184, 0.22) 78px, rgba(0, 160, 184, 0) 140px),
         linear-gradient(to top, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 28px, rgba(0, 160, 184, 0.22) 78px, rgba(0, 160, 184, 0) 140px),
+        linear-gradient(to left, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 28px, rgba(0, 160, 184, 0.22) 78px, rgba(0, 160, 184, 0) 140px),
         linear-gradient(to right, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 28px, rgba(0, 160, 184, 0.22) 78px, rgba(0, 160, 184, 0) 140px);
     }
 
@@ -284,12 +292,16 @@
 
     .user-flow-screen-mask.is-visible
       .user-flow-screen-mask-layer[data-layer="primary"] {
-      animation: user-flow-screen-mask-diagonal-fade 2000ms ease-in-out infinite alternate;
+      animation:
+        user-flow-screen-mask-orbit-clockwise 5000ms linear infinite,
+        user-flow-screen-mask-breathe-primary 2700ms ease-in-out infinite alternate;
     }
 
     .user-flow-screen-mask.is-visible
       .user-flow-screen-mask-layer[data-layer="secondary"] {
-      animation: user-flow-screen-mask-diagonal-fade 3400ms ease-in-out -1200ms infinite alternate-reverse;
+      animation:
+        user-flow-screen-mask-orbit-counterclockwise 10000ms linear infinite,
+        user-flow-screen-mask-breathe-secondary 4600ms ease-in-out -1200ms infinite alternate;
     }
 
     @keyframes user-flow-screen-mask-pulse {
@@ -302,15 +314,73 @@
       }
     }
 
-    @keyframes user-flow-screen-mask-diagonal-fade {
-      from {
+    @keyframes user-flow-screen-mask-orbit-clockwise {
+      0%,
+      100% {
         -webkit-mask-position: 0% 0%;
         mask-position: 0% 0%;
       }
 
-      to {
+      25% {
+        -webkit-mask-position: 100% 0%;
+        mask-position: 100% 0%;
+      }
+
+      50% {
         -webkit-mask-position: 100% 100%;
         mask-position: 100% 100%;
+      }
+
+      75% {
+        -webkit-mask-position: 0% 100%;
+        mask-position: 0% 100%;
+      }
+    }
+
+    @keyframes user-flow-screen-mask-orbit-counterclockwise {
+      0%,
+      100% {
+        -webkit-mask-position: 100% 100%;
+        mask-position: 100% 100%;
+      }
+
+      25% {
+        -webkit-mask-position: 100% 0%;
+        mask-position: 100% 0%;
+      }
+
+      50% {
+        -webkit-mask-position: 0% 0%;
+        mask-position: 0% 0%;
+      }
+
+      75% {
+        -webkit-mask-position: 0% 100%;
+        mask-position: 0% 100%;
+      }
+    }
+
+    @keyframes user-flow-screen-mask-breathe-primary {
+      from {
+        -webkit-mask-size: 125% 125%;
+        mask-size: 125% 125%;
+      }
+
+      to {
+        -webkit-mask-size: 175% 175%;
+        mask-size: 175% 175%;
+      }
+    }
+
+    @keyframes user-flow-screen-mask-breathe-secondary {
+      from {
+        -webkit-mask-size: 135% 135%;
+        mask-size: 135% 135%;
+      }
+
+      to {
+        -webkit-mask-size: 190% 190%;
+        mask-size: 190% 190%;
       }
     }
 
