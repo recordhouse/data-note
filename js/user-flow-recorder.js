@@ -214,48 +214,74 @@
       z-index: 2147482997;
       opacity: 0;
       pointer-events: none;
-      background-position: top, bottom, left, right;
-      background-repeat: no-repeat;
-      background-size: 100% 50px, 100% 50px, 50px 100%, 50px 100%;
-      -webkit-mask-image: linear-gradient(
-        135deg,
-        rgba(0, 0, 0, 0.08) 0%,
-        #000 50%,
-        rgba(0, 0, 0, 0.08) 100%
-      );
-      -webkit-mask-position: 0% 0%;
-      -webkit-mask-size: 140% 140%;
-      mask-image: linear-gradient(
-        135deg,
-        rgba(0, 0, 0, 0.08) 0%,
-        #000 50%,
-        rgba(0, 0, 0, 0.08) 100%
-      );
-      mask-position: 0% 0%;
-      mask-size: 140% 140%;
       transition: opacity ${SCREEN_MASK_TRANSITION_MS}ms ease;
     }
 
-    .user-flow-screen-mask[data-mode="recording"] {
-      background-image:
-        linear-gradient(to bottom, rgba(220, 23, 77, 0.58), transparent),
-        linear-gradient(to top, rgba(220, 23, 77, 0.58), transparent),
-        linear-gradient(to right, rgba(220, 23, 77, 0.58), transparent),
-        linear-gradient(to left, rgba(220, 23, 77, 0.58), transparent);
+    .user-flow-screen-mask::before,
+    .user-flow-screen-mask::after {
+      position: absolute;
+      inset: 0;
+      background-repeat: no-repeat;
+      background-size: 100% 100%;
+      content: "";
+      -webkit-mask-image: linear-gradient(
+        135deg,
+        rgba(0, 0, 0, 0) 0%,
+        rgba(0, 0, 0, 0.2) 28%,
+        #000 50%,
+        rgba(0, 0, 0, 0.2) 72%,
+        rgba(0, 0, 0, 0) 100%
+      );
+      -webkit-mask-position: 0% 0%;
+      -webkit-mask-repeat: no-repeat;
+      -webkit-mask-size: 140% 140%;
+      mask-image: linear-gradient(
+        135deg,
+        rgba(0, 0, 0, 0) 0%,
+        rgba(0, 0, 0, 0.2) 28%,
+        #000 50%,
+        rgba(0, 0, 0, 0.2) 72%,
+        rgba(0, 0, 0, 0) 100%
+      );
+      mask-position: 0% 0%;
+      mask-repeat: no-repeat;
+      mask-size: 140% 140%;
     }
 
-    .user-flow-screen-mask[data-mode="replaying"] {
+    .user-flow-screen-mask[data-mode="recording"]::before {
       background-image:
-        linear-gradient(to bottom, rgba(0, 168, 120, 0.58), transparent),
-        linear-gradient(to top, rgba(0, 168, 120, 0.58), transparent),
-        linear-gradient(to right, rgba(0, 168, 120, 0.58), transparent),
-        linear-gradient(to left, rgba(0, 168, 120, 0.58), transparent);
+        linear-gradient(to bottom, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 28px, rgba(220, 23, 77, 0.22) 78px, rgba(220, 23, 77, 0) 140px),
+        linear-gradient(to left, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 28px, rgba(220, 23, 77, 0.22) 78px, rgba(220, 23, 77, 0) 140px);
+    }
+
+    .user-flow-screen-mask[data-mode="recording"]::after {
+      background-image:
+        linear-gradient(to top, rgba(171, 45, 128, 0.78) 0, rgba(171, 45, 128, 0.58) 28px, rgba(171, 45, 128, 0.22) 78px, rgba(171, 45, 128, 0) 140px),
+        linear-gradient(to right, rgba(171, 45, 128, 0.78) 0, rgba(171, 45, 128, 0.58) 28px, rgba(171, 45, 128, 0.22) 78px, rgba(171, 45, 128, 0) 140px);
+    }
+
+    .user-flow-screen-mask[data-mode="replaying"]::before {
+      background-image:
+        linear-gradient(to bottom, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 28px, rgba(0, 168, 120, 0.22) 78px, rgba(0, 168, 120, 0) 140px),
+        linear-gradient(to left, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 28px, rgba(0, 168, 120, 0.22) 78px, rgba(0, 168, 120, 0) 140px);
+    }
+
+    .user-flow-screen-mask[data-mode="replaying"]::after {
+      background-image:
+        linear-gradient(to top, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 28px, rgba(0, 160, 184, 0.22) 78px, rgba(0, 160, 184, 0) 140px),
+        linear-gradient(to right, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 28px, rgba(0, 160, 184, 0.22) 78px, rgba(0, 160, 184, 0) 140px);
     }
 
     .user-flow-screen-mask.is-visible {
-      animation:
-        user-flow-screen-mask-pulse 800ms ease-in-out infinite alternate,
-        user-flow-screen-mask-diagonal-fade 2200ms ease-in-out infinite alternate;
+      animation: user-flow-screen-mask-pulse 800ms ease-in-out infinite alternate;
+    }
+
+    .user-flow-screen-mask.is-visible::before {
+      animation: user-flow-screen-mask-diagonal-fade 2000ms ease-in-out infinite alternate;
+    }
+
+    .user-flow-screen-mask.is-visible::after {
+      animation: user-flow-screen-mask-diagonal-fade 3400ms ease-in-out -1200ms infinite alternate-reverse;
     }
 
     @keyframes user-flow-screen-mask-pulse {
@@ -284,6 +310,11 @@
       .user-flow-screen-mask.is-visible {
         animation: none;
         opacity: 0.82;
+      }
+
+      .user-flow-screen-mask.is-visible::before,
+      .user-flow-screen-mask.is-visible::after {
+        animation: none;
         -webkit-mask-position: 50% 50%;
         mask-position: 50% 50%;
       }
