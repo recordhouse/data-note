@@ -256,8 +256,8 @@
 
     .user-flow-screen-mask[data-mode="recording"]::after {
       background-image:
-        linear-gradient(to top, rgba(171, 45, 128, 0.78) 0, rgba(171, 45, 128, 0.58) 28px, rgba(171, 45, 128, 0.22) 78px, rgba(171, 45, 128, 0) 140px),
-        linear-gradient(to right, rgba(171, 45, 128, 0.78) 0, rgba(171, 45, 128, 0.58) 28px, rgba(171, 45, 128, 0.22) 78px, rgba(171, 45, 128, 0) 140px);
+        linear-gradient(to top, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 28px, rgba(139, 92, 246, 0.22) 78px, rgba(139, 92, 246, 0) 140px),
+        linear-gradient(to right, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 28px, rgba(139, 92, 246, 0.22) 78px, rgba(139, 92, 246, 0) 140px);
     }
 
     .user-flow-screen-mask[data-mode="replaying"]::before {
