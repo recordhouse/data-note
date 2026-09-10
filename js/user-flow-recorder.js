@@ -253,55 +253,57 @@
     .user-flow-screen-mask[data-mode="recording"]
       .user-flow-screen-mask-layer[data-layer="primary"] {
       background-image:
-        linear-gradient(to bottom, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 28px, rgba(220, 23, 77, 0.22) 78px, rgba(220, 23, 77, 0) 140px),
-        linear-gradient(to top, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 28px, rgba(220, 23, 77, 0.22) 78px, rgba(220, 23, 77, 0) 140px),
-        linear-gradient(to right, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 28px, rgba(220, 23, 77, 0.22) 78px, rgba(220, 23, 77, 0) 140px),
-        linear-gradient(to left, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 28px, rgba(220, 23, 77, 0.22) 78px, rgba(220, 23, 77, 0) 140px);
+        linear-gradient(to bottom, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 18px, rgba(220, 23, 77, 0.22) 50px, rgba(220, 23, 77, 0) 90px),
+        linear-gradient(to top, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 18px, rgba(220, 23, 77, 0.22) 50px, rgba(220, 23, 77, 0) 90px),
+        linear-gradient(to right, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 18px, rgba(220, 23, 77, 0.22) 50px, rgba(220, 23, 77, 0) 90px),
+        linear-gradient(to left, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 18px, rgba(220, 23, 77, 0.22) 50px, rgba(220, 23, 77, 0) 90px);
     }
 
     .user-flow-screen-mask[data-mode="recording"]
       .user-flow-screen-mask-layer[data-layer="secondary"] {
       background-image:
-        linear-gradient(to bottom, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 28px, rgba(139, 92, 246, 0.22) 78px, rgba(139, 92, 246, 0) 140px),
-        linear-gradient(to top, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 28px, rgba(139, 92, 246, 0.22) 78px, rgba(139, 92, 246, 0) 140px),
-        linear-gradient(to left, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 28px, rgba(139, 92, 246, 0.22) 78px, rgba(139, 92, 246, 0) 140px),
-        linear-gradient(to right, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 28px, rgba(139, 92, 246, 0.22) 78px, rgba(139, 92, 246, 0) 140px);
+        linear-gradient(to bottom, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 18px, rgba(139, 92, 246, 0.22) 50px, rgba(139, 92, 246, 0) 90px),
+        linear-gradient(to top, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 18px, rgba(139, 92, 246, 0.22) 50px, rgba(139, 92, 246, 0) 90px),
+        linear-gradient(to left, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 18px, rgba(139, 92, 246, 0.22) 50px, rgba(139, 92, 246, 0) 90px),
+        linear-gradient(to right, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 18px, rgba(139, 92, 246, 0.22) 50px, rgba(139, 92, 246, 0) 90px);
     }
 
     .user-flow-screen-mask[data-mode="replaying"]
       .user-flow-screen-mask-layer[data-layer="primary"] {
       background-image:
-        linear-gradient(to bottom, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 28px, rgba(0, 168, 120, 0.22) 78px, rgba(0, 168, 120, 0) 140px),
-        linear-gradient(to top, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 28px, rgba(0, 168, 120, 0.22) 78px, rgba(0, 168, 120, 0) 140px),
-        linear-gradient(to right, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 28px, rgba(0, 168, 120, 0.22) 78px, rgba(0, 168, 120, 0) 140px),
-        linear-gradient(to left, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 28px, rgba(0, 168, 120, 0.22) 78px, rgba(0, 168, 120, 0) 140px);
+        linear-gradient(to bottom, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 18px, rgba(0, 168, 120, 0.22) 50px, rgba(0, 168, 120, 0) 90px),
+        linear-gradient(to top, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 18px, rgba(0, 168, 120, 0.22) 50px, rgba(0, 168, 120, 0) 90px),
+        linear-gradient(to right, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 18px, rgba(0, 168, 120, 0.22) 50px, rgba(0, 168, 120, 0) 90px),
+        linear-gradient(to left, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 18px, rgba(0, 168, 120, 0.22) 50px, rgba(0, 168, 120, 0) 90px);
     }
 
     .user-flow-screen-mask[data-mode="replaying"]
       .user-flow-screen-mask-layer[data-layer="secondary"] {
       background-image:
-        linear-gradient(to bottom, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 28px, rgba(0, 160, 184, 0.22) 78px, rgba(0, 160, 184, 0) 140px),
-        linear-gradient(to top, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 28px, rgba(0, 160, 184, 0.22) 78px, rgba(0, 160, 184, 0) 140px),
-        linear-gradient(to left, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 28px, rgba(0, 160, 184, 0.22) 78px, rgba(0, 160, 184, 0) 140px),
-        linear-gradient(to right, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 28px, rgba(0, 160, 184, 0.22) 78px, rgba(0, 160, 184, 0) 140px);
+        linear-gradient(to bottom, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 18px, rgba(0, 160, 184, 0.22) 50px, rgba(0, 160, 184, 0) 90px),
+        linear-gradient(to top, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 18px, rgba(0, 160, 184, 0.22) 50px, rgba(0, 160, 184, 0) 90px),
+        linear-gradient(to left, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 18px, rgba(0, 160, 184, 0.22) 50px, rgba(0, 160, 184, 0) 90px),
+        linear-gradient(to right, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 18px, rgba(0, 160, 184, 0.22) 50px, rgba(0, 160, 184, 0) 90px);
     }
 
     .user-flow-screen-mask.is-visible {
-      animation: user-flow-screen-mask-pulse 800ms ease-in-out infinite alternate;
+      opacity: 1;
     }
 
     .user-flow-screen-mask.is-visible
       .user-flow-screen-mask-layer[data-layer="primary"] {
       animation:
-        user-flow-screen-mask-orbit-clockwise 5000ms linear infinite,
-        user-flow-screen-mask-breathe-primary 2700ms ease-in-out infinite alternate;
+        user-flow-screen-mask-orbit-clockwise 4000ms linear infinite,
+        user-flow-screen-mask-breathe-primary 2700ms ease-in-out infinite alternate,
+        user-flow-screen-mask-pulse 800ms ease-in-out infinite alternate;
     }
 
     .user-flow-screen-mask.is-visible
       .user-flow-screen-mask-layer[data-layer="secondary"] {
       animation:
-        user-flow-screen-mask-orbit-counterclockwise 10000ms linear infinite,
-        user-flow-screen-mask-breathe-secondary 4600ms ease-in-out -1200ms infinite alternate;
+        user-flow-screen-mask-orbit-counterclockwise 7000ms linear infinite,
+        user-flow-screen-mask-breathe-secondary 4600ms ease-in-out -1200ms infinite alternate,
+        user-flow-screen-mask-pulse 1300ms ease-in-out -400ms infinite alternate;
     }
 
     @keyframes user-flow-screen-mask-pulse {
