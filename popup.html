@@ -537,6 +537,18 @@
         cursor: pointer;
       }
 
+      .user-flow-login {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+      }
+
+      .user-flow-login[aria-disabled="true"] {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
+
       .user-flow-action[data-action="toggle-record"] {
         border-color: #b42345;
         color: #b42345;
@@ -1682,6 +1694,12 @@
             </section>
             <span class="user-flow-status" id="userFlowStatus" data-state="idle">연결 대기</span>
             <div class="user-flow-actions">
+              <a
+                class="user-flow-action user-flow-login"
+                id="userFlowLoginButton"
+                target="_blank"
+                rel="noopener noreferrer"
+              >로그인</a>
               <button
                 class="user-flow-action"
                 id="userFlowImportButton"
@@ -1696,7 +1714,7 @@
                   aria-expanded="false"
                   aria-controls="userFlowUrlImportPanel"
                   data-user-flow-url-import-trigger
-                >URL에서 가져오기</button>
+                >샘플 가져오기</button>
                 <div
                   class="user-flow-url-import-panel"
                   id="userFlowUrlImportPanel"
@@ -1860,6 +1878,9 @@
     ></div>
 
     <script>
+      // 로그인 버튼의 이동 경로는 이 값만 수정하면 됩니다.
+      window.USER_FLOW_LOGIN_URL = "/login";
+
       window.USER_FLOW_IMPORT_URLS = [
         // { name: "로그인 플로우", url: "/flowData/login.json" },
         // { name: "공통 플로우", url: "/flowData/common-flows.zip" },

@@ -34,6 +34,36 @@
     let isUrlImporting = false;
     let renderedImportUrls = [];
 
+    function configureLoginLink() {
+      const loginLink = document.querySelector("#userFlowLoginButton");
+
+      if (!loginLink) {
+        return;
+      }
+
+      const configuredUrl = String(window.USER_FLOW_LOGIN_URL || "").trim();
+
+      if (!configuredUrl) {
+        loginLink.removeAttribute("href");
+        loginLink.setAttribute("aria-disabled", "true");
+        return;
+      }
+
+      try {
+        const loginUrl = new URL(configuredUrl, window.location.href);
+
+        if (!["http:", "https:"].includes(loginUrl.protocol)) {
+          throw new Error("지원하지 않는 로그인 URL입니다.");
+        }
+
+        loginLink.href = loginUrl.href;
+        loginLink.removeAttribute("aria-disabled");
+      } catch {
+        loginLink.removeAttribute("href");
+        loginLink.setAttribute("aria-disabled", "true");
+      }
+    }
+
     function isBlocked() {
       const state = getState();
       return Boolean(state.isRecording || state.isReplaying);
@@ -801,6 +831,7 @@
       document.addEventListener("dragleave", handleDragLeave);
       document.addEventListener("drop", handleDrop);
       window.addEventListener("blur", resetFileDrag);
+      configureLoginLink();
       renderUrlOptions();
     }
 
