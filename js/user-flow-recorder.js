@@ -212,18 +212,20 @@
       position: fixed;
       inset: 0;
       z-index: 2147482997;
+      contain: strict;
+      isolation: isolate;
       opacity: 0;
+      overflow: hidden;
       pointer-events: none;
       transition: opacity ${SCREEN_MASK_TRANSITION_MS}ms ease;
     }
 
-    .user-flow-screen-mask::before,
-    .user-flow-screen-mask::after {
+    .user-flow-screen-mask-layer {
       position: absolute;
       inset: 0;
+      display: block;
       background-repeat: no-repeat;
       background-size: 100% 100%;
-      content: "";
       -webkit-mask-image: linear-gradient(
         135deg,
         rgba(0, 0, 0, 0) 0%,
@@ -248,25 +250,29 @@
       mask-size: 140% 140%;
     }
 
-    .user-flow-screen-mask[data-mode="recording"]::before {
+    .user-flow-screen-mask[data-mode="recording"]
+      .user-flow-screen-mask-layer[data-layer="primary"] {
       background-image:
         linear-gradient(to bottom, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 28px, rgba(220, 23, 77, 0.22) 78px, rgba(220, 23, 77, 0) 140px),
         linear-gradient(to left, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 28px, rgba(220, 23, 77, 0.22) 78px, rgba(220, 23, 77, 0) 140px);
     }
 
-    .user-flow-screen-mask[data-mode="recording"]::after {
+    .user-flow-screen-mask[data-mode="recording"]
+      .user-flow-screen-mask-layer[data-layer="secondary"] {
       background-image:
         linear-gradient(to top, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 28px, rgba(139, 92, 246, 0.22) 78px, rgba(139, 92, 246, 0) 140px),
         linear-gradient(to right, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 28px, rgba(139, 92, 246, 0.22) 78px, rgba(139, 92, 246, 0) 140px);
     }
 
-    .user-flow-screen-mask[data-mode="replaying"]::before {
+    .user-flow-screen-mask[data-mode="replaying"]
+      .user-flow-screen-mask-layer[data-layer="primary"] {
       background-image:
         linear-gradient(to bottom, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 28px, rgba(0, 168, 120, 0.22) 78px, rgba(0, 168, 120, 0) 140px),
         linear-gradient(to left, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 28px, rgba(0, 168, 120, 0.22) 78px, rgba(0, 168, 120, 0) 140px);
     }
 
-    .user-flow-screen-mask[data-mode="replaying"]::after {
+    .user-flow-screen-mask[data-mode="replaying"]
+      .user-flow-screen-mask-layer[data-layer="secondary"] {
       background-image:
         linear-gradient(to top, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 28px, rgba(0, 160, 184, 0.22) 78px, rgba(0, 160, 184, 0) 140px),
         linear-gradient(to right, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 28px, rgba(0, 160, 184, 0.22) 78px, rgba(0, 160, 184, 0) 140px);
@@ -276,11 +282,13 @@
       animation: user-flow-screen-mask-pulse 800ms ease-in-out infinite alternate;
     }
 
-    .user-flow-screen-mask.is-visible::before {
+    .user-flow-screen-mask.is-visible
+      .user-flow-screen-mask-layer[data-layer="primary"] {
       animation: user-flow-screen-mask-diagonal-fade 2000ms ease-in-out infinite alternate;
     }
 
-    .user-flow-screen-mask.is-visible::after {
+    .user-flow-screen-mask.is-visible
+      .user-flow-screen-mask-layer[data-layer="secondary"] {
       animation: user-flow-screen-mask-diagonal-fade 3400ms ease-in-out -1200ms infinite alternate-reverse;
     }
 
@@ -312,8 +320,7 @@
         opacity: 0.82;
       }
 
-      .user-flow-screen-mask.is-visible::before,
-      .user-flow-screen-mask.is-visible::after {
+      .user-flow-screen-mask.is-visible .user-flow-screen-mask-layer {
         animation: none;
         -webkit-mask-position: 50% 50%;
         mask-position: 50% 50%;
@@ -853,6 +860,15 @@
       mask.className = "user-flow-screen-mask";
       mask.setAttribute(IGNORE_ATTRIBUTE, "true");
       mask.setAttribute("aria-hidden", "true");
+
+      ["primary", "secondary"].forEach((layerName) => {
+        const layer = document.createElement("span");
+        layer.className = "user-flow-screen-mask-layer";
+        layer.dataset.layer = layerName;
+        layer.setAttribute(IGNORE_ATTRIBUTE, "true");
+        mask.append(layer);
+      });
+
       document.body.append(mask);
       state.screenMask = mask;
     }
