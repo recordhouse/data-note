@@ -433,6 +433,81 @@
     }
   }
 
+  function placeContinuationBackup(flowState, sessions) {
+    const sourceSessionId = String(
+      flowState.continuedSourceSessionId || "",
+    );
+    const backupSessionId = String(
+      flowState.continuedBackupSessionId || "",
+    );
+    const sessionIds = new Set(sessions.map((session) => session.id));
+
+    if (
+      !sourceSessionId ||
+      !backupSessionId ||
+      !sessionIds.has(sourceSessionId) ||
+      !sessionIds.has(backupSessionId)
+    ) {
+      return;
+    }
+
+    let changed = false;
+    const sourceTabId = getUserFlowSessionTabId(sourceSessionId);
+
+    if (
+      sourceTabId &&
+      userFlowTabs.sessionTabs[backupSessionId] !== sourceTabId
+    ) {
+      userFlowTabs.sessionTabs[backupSessionId] = sourceTabId;
+      changed = true;
+    }
+
+    const nextSessionOrder = userFlowTabs.sessionOrder.filter(
+      (sessionId) => sessionId !== backupSessionId,
+    );
+    const sourceOrderIndex = nextSessionOrder.indexOf(sourceSessionId);
+
+    if (sourceOrderIndex >= 0) {
+      nextSessionOrder.splice(sourceOrderIndex + 1, 0, backupSessionId);
+    }
+
+    if (
+      nextSessionOrder.length !== userFlowTabs.sessionOrder.length ||
+      nextSessionOrder.some(
+        (sessionId, index) => sessionId !== userFlowTabs.sessionOrder[index],
+      )
+    ) {
+      userFlowTabs.sessionOrder = nextSessionOrder;
+      changed = true;
+    }
+
+    if (userFlowTabs.testSessionIds.includes(sourceSessionId)) {
+      const nextTestSessionIds = userFlowTabs.testSessionIds.filter(
+        (sessionId) => sessionId !== backupSessionId,
+      );
+      const sourceTestIndex = nextTestSessionIds.indexOf(sourceSessionId);
+
+      if (sourceTestIndex >= 0) {
+        nextTestSessionIds.splice(sourceTestIndex + 1, 0, backupSessionId);
+      }
+
+      if (
+        nextTestSessionIds.length !== userFlowTabs.testSessionIds.length ||
+        nextTestSessionIds.some(
+          (sessionId, index) =>
+            sessionId !== userFlowTabs.testSessionIds[index],
+        )
+      ) {
+        userFlowTabs.testSessionIds = nextTestSessionIds;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      persistUserFlowTabs();
+    }
+  }
+
   function getOrderedUserFlowSessions(sessions) {
     const orderBySessionId = new Map(
       userFlowTabs.sessionOrder.map((sessionId, index) => [sessionId, index]),
@@ -617,6 +692,9 @@
       editingUserFlowSessionId,
       isRecording: Boolean(flowState.isRecording),
       isReplaying: Boolean(flowState.isReplaying),
+      continueRecordingSessionId: flowState.continueRecordingSessionId || "",
+      continuedSourceSessionId: flowState.continuedSourceSessionId || "",
+      continuedBackupSessionId: flowState.continuedBackupSessionId || "",
       replayNavigationSessionId,
       replaySessionId: flowState.replaySessionId || "",
       sessionOrder: userFlowTabs.sessionOrder,
@@ -718,6 +796,15 @@
         const replayDisabled = disabled || Boolean(replayNavigationSessionId);
         const changeDisabled = flowState.isRecording || flowState.isReplaying;
         const sessionMeta = getUserFlowSessionMeta(session, flowState, isReplayingSession);
+        const canContinueRecording = Boolean(
+          !changeDisabled &&
+            !replayNavigationSessionId &&
+            flowState.continueRecordingSessionId === session.id,
+        );
+        const continueEventCount = Math.min(
+          Number(session.eventCount || 0),
+          Math.max(0, Number(flowState.continueRecordingEventCount || 0)),
+        );
 
         return `
           <article
@@ -746,6 +833,14 @@
                 data-navigating="${String(isNavigatingSession)}"
                 ${replayDisabled ? "disabled" : ""}
               >${isNavigatingSession ? "이동 중" : isReplayingSession ? "재생 중지" : "재생"}</button>
+              <button
+                class="user-flow-continue-recording"
+                type="button"
+                data-user-flow-command="continue-recording-session"
+                data-session-id="${escapeHtml(session.id)}"
+                title="${canContinueRecording ? `${continueEventCount.toLocaleString("ko-KR")}개 행동 다음부터 이어서 녹화` : "재생을 원하는 지점에서 중지하면 사용할 수 있습니다."}"
+                ${canContinueRecording ? "" : "disabled"}
+              >이어서 녹화</button>
               <button
                 class="user-flow-test-remove"
                 type="button"
@@ -882,6 +977,7 @@
     }
 
     reconcileUserFlowTabs(sessions, { removeMissingSessions: hasSessionState });
+    placeContinuationBackup(flowState, sessions);
     renderUserFlowTabs(sessions);
     renderUserFlowView();
     const visibleSessions = userFlowTabs.tabs.length
@@ -947,6 +1043,15 @@
         const replayDisabled = disabled || Boolean(replayNavigationSessionId);
         const changeDisabled = flowState.isRecording || flowState.isReplaying;
         const sessionMeta = getUserFlowSessionMeta(session, flowState, isReplayingSession);
+        const canContinueRecording = Boolean(
+          !changeDisabled &&
+            !replayNavigationSessionId &&
+            flowState.continueRecordingSessionId === session.id,
+        );
+        const continueEventCount = Math.min(
+          Number(session.eventCount || 0),
+          Math.max(0, Number(flowState.continueRecordingEventCount || 0)),
+        );
 
         if (isEditing) {
           return `
@@ -1008,6 +1113,14 @@
                 data-navigating="${String(isNavigatingSession)}"
                 ${replayDisabled ? "disabled" : ""}
               >${isNavigatingSession ? "이동 중" : isReplayingSession ? "재생 중지" : "재생"}</button>
+              <button
+                class="user-flow-continue-recording"
+                type="button"
+                data-user-flow-command="continue-recording-session"
+                data-session-id="${escapeHtml(session.id)}"
+                title="${canContinueRecording ? `${continueEventCount.toLocaleString("ko-KR")}개 행동 다음부터 이어서 녹화` : "재생을 원하는 지점에서 중지하면 사용할 수 있습니다."}"
+                ${canContinueRecording ? "" : "disabled"}
+              >이어서 녹화</button>
               <button
                 class="user-flow-name-action"
                 type="button"
@@ -1306,6 +1419,19 @@
     ) {
       showUserFlowTabLimit(userFlowTabs.activeTabId);
       return;
+    }
+
+    if (command === "continue-recording-session") {
+      const sessionId = button.dataset.sessionId || "";
+      const tabId = getUserFlowSessionTabId(sessionId);
+
+      if (
+        tabId &&
+        getUserFlowTabSessionCount(tabId) >= MAX_USER_FLOW_SESSIONS_PER_TAB
+      ) {
+        showUserFlowTabLimit(tabId);
+        return;
+      }
     }
 
     const payload = {
@@ -1623,10 +1749,7 @@
   }
 
   function animateUserFlowSessionMove(previousPositions, movedSessionId) {
-    if (
-      !previousPositions?.size ||
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
-    ) {
+    if (!previousPositions?.size) {
       return;
     }
 

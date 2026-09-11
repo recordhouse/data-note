@@ -421,6 +421,10 @@
     replayPausedMs: 0,
     replayRequestWaitStartedAt: 0,
     replayCompletedEventCount: 0,
+    lastReplaySessionId: "",
+    lastReplayCompletedEventCount: 0,
+    continuedSourceSessionId: "",
+    continuedBackupSessionId: "",
     responseError: "",
     replayProgressTimer: 0,
     lastError: "",
@@ -730,6 +734,13 @@
       activeRecordingSessionId: state.isRecording ? state.currentSessionId : "",
       replaySessionId: state.replaySessionId,
       replayCompletedEventCount: state.replayCompletedEventCount,
+      continueRecordingSessionId:
+        !state.isRecording && !state.isReplaying
+          ? state.lastReplaySessionId
+          : "",
+      continueRecordingEventCount: state.lastReplayCompletedEventCount,
+      continuedSourceSessionId: state.continuedSourceSessionId,
+      continuedBackupSessionId: state.continuedBackupSessionId,
       responseError: state.responseError,
       pendingRequestCount: getPendingRequestCount(),
       blockingRequestCount: getBlockingRequestCount(),
@@ -2015,6 +2026,120 @@
     return true;
   }
 
+  function getContinuationBackupName(session) {
+    const sessionName = String(session?.name || "").trim();
+    const suffix = " (이어 녹화 전)";
+    const baseName = sessionName || "녹화";
+    return `${baseName.slice(0, MAX_SESSION_NAME_LENGTH - suffix.length)}${suffix}`;
+  }
+
+  function continueRecording(sessionId) {
+    if (state.isRecording || state.isReplaying) {
+      return false;
+    }
+
+    if (!synchronizeRecordingFromStorage({ notify: false })) {
+      notifyClients({ immediate: true });
+      return false;
+    }
+
+    const session = state.sessions.find((item) => item.id === sessionId);
+
+    if (!session || state.lastReplaySessionId !== sessionId) {
+      state.lastError = "먼저 해당 녹화를 재생하고 원하는 지점에서 중지해주세요.";
+      notifyClients({ immediate: true });
+      return false;
+    }
+
+    if (state.sessions.length >= MAX_SESSIONS) {
+      state.lastError = `녹화는 최대 ${MAX_SESSIONS.toLocaleString("ko-KR")}개까지 저장할 수 있습니다. 기존 녹화를 삭제한 뒤 다시 시도해주세요.`;
+      notifyClients({ immediate: true });
+      return false;
+    }
+
+    const continuedEventCount = Math.min(
+      session.events.length,
+      Math.max(0, Math.floor(Number(state.lastReplayCompletedEventCount) || 0)),
+    );
+    const continuedEvents = session.events.slice(0, continuedEventCount);
+    const backupRecordedAt = Date.now();
+    const backupSession = {
+      ...session,
+      id: createUniqueSessionId(backupRecordedAt),
+      name: getContinuationBackupName(session),
+      importSourceZipName: "",
+      recordedAt: backupRecordedAt,
+      events: JSON.parse(JSON.stringify(session.events)),
+    };
+    const continuedSession = {
+      ...session,
+      events: continuedEvents,
+    };
+    const previousState = {
+      currentSessionId: state.currentSessionId,
+      events: state.events,
+      recordedAt: state.recordedAt,
+      sessions: state.sessions,
+      continuedSourceSessionId: state.continuedSourceSessionId,
+      continuedBackupSessionId: state.continuedBackupSessionId,
+      lastReplaySessionId: state.lastReplaySessionId,
+      lastReplayCompletedEventCount: state.lastReplayCompletedEventCount,
+    };
+    const previousDirtySessionIds = new Set(dirtySessionIds);
+    const previousDeletedSessionIds = new Set(deletedSessionIds);
+
+    state.sessions = [
+      ...state.sessions.map((item) =>
+        item.id === sessionId ? continuedSession : item,
+      ),
+      backupSession,
+    ];
+    state.currentSessionId = continuedSession.id;
+    state.events = continuedSession.events;
+    state.recordedAt = continuedSession.recordedAt;
+    state.isRecording = true;
+    state.startAt = performance.now() - getDurationMs(continuedEvents);
+    state.responseError = "";
+    state.lastError = "";
+    state.continuedSourceSessionId = continuedSession.id;
+    state.continuedBackupSessionId = backupSession.id;
+    state.lastReplaySessionId = "";
+    state.lastReplayCompletedEventCount = 0;
+    state.scrollLastAt.clear();
+    state.scrollTimers.forEach((timer) => window.clearTimeout(timer));
+    state.scrollTimers.clear();
+    dirtySessionIds.add(continuedSession.id);
+    dirtySessionIds.add(backupSession.id);
+
+    if (!persistRecording()) {
+      state.sessions = previousState.sessions;
+      state.currentSessionId = previousState.currentSessionId;
+      state.events = previousState.events;
+      state.recordedAt = previousState.recordedAt;
+      state.isRecording = false;
+      state.continuedSourceSessionId = previousState.continuedSourceSessionId;
+      state.continuedBackupSessionId = previousState.continuedBackupSessionId;
+      state.lastReplaySessionId = previousState.lastReplaySessionId;
+      state.lastReplayCompletedEventCount =
+        previousState.lastReplayCompletedEventCount;
+      dirtySessionIds.clear();
+      previousDirtySessionIds.forEach((dirtySessionId) =>
+        dirtySessionIds.add(dirtySessionId),
+      );
+      deletedSessionIds.clear();
+      previousDeletedSessionIds.forEach((deletedSessionId) =>
+        deletedSessionIds.add(deletedSessionId),
+      );
+      notifyClients({ immediate: true });
+      return false;
+    }
+
+    showScreenMask("recording");
+    showRuntimeStatus("recording");
+    notifyClients({ immediate: true });
+    return true;
+  }
+
   function startRecording() {
     stopReplay();
 
@@ -2051,6 +2176,8 @@
     state.startAt = performance.now();
     state.responseError = "";
     state.lastError = "";
+    state.lastReplaySessionId = "";
+    state.lastReplayCompletedEventCount = 0;
     state.scrollLastAt.clear();
     state.scrollTimers.forEach((timer) => window.clearTimeout(timer));
     state.scrollTimers.clear();
@@ -2100,6 +2227,8 @@
     state.replayPausedMs = 0;
     state.replayRequestWaitStartedAt = 0;
     state.replayCompletedEventCount = 0;
+    state.lastReplaySessionId = session.id;
+    state.lastReplayCompletedEventCount = 0;
     state.lastError = "";
     clearReplayRequestTracking();
     stopReplayProgressNotifications();
@@ -2185,7 +2314,13 @@
         }
 
         await playEvent(recordedEvent);
+
+        if (state.replayRunId !== replayRunId) {
+          break;
+        }
+
         state.replayCompletedEventCount += recordedEvent.replaySourceEventCount || 1;
+        state.lastReplayCompletedEventCount = state.replayCompletedEventCount;
         notifyClients();
         await sleep(0);
       }
@@ -2293,6 +2428,10 @@
     state.recordedAt = null;
     state.responseError = "";
     state.lastError = "";
+    state.lastReplaySessionId = "";
+    state.lastReplayCompletedEventCount = 0;
+    state.continuedSourceSessionId = "";
+    state.continuedBackupSessionId = "";
     dirtySessionIds.clear();
     deletedSessionIds.clear();
     pendingRecordingSync = false;
@@ -2571,6 +2710,11 @@
     const previousCurrentSessionId = state.currentSessionId;
     const previousEvents = state.events;
     const previousRecordedAt = state.recordedAt;
+    const previousLastReplaySessionId = state.lastReplaySessionId;
+    const previousLastReplayCompletedEventCount =
+      state.lastReplayCompletedEventCount;
+    const previousContinuedSourceSessionId = state.continuedSourceSessionId;
+    const previousContinuedBackupSessionId = state.continuedBackupSessionId;
     const previousDirtySessionIds = new Set(dirtySessionIds);
     const previousDeletedSessionIds = new Set(deletedSessionIds);
 
@@ -2587,11 +2731,29 @@
       state.recordedAt = latestSession?.recordedAt || null;
     }
 
+    if (requestedIds.has(state.lastReplaySessionId)) {
+      state.lastReplaySessionId = "";
+      state.lastReplayCompletedEventCount = 0;
+    }
+
+    if (
+      requestedIds.has(state.continuedSourceSessionId) ||
+      requestedIds.has(state.continuedBackupSessionId)
+    ) {
+      state.continuedSourceSessionId = "";
+      state.continuedBackupSessionId = "";
+    }
+
     if (!persistRecording()) {
       state.sessions = previousSessions;
       state.currentSessionId = previousCurrentSessionId;
       state.events = previousEvents;
       state.recordedAt = previousRecordedAt;
+      state.lastReplaySessionId = previousLastReplaySessionId;
+      state.lastReplayCompletedEventCount =
+        previousLastReplayCompletedEventCount;
+      state.continuedSourceSessionId = previousContinuedSourceSessionId;
+      state.continuedBackupSessionId = previousContinuedBackupSessionId;
       dirtySessionIds.clear();
       previousDirtySessionIds.forEach((dirtySessionId) =>
         dirtySessionIds.add(dirtySessionId),
@@ -2643,6 +2805,11 @@
           }
         } else {
           replay(event.data.sessionId);
+        }
+        break;
+      case "continue-recording-session":
+        if (event.data.sessionId) {
+          continueRecording(event.data.sessionId);
         }
         break;
       case "delete-session":
@@ -2721,6 +2888,7 @@
 
   window.UserFlowRecorder = Object.freeze({
     clear: clearRecording,
+    continueRecording,
     deleteSession,
     deleteSessions,
     exportAllRecordings,
