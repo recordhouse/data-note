@@ -26,7 +26,8 @@
   const context = isPopupRuntime ? "popup" : "parent";
   const featureLoads = new Map();
   let featureReadyPromise = Promise.resolve();
-  let connectedOpenerDocument = null;
+  let connectedParentDocument = null;
+  let connectedParentWindow = isPopupRuntime ? window.opener : null;
   let popupReconnectTimer = 0;
 
   function getFeatureUrl(fileName, dataAttribute) {
@@ -153,8 +154,59 @@
     }
   }
 
-  function isAllowedOpenerMessage(event) {
-    if (!window.opener || event.source !== window.opener) {
+  function isWindowOpen(targetWindow) {
+    try {
+      return Boolean(targetWindow && !targetWindow.closed);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function getPopupParentWindow() {
+    if (!isPopupRuntime) {
+      return null;
+    }
+
+    if (isWindowOpen(connectedParentWindow)) {
+      return connectedParentWindow;
+    }
+
+    if (isWindowOpen(window.opener)) {
+      connectedParentWindow = window.opener;
+      return connectedParentWindow;
+    }
+
+    connectedParentWindow = null;
+    return null;
+  }
+
+  function connectParentWindow(parentWindow) {
+    if (!isPopupRuntime || !isWindowOpen(parentWindow)) {
+      return false;
+    }
+
+    try {
+      const isInitialBlank = parentWindow.location.href === "about:blank";
+
+      if (
+        !isInitialBlank &&
+        parentWindow.location.origin !== window.location.origin
+      ) {
+        return false;
+      }
+
+      connectedParentWindow = parentWindow;
+      connectedParentDocument = parentWindow.document;
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function isAllowedParentMessage(event) {
+    const parentWindow = getPopupParentWindow();
+
+    if (!parentWindow || event.source !== parentWindow) {
       return false;
     }
 
@@ -166,32 +218,36 @@
   }
 
   function handleParentReadyMessage(event) {
-    if (event.data?.type !== MESSAGE_PARENT_READY || !isAllowedOpenerMessage(event)) {
+    if (event.data?.type !== MESSAGE_PARENT_READY || !isAllowedParentMessage(event)) {
       return;
     }
 
-    connectedOpenerDocument = getOpenerDocument();
+    connectedParentDocument = getParentDocument();
     document.dispatchEvent(new CustomEvent(PARENT_READY_EVENT));
   }
 
-  function getOpenerDocument() {
+  function getParentDocument() {
     try {
-      if (!window.opener || window.opener.closed) {
+      const parentWindow = getPopupParentWindow();
+
+      if (!parentWindow) {
         return null;
       }
 
-      return window.opener.document;
+      return parentWindow.document;
     } catch (error) {
       return null;
     }
   }
 
   function announcePopupReady() {
-    if (!window.opener || window.opener.closed) {
+    const parentWindow = getPopupParentWindow();
+
+    if (!parentWindow) {
       return;
     }
 
-    window.opener.postMessage(
+    parentWindow.postMessage(
       {
         type: MESSAGE_READY,
       },
@@ -199,18 +255,17 @@
     );
   }
 
-  function ensureOpenerPopupCore(openerDocument) {
+  function ensureParentPopupCore(parentWindow, parentDocument) {
     try {
       if (
-        !window.opener ||
-        window.opener.closed ||
-        window.opener.PopupCore ||
+        !isWindowOpen(parentWindow) ||
+        parentWindow.PopupCore ||
         !coreScript?.src
       ) {
-        return Boolean(window.opener?.PopupCore);
+        return Boolean(parentWindow?.PopupCore);
       }
 
-      const existingScript = Array.from(openerDocument.scripts || []).find(
+      const existingScript = Array.from(parentDocument.scripts || []).find(
         (script) => script.src === coreScript.src,
       );
 
@@ -218,13 +273,13 @@
         return false;
       }
 
-      const scriptContainer = openerDocument.head || openerDocument.documentElement;
+      const scriptContainer = parentDocument.head || parentDocument.documentElement;
 
       if (!scriptContainer) {
         return false;
       }
 
-      const script = openerDocument.createElement("script");
+      const script = parentDocument.createElement("script");
       script.src = coreScript.src;
       script.async = true;
       Object.entries(coreScript.dataset || {}).forEach(([key, value]) => {
@@ -237,14 +292,15 @@
     }
   }
 
-  function monitorOpenerConnection() {
-    const openerDocument = getOpenerDocument();
+  function monitorParentConnection() {
+    const parentWindow = getPopupParentWindow();
+    const parentDocument = getParentDocument();
 
-    if (!openerDocument || openerDocument === connectedOpenerDocument) {
+    if (!parentWindow || !parentDocument || parentDocument === connectedParentDocument) {
       return;
     }
 
-    ensureOpenerPopupCore(openerDocument);
+    ensureParentPopupCore(parentWindow, parentDocument);
     announcePopupReady();
   }
 
@@ -261,7 +317,7 @@
     document.addEventListener("click", handleTabClick);
     window.addEventListener("message", handleParentReadyMessage);
     popupReconnectTimer = window.setInterval(
-      monitorOpenerConnection,
+      monitorParentConnection,
       POPUP_RECONNECT_CHECK_MS,
     );
     window.addEventListener(
@@ -312,7 +368,6 @@
     let popupWindow = null;
     let popupReady = false;
     let pendingReadySource = null;
-    let preservePopupOnPagehide = false;
     let popupOrigin = window.location.origin;
     let pendingPayloads = [];
     let renderRequestSequence = 0;
@@ -364,7 +419,7 @@
       }
 
       try {
-        return event.source.opener === window;
+        return event.source.opener === window || window.opener === event.source;
       } catch (error) {
         return false;
       }
@@ -409,17 +464,8 @@
     }
 
     function preserveForNavigation(enabled = true) {
-      preservePopupOnPagehide = Boolean(enabled) && isPopupOpen();
-      return preservePopupOnPagehide;
-    }
-
-    function handleParentPagehide() {
-      if (preservePopupOnPagehide && isPopupOpen()) {
-        preservePopupOnPagehide = false;
-        return;
-      }
-
-      closePopup();
+      // The popup now stays open for both navigation and parent-page closure.
+      return Boolean(enabled) && isPopupOpen();
     }
 
     function sendPendingPayloads() {
@@ -613,7 +659,6 @@
       });
 
     window.addEventListener("message", handlePopupMessage);
-    window.addEventListener("pagehide", handleParentPagehide);
 
     window.ResponseMappingPopup = Object.freeze({
       closePopup,
@@ -628,7 +673,9 @@
 
   const popupCoreApi = {
     activateTab,
+    connectParent: connectParentWindow,
     context,
+    getParentWindow: getPopupParentWindow,
     get ready() {
       return featureReadyPromise;
     },

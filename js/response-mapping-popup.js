@@ -937,7 +937,9 @@
 
 
   function isAllowedParentMessage(event) {
-    if (!window.opener || event.source !== window.opener) {
+    const parentWindow = window.PopupCore?.getParentWindow?.() || window.opener;
+
+    if (!parentWindow || event.source !== parentWindow) {
       return false;
     }
 
