@@ -253,19 +253,19 @@
     .user-flow-screen-mask[data-mode="recording"]
       .user-flow-screen-mask-layer[data-layer="primary"] {
       background-image:
-        linear-gradient(to bottom, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 18px, rgba(220, 23, 77, 0.22) 50px, rgba(220, 23, 77, 0) 90px),
-        linear-gradient(to top, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 18px, rgba(220, 23, 77, 0.22) 50px, rgba(220, 23, 77, 0) 90px),
-        linear-gradient(to right, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 18px, rgba(220, 23, 77, 0.22) 50px, rgba(220, 23, 77, 0) 90px),
-        linear-gradient(to left, rgba(220, 23, 77, 0.78) 0, rgba(220, 23, 77, 0.58) 18px, rgba(220, 23, 77, 0.22) 50px, rgba(220, 23, 77, 0) 90px);
+        linear-gradient(to bottom, rgba(244, 63, 94, 0.78) 0, rgba(244, 63, 94, 0.58) 18px, rgba(244, 63, 94, 0.22) 50px, rgba(244, 63, 94, 0) 90px),
+        linear-gradient(to top, rgba(244, 63, 94, 0.78) 0, rgba(244, 63, 94, 0.58) 18px, rgba(244, 63, 94, 0.22) 50px, rgba(244, 63, 94, 0) 90px),
+        linear-gradient(to right, rgba(244, 63, 94, 0.78) 0, rgba(244, 63, 94, 0.58) 18px, rgba(244, 63, 94, 0.22) 50px, rgba(244, 63, 94, 0) 90px),
+        linear-gradient(to left, rgba(244, 63, 94, 0.78) 0, rgba(244, 63, 94, 0.58) 18px, rgba(244, 63, 94, 0.22) 50px, rgba(244, 63, 94, 0) 90px);
     }
 
     .user-flow-screen-mask[data-mode="recording"]
       .user-flow-screen-mask-layer[data-layer="secondary"] {
       background-image:
-        linear-gradient(to bottom, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 18px, rgba(139, 92, 246, 0.22) 50px, rgba(139, 92, 246, 0) 90px),
-        linear-gradient(to top, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 18px, rgba(139, 92, 246, 0.22) 50px, rgba(139, 92, 246, 0) 90px),
-        linear-gradient(to left, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 18px, rgba(139, 92, 246, 0.22) 50px, rgba(139, 92, 246, 0) 90px),
-        linear-gradient(to right, rgba(139, 92, 246, 0.78) 0, rgba(139, 92, 246, 0.58) 18px, rgba(139, 92, 246, 0.22) 50px, rgba(139, 92, 246, 0) 90px);
+        linear-gradient(to bottom, rgba(167, 139, 250, 0.78) 0, rgba(167, 139, 250, 0.58) 18px, rgba(167, 139, 250, 0.22) 50px, rgba(167, 139, 250, 0) 90px),
+        linear-gradient(to top, rgba(167, 139, 250, 0.78) 0, rgba(167, 139, 250, 0.58) 18px, rgba(167, 139, 250, 0.22) 50px, rgba(167, 139, 250, 0) 90px),
+        linear-gradient(to left, rgba(167, 139, 250, 0.78) 0, rgba(167, 139, 250, 0.58) 18px, rgba(167, 139, 250, 0.22) 50px, rgba(167, 139, 250, 0) 90px),
+        linear-gradient(to right, rgba(167, 139, 250, 0.78) 0, rgba(167, 139, 250, 0.58) 18px, rgba(167, 139, 250, 0.22) 50px, rgba(167, 139, 250, 0) 90px);
     }
 
     .user-flow-screen-mask[data-mode="replaying"]

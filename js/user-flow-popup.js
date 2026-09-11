@@ -9,9 +9,6 @@
   const MESSAGE_USER_FLOW_STATE = "response-mapping-user-flow-state";
   const POPUP_TAB_CHANGE_EVENT = "response-mapping-popup-tab-change";
   const PARENT_READY_EVENT = "response-mapping-popup-parent-ready";
-  const PENDING_USER_FLOW_REPLAY_STORAGE_KEY =
-    "response-mapping-user-flow-pending-replay:v1";
-  const MAX_USER_FLOW_BATCH_REPLAYS = 5;
   const MAX_USER_FLOW_SESSIONS = 150;
   const USER_FLOW_TAB_STORAGE_KEY = "response-mapping-user-flow-tabs:v1";
   const DEFAULT_USER_FLOW_TAB_ID = "default";
@@ -672,16 +669,10 @@
   function renderUserFlowTestSessions(flowState, sessions, sessionSignature) {
     const sessionList = document.querySelector("#userFlowTestSessionList");
     const sessionCount = document.querySelector("#userFlowTestSessionCount");
-    const replayAllButton = document.querySelector(
-      "#userFlowTestReplayAllButton",
-    );
     const sessionById = new Map(sessions.map((session) => [session.id, session]));
     const testSessions = userFlowTabs.testSessionIds
       .map((sessionId) => sessionById.get(sessionId))
       .filter(Boolean);
-    const playableSessionCount = testSessions.filter(
-      (session) => session.eventCount > 0 && session.startPage,
-    ).length;
 
     if (!sessionList) {
       return;
@@ -691,18 +682,6 @@
 
     if (sessionCount) {
       sessionCount.textContent = `${countText}개`;
-    }
-
-    if (replayAllButton) {
-      replayAllButton.disabled = Boolean(
-        flowState.isRecording ||
-          flowState.isReplaying ||
-          !playableSessionCount,
-      );
-      replayAllButton.title =
-        playableSessionCount > MAX_USER_FLOW_BATCH_REPLAYS
-          ? `목록 앞에서 최대 ${MAX_USER_FLOW_BATCH_REPLAYS}개까지 새 탭에서 재생합니다.`
-          : "목록의 녹화를 각각 새 탭에서 재생합니다.";
     }
 
     if (renderedUserFlowTestSignature === sessionSignature) {
@@ -1090,68 +1069,6 @@
     );
   }
 
-  function getBatchReplayTarget(session) {
-    const startPage = String(session?.startPage || "").trim();
-
-    if (!session?.id || !session.eventCount || !startPage) {
-      return null;
-    }
-
-    try {
-      let baseUrl = window.location.href;
-
-      if (window.opener && !window.opener.closed) {
-        baseUrl = window.opener.location.href;
-      }
-
-      const replayUrl = new URL(startPage, baseUrl);
-
-      if (replayUrl.origin !== new URL(baseUrl).origin) {
-        return null;
-      }
-
-      return {
-        href: replayUrl.href,
-        sessionId: session.id,
-        targetPage: `${replayUrl.pathname}${replayUrl.search}${replayUrl.hash}`,
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  function openBatchReplayTab(target) {
-    let replayWindow = null;
-
-    try {
-      replayWindow = window.open("about:blank", "_blank");
-
-      if (!replayWindow) {
-        return false;
-      }
-
-      replayWindow.sessionStorage.setItem(
-        PENDING_USER_FLOW_REPLAY_STORAGE_KEY,
-        JSON.stringify({
-          version: 1,
-          sessionId: target.sessionId,
-          targetPage: target.targetPage,
-          createdAt: Date.now(),
-        }),
-      );
-      replayWindow.location.replace(target.href);
-      return true;
-    } catch {
-      try {
-        replayWindow?.close();
-      } catch {
-        // The browser may already have detached a blocked replay tab.
-      }
-
-      return false;
-    }
-  }
-
   function clearReplayNavigationState({ rerender = true } = {}) {
     window.clearTimeout(replayNavigationIdleTimer);
     window.clearTimeout(replayNavigationTimer);
@@ -1320,66 +1237,6 @@
     }
 
     rerenderUserFlowOrganization();
-  }
-
-  function handleUserFlowTestReplayAll(event) {
-    const button = event.target.closest("[data-user-flow-test-replay-all]");
-
-    if (!button || button.disabled) {
-      return;
-    }
-
-    if (isUserFlowOrganizationBlocked()) {
-      showUserFlowImportStatus(
-        "녹화 또는 재생 중에는 전체 재생을 시작할 수 없습니다.",
-      );
-      return;
-    }
-
-    const sessionById = new Map(
-      (currentUserFlowState.sessions || []).map((session) => [
-        session.id,
-        session,
-      ]),
-    );
-    const replayTargets = userFlowTabs.testSessionIds
-      .map((sessionId) => getBatchReplayTarget(sessionById.get(sessionId)))
-      .filter(Boolean);
-    const selectedTargets = replayTargets.slice(0, MAX_USER_FLOW_BATCH_REPLAYS);
-
-    if (!selectedTargets.length) {
-      showUserFlowImportStatus("새 탭에서 재생할 수 있는 녹화가 없습니다.");
-      return;
-    }
-
-    let openedCount = 0;
-
-    selectedTargets.forEach((target) => {
-      if (openBatchReplayTab(target)) {
-        openedCount += 1;
-      }
-    });
-
-    const blockedCount = selectedTargets.length - openedCount;
-
-    if (!openedCount) {
-      showUserFlowImportStatus(
-        "새 탭이 차단되었습니다. 이 사이트의 팝업을 허용한 뒤 다시 시도해주세요.",
-      );
-      return;
-    }
-
-    const limitedText =
-      replayTargets.length > MAX_USER_FLOW_BATCH_REPLAYS
-        ? ` · 최대 ${MAX_USER_FLOW_BATCH_REPLAYS}개 제한`
-        : "";
-    const blockedText = blockedCount
-      ? ` · ${blockedCount}개 탭 차단됨`
-      : "";
-    showUserFlowImportStatus(
-      `녹화 ${openedCount}개를 새 탭에서 재생합니다${limitedText}${blockedText}`,
-      blockedCount ? "error" : "ready",
-    );
   }
 
   function focusUserFlowTabNameInput() {
@@ -2217,7 +2074,6 @@
 
   document.addEventListener("click", handleUserFlowControl);
   document.addEventListener("click", handleUserFlowViewControl);
-  document.addEventListener("click", handleUserFlowTestReplayAll);
   document.addEventListener("click", handleUserFlowTestSessionRemove);
   document.addEventListener("click", handleUserFlowTabControl);
   document.addEventListener("click", handleUserFlowNoticeControl);
