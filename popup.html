@@ -413,14 +413,17 @@
         overflow-wrap: anywhere;
       }
 
-      .user-flow-status::before {
+      .user-flow-status-icon {
         box-sizing: border-box;
         flex: 0 0 auto;
         width: 8px;
         height: 8px;
         border-radius: 50%;
         background: #94a3b8;
-        content: "";
+      }
+
+      .user-flow-status [data-user-flow-status-text] {
+        min-width: 0;
       }
 
       .user-flow-status[data-state="recording"] {
@@ -429,7 +432,7 @@
         color: #b42345;
       }
 
-      .user-flow-status[data-state="recording"]::before {
+      .user-flow-status[data-state="recording"] .user-flow-status-icon {
         width: 10px;
         height: 10px;
         background: #dc174d;
@@ -449,18 +452,20 @@
         background: #f2faf8;
       }
 
-      .user-flow-status[data-state="ready"]::before {
+      .user-flow-status[data-state="ready"] .user-flow-status-icon {
         background: #0f766e;
       }
 
-      .user-flow-status[data-state="replaying"]::before,
-      .user-flow-status[data-state="navigating"]::before {
+      .user-flow-status[data-state="replaying"] .user-flow-status-icon,
+      .user-flow-status[data-state="navigating"] .user-flow-status-icon {
         width: 14px;
         height: 14px;
         border: 2px solid rgba(15, 118, 110, 0.28);
         border-top-color: #0f766e;
         border-right-color: #0f766e;
         background: transparent;
+        backface-visibility: hidden;
+        will-change: transform;
         animation: popup-replaying-spin 650ms linear infinite;
       }
 
@@ -470,7 +475,7 @@
         color: #475569;
       }
 
-      .user-flow-status[data-state="navigating"]::before {
+      .user-flow-status[data-state="navigating"] .user-flow-status-icon {
         border-color: rgba(71, 85, 105, 0.24);
         border-top-color: #475569;
         border-right-color: #475569;
@@ -482,7 +487,7 @@
         color: #b42345;
       }
 
-      .user-flow-status[data-state="error"]::before {
+      .user-flow-status[data-state="error"] .user-flow-status-icon {
         background: #b42345;
       }
 
@@ -495,8 +500,12 @@
       }
 
       @keyframes popup-replaying-spin {
+        from {
+          transform: translateZ(0) rotate(0deg);
+        }
+
         to {
-          transform: rotate(360deg);
+          transform: translateZ(0) rotate(360deg);
         }
       }
 
@@ -508,8 +517,8 @@
           transition: none;
         }
 
-        .user-flow-status[data-state="recording"]::before,
-        .user-flow-status[data-state="replaying"]::before {
+        .user-flow-status[data-state="recording"] .user-flow-status-icon,
+        .user-flow-status[data-state="replaying"] .user-flow-status-icon {
           animation: none;
         }
       }
@@ -1692,7 +1701,10 @@
                 >저장</button>
               </form>
             </section>
-            <span class="user-flow-status" id="userFlowStatus" data-state="idle">연결 대기</span>
+            <span class="user-flow-status" id="userFlowStatus" data-state="idle">
+              <span class="user-flow-status-icon" aria-hidden="true"></span>
+              <span data-user-flow-status-text>연결 대기</span>
+            </span>
             <div class="user-flow-actions">
               <a
                 class="user-flow-action user-flow-login"

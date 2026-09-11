@@ -801,13 +801,16 @@
     currentUserFlowState = flowState;
     updateReplayNavigationState(flowState);
     const status = document.querySelector("#userFlowStatus");
+    const statusTextElement = status?.querySelector(
+      "[data-user-flow-status-text]",
+    );
     const recordButton = document.querySelector("#userFlowRecordButton");
     const exportAllButton = document.querySelector("#userFlowExportAllButton");
     const clearAllButton = document.querySelector("#userFlowClearAllButton");
     const tabAddButton = document.querySelector("#userFlowTabAddButton");
     const sessionList = document.querySelector("#userFlowSessionList");
 
-    if (!status || !recordButton || !sessionList) {
+    if (!status || !statusTextElement || !recordButton || !sessionList) {
       return;
     }
 
@@ -841,7 +844,7 @@
       statusState = "ready";
     }
 
-    status.textContent = statusText;
+    statusTextElement.textContent = statusText;
     status.dataset.state = statusState;
 
     recordButton.textContent = flowState.isRecording ? "녹화 중지" : "녹화";
@@ -1941,12 +1944,15 @@
 
   function showUserFlowImportStatus(message, statusState = "error") {
     const status = document.querySelector("#userFlowStatus");
+    const statusTextElement = status?.querySelector(
+      "[data-user-flow-status-text]",
+    );
 
-    if (!status) {
+    if (!status || !statusTextElement) {
       return;
     }
 
-    status.textContent = message;
+    statusTextElement.textContent = message;
     status.dataset.state = statusState;
   }
 
