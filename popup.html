@@ -413,17 +413,14 @@
         overflow-wrap: anywhere;
       }
 
-      .user-flow-status-icon {
+      .user-flow-status::before {
         box-sizing: border-box;
         flex: 0 0 auto;
         width: 8px;
         height: 8px;
         border-radius: 50%;
         background: #94a3b8;
-      }
-
-      .user-flow-status [data-user-flow-status-text] {
-        min-width: 0;
+        content: "";
       }
 
       .user-flow-status[data-state="recording"] {
@@ -432,7 +429,7 @@
         color: #b42345;
       }
 
-      .user-flow-status[data-state="recording"] .user-flow-status-icon {
+      .user-flow-status[data-state="recording"]::before {
         width: 10px;
         height: 10px;
         background: #dc174d;
@@ -452,20 +449,18 @@
         background: #f2faf8;
       }
 
-      .user-flow-status[data-state="ready"] .user-flow-status-icon {
+      .user-flow-status[data-state="ready"]::before {
         background: #0f766e;
       }
 
-      .user-flow-status[data-state="replaying"] .user-flow-status-icon,
-      .user-flow-status[data-state="navigating"] .user-flow-status-icon {
+      .user-flow-status[data-state="replaying"]::before,
+      .user-flow-status[data-state="navigating"]::before {
         width: 14px;
         height: 14px;
         border: 2px solid rgba(15, 118, 110, 0.28);
         border-top-color: #0f766e;
         border-right-color: #0f766e;
         background: transparent;
-        backface-visibility: hidden;
-        will-change: transform;
         animation: popup-replaying-spin 650ms linear infinite;
       }
 
@@ -475,7 +470,7 @@
         color: #475569;
       }
 
-      .user-flow-status[data-state="navigating"] .user-flow-status-icon {
+      .user-flow-status[data-state="navigating"]::before {
         border-color: rgba(71, 85, 105, 0.24);
         border-top-color: #475569;
         border-right-color: #475569;
@@ -487,7 +482,7 @@
         color: #b42345;
       }
 
-      .user-flow-status[data-state="error"] .user-flow-status-icon {
+      .user-flow-status[data-state="error"]::before {
         background: #b42345;
       }
 
@@ -500,12 +495,8 @@
       }
 
       @keyframes popup-replaying-spin {
-        from {
-          transform: translateZ(0) rotate(0deg);
-        }
-
         to {
-          transform: translateZ(0) rotate(360deg);
+          transform: rotate(360deg);
         }
       }
 
@@ -517,8 +508,8 @@
           transition: none;
         }
 
-        .user-flow-status[data-state="recording"] .user-flow-status-icon,
-        .user-flow-status[data-state="replaying"] .user-flow-status-icon {
+        .user-flow-status[data-state="recording"]::before,
+        .user-flow-status[data-state="replaying"]::before {
           animation: none;
         }
       }
@@ -738,6 +729,18 @@
         color: #64748b;
         font-size: 12px;
         font-weight: 800;
+      }
+
+      .user-flow-test-heading-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .user-flow-test-replay-all {
+        min-width: 68px;
+        height: 28px;
+        padding: 3px 8px;
       }
 
       .user-flow-list-tabbar {
@@ -1701,10 +1704,7 @@
                 >저장</button>
               </form>
             </section>
-            <span class="user-flow-status" id="userFlowStatus" data-state="idle">
-              <span class="user-flow-status-icon" aria-hidden="true"></span>
-              <span data-user-flow-status-text>연결 대기</span>
-            </span>
+            <span class="user-flow-status" id="userFlowStatus" data-state="idle">연결 대기</span>
             <div class="user-flow-actions">
               <a
                 class="user-flow-action user-flow-login"
@@ -1868,7 +1868,16 @@
           >
             <div class="user-flow-session-heading">
               <strong>녹화 테스트 목록</strong>
-              <span id="userFlowTestSessionCount">0개</span>
+              <div class="user-flow-test-heading-actions">
+                <span id="userFlowTestSessionCount">0개</span>
+                <button
+                  class="user-flow-replay user-flow-test-replay-all"
+                  id="userFlowTestReplayAllButton"
+                  type="button"
+                  data-user-flow-test-replay-all
+                  disabled
+                >전체 재생</button>
+              </div>
             </div>
             <div
               class="user-flow-session-list"
