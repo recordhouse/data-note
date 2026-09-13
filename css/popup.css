@@ -1115,28 +1115,6 @@ body.is-user-flow-file-dragging .wrap {
   opacity: 0.45;
 }
 
-.user-flow-continue-recording {
-  min-width: 82px;
-  height: 30px;
-  padding: 4px 9px;
-  border: 1px solid #7c3aed;
-  border-radius: 5px;
-  background: #ffffff;
-  color: #6d28d9;
-  font-size: 12px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.user-flow-continue-recording:hover:not(:disabled) {
-  background: #f5f3ff;
-}
-
-.user-flow-continue-recording:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
 .user-flow-replay[data-navigating="true"] {
   display: inline-flex;
   align-items: center;

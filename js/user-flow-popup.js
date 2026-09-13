@@ -796,16 +796,6 @@
         const replayDisabled = disabled || Boolean(replayNavigationSessionId);
         const changeDisabled = flowState.isRecording || flowState.isReplaying;
         const sessionMeta = getUserFlowSessionMeta(session, flowState, isReplayingSession);
-        const canContinueRecording = Boolean(
-          !changeDisabled &&
-            !replayNavigationSessionId &&
-            flowState.continueRecordingSessionId === session.id,
-        );
-        const continueEventCount = Math.min(
-          Number(session.eventCount || 0),
-          Math.max(0, Number(flowState.continueRecordingEventCount || 0)),
-        );
-
         return `
           <article
             class="user-flow-session"
@@ -833,14 +823,6 @@
                 data-navigating="${String(isNavigatingSession)}"
                 ${replayDisabled ? "disabled" : ""}
               >${isNavigatingSession ? "이동 중" : isReplayingSession ? "재생 중지" : "재생"}</button>
-              <button
-                class="user-flow-continue-recording"
-                type="button"
-                data-user-flow-command="continue-recording-session"
-                data-session-id="${escapeHtml(session.id)}"
-                title="${canContinueRecording ? `${continueEventCount.toLocaleString("ko-KR")}개 행동 다음부터 이어서 녹화` : "재생을 원하는 지점에서 중지하면 사용할 수 있습니다."}"
-                ${canContinueRecording ? "" : "disabled"}
-              >이어서 녹화</button>
               <button
                 class="user-flow-test-remove"
                 type="button"
@@ -947,7 +929,24 @@
     status.textContent = statusText;
     status.dataset.state = statusState;
 
-    recordButton.textContent = flowState.isRecording ? "녹화 중지" : "녹화";
+    const canContinueRecording = Boolean(
+      !flowState.isRecording &&
+        !flowState.isReplaying &&
+        flowState.continueRecordingSessionId,
+    );
+    const continueEventCount = Math.max(
+      0,
+      Number(flowState.continueRecordingEventCount || 0),
+    );
+
+    recordButton.textContent = flowState.isRecording
+      ? "녹화 중지"
+      : canContinueRecording
+        ? "이어서 녹화"
+        : "녹화";
+    recordButton.title = canContinueRecording
+      ? `${continueEventCount.toLocaleString("ko-KR")}개 행동 다음부터 이어서 녹화합니다.`
+      : "";
     recordButton.setAttribute("aria-pressed", String(Boolean(flowState.isRecording)));
     recordButton.disabled = Boolean(
       flowState.isReplaying || (!flowState.isRecording && !hasUserFlowTabs),
@@ -1043,16 +1042,6 @@
         const replayDisabled = disabled || Boolean(replayNavigationSessionId);
         const changeDisabled = flowState.isRecording || flowState.isReplaying;
         const sessionMeta = getUserFlowSessionMeta(session, flowState, isReplayingSession);
-        const canContinueRecording = Boolean(
-          !changeDisabled &&
-            !replayNavigationSessionId &&
-            flowState.continueRecordingSessionId === session.id,
-        );
-        const continueEventCount = Math.min(
-          Number(session.eventCount || 0),
-          Math.max(0, Number(flowState.continueRecordingEventCount || 0)),
-        );
-
         if (isEditing) {
           return `
             <article
@@ -1113,14 +1102,6 @@
                 data-navigating="${String(isNavigatingSession)}"
                 ${replayDisabled ? "disabled" : ""}
               >${isNavigatingSession ? "이동 중" : isReplayingSession ? "재생 중지" : "재생"}</button>
-              <button
-                class="user-flow-continue-recording"
-                type="button"
-                data-user-flow-command="continue-recording-session"
-                data-session-id="${escapeHtml(session.id)}"
-                title="${canContinueRecording ? `${continueEventCount.toLocaleString("ko-KR")}개 행동 다음부터 이어서 녹화` : "재생을 원하는 지점에서 중지하면 사용할 수 있습니다."}"
-                ${canContinueRecording ? "" : "disabled"}
-              >이어서 녹화</button>
               <button
                 class="user-flow-name-action"
                 type="button"
@@ -1411,25 +1392,19 @@
       }
     }
 
-    if (
-      command === "toggle-record" &&
-      !currentUserFlowState.isRecording &&
-      getUserFlowTabSessionCount(userFlowTabs.activeTabId) >=
-        MAX_USER_FLOW_SESSIONS_PER_TAB
-    ) {
-      showUserFlowTabLimit(userFlowTabs.activeTabId);
-      return;
-    }
-
-    if (command === "continue-recording-session") {
-      const sessionId = button.dataset.sessionId || "";
-      const tabId = getUserFlowSessionTabId(sessionId);
+    if (command === "toggle-record" && !currentUserFlowState.isRecording) {
+      const continuationSessionId =
+        currentUserFlowState.continueRecordingSessionId || "";
+      const targetTabId = continuationSessionId
+        ? getUserFlowSessionTabId(continuationSessionId)
+        : userFlowTabs.activeTabId;
 
       if (
-        tabId &&
-        getUserFlowTabSessionCount(tabId) >= MAX_USER_FLOW_SESSIONS_PER_TAB
+        targetTabId &&
+        getUserFlowTabSessionCount(targetTabId) >=
+          MAX_USER_FLOW_SESSIONS_PER_TAB
       ) {
-        showUserFlowTabLimit(tabId);
+        showUserFlowTabLimit(targetTabId);
         return;
       }
     }

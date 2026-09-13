@@ -2219,6 +2219,9 @@
       return;
     }
 
+    const replaySessionId = state.replaySessionId;
+    const replayCompletedEventCount = state.replayCompletedEventCount;
+
     state.replayAbort = true;
     state.replayRunId += 1;
     state.isReplaying = false;
@@ -2227,8 +2230,8 @@
     state.replayPausedMs = 0;
     state.replayRequestWaitStartedAt = 0;
     state.replayCompletedEventCount = 0;
-    state.lastReplaySessionId = session.id;
-    state.lastReplayCompletedEventCount = 0;
+    state.lastReplaySessionId = replaySessionId;
+    state.lastReplayCompletedEventCount = replayCompletedEventCount;
     state.lastError = "";
     clearReplayRequestTracking();
     stopReplayProgressNotifications();
@@ -2271,6 +2274,8 @@
     state.replayPausedMs = 0;
     state.replayRequestWaitStartedAt = 0;
     state.replayCompletedEventCount = 0;
+    state.lastReplaySessionId = session.id;
+    state.lastReplayCompletedEventCount = 0;
     state.lastError = "";
     initializeReplayRequestTracking();
     showScreenMask("replaying");
@@ -2330,6 +2335,8 @@
       }
     } finally {
       if (state.replayRunId === replayRunId) {
+        const replayCompletedEventCount = state.replayCompletedEventCount;
+
         state.isReplaying = false;
         state.replayAbort = false;
         state.replaySessionId = "";
@@ -2337,6 +2344,8 @@
         state.replayPausedMs = 0;
         state.replayRequestWaitStartedAt = 0;
         state.replayCompletedEventCount = 0;
+        state.lastReplaySessionId = session.id;
+        state.lastReplayCompletedEventCount = replayCompletedEventCount;
         clearReplayRequestTracking();
         stopReplayProgressNotifications();
         showRuntimeStatus("replaying", "completed");
@@ -2786,7 +2795,13 @@
     switch (event.data.command) {
       case "toggle-record":
         if (!state.isReplaying) {
-          state.isRecording ? stopRecording() : startRecording();
+          if (state.isRecording) {
+            stopRecording();
+          } else if (state.lastReplaySessionId) {
+            continueRecording(state.lastReplaySessionId);
+          } else {
+            startRecording();
+          }
         }
         break;
       case "toggle-replay":
@@ -2805,11 +2820,6 @@
           }
         } else {
           replay(event.data.sessionId);
-        }
-        break;
-      case "continue-recording-session":
-        if (event.data.sessionId) {
-          continueRecording(event.data.sessionId);
         }
         break;
       case "delete-session":
