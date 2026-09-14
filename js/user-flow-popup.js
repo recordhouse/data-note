@@ -757,8 +757,9 @@
       tabs: userFlowTabs.tabs,
       testSessionIds: userFlowTabs.testSessionIds,
       sessions: sessions.map((session) => ({
-        durationMs: session.durationMs,
-        eventCount: session.eventCount,
+        hasReplayableEvents:
+          session.id === flowState.activeRecordingSessionId ||
+          Number(session.eventCount || 0) > 0,
         id: session.id,
         name: session.name || "",
         titlePrefix: session.titlePrefix || "",

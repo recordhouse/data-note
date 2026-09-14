@@ -966,11 +966,42 @@ body.is-user-flow-file-dragging .wrap {
 .user-flow-session[data-state="recording"] {
   border-color: #d89aaa;
   background-color: #fff8fa;
+  background-image: linear-gradient(
+    110deg,
+    rgba(255, 248, 250, 1) 0%,
+    rgba(244, 63, 94, 0.16) 24%,
+    rgba(167, 139, 250, 0.2) 50%,
+    rgba(255, 248, 250, 1) 76%,
+    rgba(244, 63, 94, 0.14) 100%
+  );
+  background-size: 240% 100%;
+  animation: user-flow-session-gradient 4.6s ease-in-out infinite;
 }
 
 .user-flow-session[data-state="replaying"] {
   border-color: #8eaaa7;
   background-color: #effaf7;
+  background-image: linear-gradient(
+    110deg,
+    rgba(242, 250, 248, 1) 0%,
+    rgba(34, 197, 94, 0.15) 24%,
+    rgba(20, 184, 166, 0.2) 50%,
+    rgba(242, 250, 248, 1) 76%,
+    rgba(34, 197, 94, 0.13) 100%
+  );
+  background-size: 240% 100%;
+  animation: user-flow-session-gradient 5.4s ease-in-out infinite;
+}
+
+@keyframes user-flow-session-gradient {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
 }
 
 .user-flow-session[data-editing="true"] {
