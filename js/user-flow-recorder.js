@@ -421,10 +421,7 @@
     replayPausedMs: 0,
     replayRequestWaitStartedAt: 0,
     replayCompletedEventCount: 0,
-    lastReplaySessionId: "",
-    lastReplayCompletedEventCount: 0,
-    continuedSourceSessionId: "",
-    continuedBackupSessionId: "",
+    resumableRecordingSessionId: "",
     responseError: "",
     replayProgressTimer: 0,
     lastError: "",
@@ -734,13 +731,14 @@
       activeRecordingSessionId: state.isRecording ? state.currentSessionId : "",
       replaySessionId: state.replaySessionId,
       replayCompletedEventCount: state.replayCompletedEventCount,
-      continueRecordingSessionId:
+      resumeRecordingSessionId:
         !state.isRecording && !state.isReplaying
-          ? state.lastReplaySessionId
+          ? state.resumableRecordingSessionId
           : "",
-      continueRecordingEventCount: state.lastReplayCompletedEventCount,
-      continuedSourceSessionId: state.continuedSourceSessionId,
-      continuedBackupSessionId: state.continuedBackupSessionId,
+      resumeRecordingEventCount:
+        state.sessions.find(
+          (session) => session.id === state.resumableRecordingSessionId,
+        )?.events.length || 0,
       responseError: state.responseError,
       pendingRequestCount: getPendingRequestCount(),
       blockingRequestCount: getBlockingRequestCount(),
@@ -2026,17 +2024,12 @@
     return true;
   }
 
-  function getContinuationBackupName(session) {
-    const sessionName = String(session?.name || "").trim();
-    const suffix = " (이어 녹화 전)";
-    const baseName = sessionName || "녹화";
-    return `${baseName.slice(0, MAX_SESSION_NAME_LENGTH - suffix.length)}${suffix}`;
-  }
-
-  function continueRecording(sessionId) {
+  function resumeRecording() {
     if (state.isRecording || state.isReplaying) {
       return false;
     }
+
+    const sessionId = state.resumableRecordingSessionId;
 
     if (!synchronizeRecordingFromStorage({ notify: false })) {
       notifyClients({ immediate: true });
@@ -2045,94 +2038,24 @@
 
     const session = state.sessions.find((item) => item.id === sessionId);
 
-    if (!session || state.lastReplaySessionId !== sessionId) {
-      state.lastError = "먼저 해당 녹화를 재생하고 원하는 지점에서 중지해주세요.";
+    if (!sessionId || !session) {
+      state.resumableRecordingSessionId = "";
+      state.lastError = "이어서 녹화할 데이터를 찾지 못했습니다.";
       notifyClients({ immediate: true });
       return false;
     }
 
-    if (state.sessions.length >= MAX_SESSIONS) {
-      state.lastError = `녹화는 최대 ${MAX_SESSIONS.toLocaleString("ko-KR")}개까지 저장할 수 있습니다. 기존 녹화를 삭제한 뒤 다시 시도해주세요.`;
-      notifyClients({ immediate: true });
-      return false;
-    }
-
-    const continuedEventCount = Math.min(
-      session.events.length,
-      Math.max(0, Math.floor(Number(state.lastReplayCompletedEventCount) || 0)),
-    );
-    const continuedEvents = session.events.slice(0, continuedEventCount);
-    const backupRecordedAt = Date.now();
-    const backupSession = {
-      ...session,
-      id: createUniqueSessionId(backupRecordedAt),
-      name: getContinuationBackupName(session),
-      importSourceZipName: "",
-      recordedAt: backupRecordedAt,
-      events: JSON.parse(JSON.stringify(session.events)),
-    };
-    const continuedSession = {
-      ...session,
-      events: continuedEvents,
-    };
-    const previousState = {
-      currentSessionId: state.currentSessionId,
-      events: state.events,
-      recordedAt: state.recordedAt,
-      sessions: state.sessions,
-      continuedSourceSessionId: state.continuedSourceSessionId,
-      continuedBackupSessionId: state.continuedBackupSessionId,
-      lastReplaySessionId: state.lastReplaySessionId,
-      lastReplayCompletedEventCount: state.lastReplayCompletedEventCount,
-    };
-    const previousDirtySessionIds = new Set(dirtySessionIds);
-    const previousDeletedSessionIds = new Set(deletedSessionIds);
-
-    state.sessions = [
-      ...state.sessions.map((item) =>
-        item.id === sessionId ? continuedSession : item,
-      ),
-      backupSession,
-    ];
-    state.currentSessionId = continuedSession.id;
-    state.events = continuedSession.events;
-    state.recordedAt = continuedSession.recordedAt;
+    state.currentSessionId = session.id;
+    state.events = session.events;
+    state.recordedAt = session.recordedAt;
     state.isRecording = true;
-    state.startAt = performance.now() - getDurationMs(continuedEvents);
+    state.startAt = performance.now() - getDurationMs(session.events);
     state.responseError = "";
     state.lastError = "";
-    state.continuedSourceSessionId = continuedSession.id;
-    state.continuedBackupSessionId = backupSession.id;
-    state.lastReplaySessionId = "";
-    state.lastReplayCompletedEventCount = 0;
     state.scrollLastAt.clear();
     state.scrollTimers.forEach((timer) => window.clearTimeout(timer));
     state.scrollTimers.clear();
-    dirtySessionIds.add(continuedSession.id);
-    dirtySessionIds.add(backupSession.id);
-
-    if (!persistRecording()) {
-      state.sessions = previousState.sessions;
-      state.currentSessionId = previousState.currentSessionId;
-      state.events = previousState.events;
-      state.recordedAt = previousState.recordedAt;
-      state.isRecording = false;
-      state.continuedSourceSessionId = previousState.continuedSourceSessionId;
-      state.continuedBackupSessionId = previousState.continuedBackupSessionId;
-      state.lastReplaySessionId = previousState.lastReplaySessionId;
-      state.lastReplayCompletedEventCount =
-        previousState.lastReplayCompletedEventCount;
-      dirtySessionIds.clear();
-      previousDirtySessionIds.forEach((dirtySessionId) =>
-        dirtySessionIds.add(dirtySessionId),
-      );
-      deletedSessionIds.clear();
-      previousDeletedSessionIds.forEach((deletedSessionId) =>
-        deletedSessionIds.add(deletedSessionId),
-      );
-      notifyClients({ immediate: true });
-      return false;
-    }
+    dirtySessionIds.add(session.id);
 
     showScreenMask("recording");
     showRuntimeStatus("recording");
@@ -2166,6 +2089,7 @@
       events: state.events,
       recordedAt: state.recordedAt,
       sessions: state.sessions,
+      resumableRecordingSessionId: state.resumableRecordingSessionId,
     };
 
     state.sessions = [session, ...state.sessions];
@@ -2176,8 +2100,7 @@
     state.startAt = performance.now();
     state.responseError = "";
     state.lastError = "";
-    state.lastReplaySessionId = "";
-    state.lastReplayCompletedEventCount = 0;
+    state.resumableRecordingSessionId = session.id;
     state.scrollLastAt.clear();
     state.scrollTimers.forEach((timer) => window.clearTimeout(timer));
     state.scrollTimers.clear();
@@ -2189,6 +2112,8 @@
       state.currentSessionId = previousState.currentSessionId;
       state.events = previousState.events;
       state.recordedAt = previousState.recordedAt;
+      state.resumableRecordingSessionId =
+        previousState.resumableRecordingSessionId;
       state.isRecording = false;
       notifyClients({ immediate: true });
       return false;
@@ -2206,6 +2131,7 @@
     }
 
     state.isRecording = false;
+    state.resumableRecordingSessionId = state.currentSessionId;
     hideScreenMask();
     showRuntimeStatus("recording", "stopped");
     state.scrollTimers.forEach((timer) => window.clearTimeout(timer));
@@ -2219,9 +2145,6 @@
       return;
     }
 
-    const replaySessionId = state.replaySessionId;
-    const replayCompletedEventCount = state.replayCompletedEventCount;
-
     state.replayAbort = true;
     state.replayRunId += 1;
     state.isReplaying = false;
@@ -2230,8 +2153,6 @@
     state.replayPausedMs = 0;
     state.replayRequestWaitStartedAt = 0;
     state.replayCompletedEventCount = 0;
-    state.lastReplaySessionId = replaySessionId;
-    state.lastReplayCompletedEventCount = replayCompletedEventCount;
     state.lastError = "";
     clearReplayRequestTracking();
     stopReplayProgressNotifications();
@@ -2274,8 +2195,6 @@
     state.replayPausedMs = 0;
     state.replayRequestWaitStartedAt = 0;
     state.replayCompletedEventCount = 0;
-    state.lastReplaySessionId = session.id;
-    state.lastReplayCompletedEventCount = 0;
     state.lastError = "";
     initializeReplayRequestTracking();
     showScreenMask("replaying");
@@ -2325,7 +2244,6 @@
         }
 
         state.replayCompletedEventCount += recordedEvent.replaySourceEventCount || 1;
-        state.lastReplayCompletedEventCount = state.replayCompletedEventCount;
         notifyClients();
         await sleep(0);
       }
@@ -2335,8 +2253,6 @@
       }
     } finally {
       if (state.replayRunId === replayRunId) {
-        const replayCompletedEventCount = state.replayCompletedEventCount;
-
         state.isReplaying = false;
         state.replayAbort = false;
         state.replaySessionId = "";
@@ -2344,8 +2260,6 @@
         state.replayPausedMs = 0;
         state.replayRequestWaitStartedAt = 0;
         state.replayCompletedEventCount = 0;
-        state.lastReplaySessionId = session.id;
-        state.lastReplayCompletedEventCount = replayCompletedEventCount;
         clearReplayRequestTracking();
         stopReplayProgressNotifications();
         showRuntimeStatus("replaying", "completed");
@@ -2437,10 +2351,7 @@
     state.recordedAt = null;
     state.responseError = "";
     state.lastError = "";
-    state.lastReplaySessionId = "";
-    state.lastReplayCompletedEventCount = 0;
-    state.continuedSourceSessionId = "";
-    state.continuedBackupSessionId = "";
+    state.resumableRecordingSessionId = "";
     dirtySessionIds.clear();
     deletedSessionIds.clear();
     pendingRecordingSync = false;
@@ -2719,11 +2630,8 @@
     const previousCurrentSessionId = state.currentSessionId;
     const previousEvents = state.events;
     const previousRecordedAt = state.recordedAt;
-    const previousLastReplaySessionId = state.lastReplaySessionId;
-    const previousLastReplayCompletedEventCount =
-      state.lastReplayCompletedEventCount;
-    const previousContinuedSourceSessionId = state.continuedSourceSessionId;
-    const previousContinuedBackupSessionId = state.continuedBackupSessionId;
+    const previousResumableRecordingSessionId =
+      state.resumableRecordingSessionId;
     const previousDirtySessionIds = new Set(dirtySessionIds);
     const previousDeletedSessionIds = new Set(deletedSessionIds);
 
@@ -2740,17 +2648,8 @@
       state.recordedAt = latestSession?.recordedAt || null;
     }
 
-    if (requestedIds.has(state.lastReplaySessionId)) {
-      state.lastReplaySessionId = "";
-      state.lastReplayCompletedEventCount = 0;
-    }
-
-    if (
-      requestedIds.has(state.continuedSourceSessionId) ||
-      requestedIds.has(state.continuedBackupSessionId)
-    ) {
-      state.continuedSourceSessionId = "";
-      state.continuedBackupSessionId = "";
+    if (requestedIds.has(state.resumableRecordingSessionId)) {
+      state.resumableRecordingSessionId = "";
     }
 
     if (!persistRecording()) {
@@ -2758,11 +2657,8 @@
       state.currentSessionId = previousCurrentSessionId;
       state.events = previousEvents;
       state.recordedAt = previousRecordedAt;
-      state.lastReplaySessionId = previousLastReplaySessionId;
-      state.lastReplayCompletedEventCount =
-        previousLastReplayCompletedEventCount;
-      state.continuedSourceSessionId = previousContinuedSourceSessionId;
-      state.continuedBackupSessionId = previousContinuedBackupSessionId;
+      state.resumableRecordingSessionId =
+        previousResumableRecordingSessionId;
       dirtySessionIds.clear();
       previousDirtySessionIds.forEach((dirtySessionId) =>
         dirtySessionIds.add(dirtySessionId),
@@ -2797,8 +2693,8 @@
         if (!state.isReplaying) {
           if (state.isRecording) {
             stopRecording();
-          } else if (state.lastReplaySessionId) {
-            continueRecording(state.lastReplaySessionId);
+          } else if (state.resumableRecordingSessionId) {
+            resumeRecording();
           } else {
             startRecording();
           }
@@ -2898,7 +2794,6 @@
 
   window.UserFlowRecorder = Object.freeze({
     clear: clearRecording,
-    continueRecording,
     deleteSession,
     deleteSessions,
     exportAllRecordings,
@@ -2914,6 +2809,7 @@
     requestEnd,
     requestStart,
     resetPendingRequests,
+    resume: resumeRecording,
     start: startRecording,
     stop: stopRecording,
     stopReplay,

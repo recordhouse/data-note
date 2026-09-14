@@ -433,81 +433,6 @@
     }
   }
 
-  function placeContinuationBackup(flowState, sessions) {
-    const sourceSessionId = String(
-      flowState.continuedSourceSessionId || "",
-    );
-    const backupSessionId = String(
-      flowState.continuedBackupSessionId || "",
-    );
-    const sessionIds = new Set(sessions.map((session) => session.id));
-
-    if (
-      !sourceSessionId ||
-      !backupSessionId ||
-      !sessionIds.has(sourceSessionId) ||
-      !sessionIds.has(backupSessionId)
-    ) {
-      return;
-    }
-
-    let changed = false;
-    const sourceTabId = getUserFlowSessionTabId(sourceSessionId);
-
-    if (
-      sourceTabId &&
-      userFlowTabs.sessionTabs[backupSessionId] !== sourceTabId
-    ) {
-      userFlowTabs.sessionTabs[backupSessionId] = sourceTabId;
-      changed = true;
-    }
-
-    const nextSessionOrder = userFlowTabs.sessionOrder.filter(
-      (sessionId) => sessionId !== backupSessionId,
-    );
-    const sourceOrderIndex = nextSessionOrder.indexOf(sourceSessionId);
-
-    if (sourceOrderIndex >= 0) {
-      nextSessionOrder.splice(sourceOrderIndex + 1, 0, backupSessionId);
-    }
-
-    if (
-      nextSessionOrder.length !== userFlowTabs.sessionOrder.length ||
-      nextSessionOrder.some(
-        (sessionId, index) => sessionId !== userFlowTabs.sessionOrder[index],
-      )
-    ) {
-      userFlowTabs.sessionOrder = nextSessionOrder;
-      changed = true;
-    }
-
-    if (userFlowTabs.testSessionIds.includes(sourceSessionId)) {
-      const nextTestSessionIds = userFlowTabs.testSessionIds.filter(
-        (sessionId) => sessionId !== backupSessionId,
-      );
-      const sourceTestIndex = nextTestSessionIds.indexOf(sourceSessionId);
-
-      if (sourceTestIndex >= 0) {
-        nextTestSessionIds.splice(sourceTestIndex + 1, 0, backupSessionId);
-      }
-
-      if (
-        nextTestSessionIds.length !== userFlowTabs.testSessionIds.length ||
-        nextTestSessionIds.some(
-          (sessionId, index) =>
-            sessionId !== userFlowTabs.testSessionIds[index],
-        )
-      ) {
-        userFlowTabs.testSessionIds = nextTestSessionIds;
-        changed = true;
-      }
-    }
-
-    if (changed) {
-      persistUserFlowTabs();
-    }
-  }
-
   function getOrderedUserFlowSessions(sessions) {
     const orderBySessionId = new Map(
       userFlowTabs.sessionOrder.map((sessionId, index) => [sessionId, index]),
@@ -692,9 +617,7 @@
       editingUserFlowSessionId,
       isRecording: Boolean(flowState.isRecording),
       isReplaying: Boolean(flowState.isReplaying),
-      continueRecordingSessionId: flowState.continueRecordingSessionId || "",
-      continuedSourceSessionId: flowState.continuedSourceSessionId || "",
-      continuedBackupSessionId: flowState.continuedBackupSessionId || "",
+      resumeRecordingSessionId: flowState.resumeRecordingSessionId || "",
       replayNavigationSessionId,
       replaySessionId: flowState.replaySessionId || "",
       sessionOrder: userFlowTabs.sessionOrder,
@@ -932,11 +855,11 @@
     const canContinueRecording = Boolean(
       !flowState.isRecording &&
         !flowState.isReplaying &&
-        flowState.continueRecordingSessionId,
+        flowState.resumeRecordingSessionId,
     );
     const continueEventCount = Math.max(
       0,
-      Number(flowState.continueRecordingEventCount || 0),
+      Number(flowState.resumeRecordingEventCount || 0),
     );
 
     recordButton.textContent = flowState.isRecording
@@ -976,7 +899,6 @@
     }
 
     reconcileUserFlowTabs(sessions, { removeMissingSessions: hasSessionState });
-    placeContinuationBackup(flowState, sessions);
     renderUserFlowTabs(sessions);
     renderUserFlowView();
     const visibleSessions = userFlowTabs.tabs.length
@@ -1393,18 +1315,12 @@
     }
 
     if (command === "toggle-record" && !currentUserFlowState.isRecording) {
-      const continuationSessionId =
-        currentUserFlowState.continueRecordingSessionId || "";
-      const targetTabId = continuationSessionId
-        ? getUserFlowSessionTabId(continuationSessionId)
-        : userFlowTabs.activeTabId;
-
       if (
-        targetTabId &&
-        getUserFlowTabSessionCount(targetTabId) >=
+        !currentUserFlowState.resumeRecordingSessionId &&
+        getUserFlowTabSessionCount(userFlowTabs.activeTabId) >=
           MAX_USER_FLOW_SESSIONS_PER_TAB
       ) {
-        showUserFlowTabLimit(targetTabId);
+        showUserFlowTabLimit(userFlowTabs.activeTabId);
         return;
       }
     }
