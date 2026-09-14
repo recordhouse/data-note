@@ -69,6 +69,7 @@
   let renderedUserFlowSessionSignature = "";
   let renderedUserFlowTestSignature = "";
   let draggedUserFlowSessionId = "";
+  let placedStoppedRecordingBackupId = "";
   let userFlowMoveToastTimer = 0;
   let userFlowMoveToastClearTimer = 0;
   let replayNavigationIdleTimer = 0;
@@ -433,6 +434,85 @@
     }
   }
 
+  function placeStoppedRecordingBackup(flowState, sessions) {
+    const sourceSessionId = String(
+      flowState.stoppedRecordingSourceSessionId || "",
+    );
+    const backupSessionId = String(
+      flowState.stoppedRecordingBackupSessionId || "",
+    );
+    const sessionIds = new Set(sessions.map((session) => session.id));
+
+    if (
+      !sourceSessionId ||
+      !backupSessionId ||
+      backupSessionId === placedStoppedRecordingBackupId ||
+      !sessionIds.has(sourceSessionId) ||
+      !sessionIds.has(backupSessionId)
+    ) {
+      return "";
+    }
+
+    placedStoppedRecordingBackupId = backupSessionId;
+    let changed = false;
+    const sourceTabId = getUserFlowSessionTabId(sourceSessionId);
+
+    if (
+      sourceTabId &&
+      userFlowTabs.sessionTabs[backupSessionId] !== sourceTabId
+    ) {
+      userFlowTabs.sessionTabs[backupSessionId] = sourceTabId;
+      changed = true;
+    }
+
+    const nextSessionOrder = userFlowTabs.sessionOrder.filter(
+      (sessionId) => sessionId !== backupSessionId,
+    );
+    const sourceOrderIndex = nextSessionOrder.indexOf(sourceSessionId);
+
+    if (sourceOrderIndex >= 0) {
+      nextSessionOrder.splice(sourceOrderIndex + 1, 0, backupSessionId);
+    }
+
+    if (
+      nextSessionOrder.length !== userFlowTabs.sessionOrder.length ||
+      nextSessionOrder.some(
+        (sessionId, index) => sessionId !== userFlowTabs.sessionOrder[index],
+      )
+    ) {
+      userFlowTabs.sessionOrder = nextSessionOrder;
+      changed = true;
+    }
+
+    if (userFlowTabs.testSessionIds.includes(sourceSessionId)) {
+      const nextTestSessionIds = userFlowTabs.testSessionIds.filter(
+        (sessionId) => sessionId !== backupSessionId,
+      );
+      const sourceTestIndex = nextTestSessionIds.indexOf(sourceSessionId);
+
+      if (sourceTestIndex >= 0) {
+        nextTestSessionIds.splice(sourceTestIndex + 1, 0, backupSessionId);
+      }
+
+      if (
+        nextTestSessionIds.length !== userFlowTabs.testSessionIds.length ||
+        nextTestSessionIds.some(
+          (sessionId, index) =>
+            sessionId !== userFlowTabs.testSessionIds[index],
+        )
+      ) {
+        userFlowTabs.testSessionIds = nextTestSessionIds;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      persistUserFlowTabs();
+    }
+
+    return backupSessionId;
+  }
+
   function getOrderedUserFlowSessions(sessions) {
     const orderBySessionId = new Map(
       userFlowTabs.sessionOrder.map((sessionId, index) => [sessionId, index]),
@@ -596,6 +676,12 @@
       : "녹화 일시 없음";
   }
 
+  function formatUserFlowSessionTitle(session, recordedAt) {
+    const titlePrefix = String(session?.titlePrefix || "").trim();
+    const baseTitle = String(session?.name || "").trim() || recordedAt;
+    return titlePrefix ? `[${titlePrefix}] ${baseTitle}` : baseTitle;
+  }
+
   function getUserFlowSessionMeta(session, flowState, isReplayingSession) {
     const eventCount = Number(session.eventCount || 0);
 
@@ -618,6 +704,10 @@
       isRecording: Boolean(flowState.isRecording),
       isReplaying: Boolean(flowState.isReplaying),
       resumeRecordingSessionId: flowState.resumeRecordingSessionId || "",
+      stoppedRecordingSourceSessionId:
+        flowState.stoppedRecordingSourceSessionId || "",
+      stoppedRecordingBackupSessionId:
+        flowState.stoppedRecordingBackupSessionId || "",
       replayNavigationSessionId,
       replaySessionId: flowState.replaySessionId || "",
       sessionOrder: userFlowTabs.sessionOrder,
@@ -632,6 +722,7 @@
         eventCount: session.eventCount,
         id: session.id,
         name: session.name || "",
+        titlePrefix: session.titlePrefix || "",
         recordedAt: session.recordedAt,
         startPage: session.startPage || "",
       })),
@@ -712,6 +803,7 @@
         const isNavigatingSession = replayNavigationSessionId === session.id;
         const recordedAt = formatUserFlowRecordedAt(session.recordedAt);
         const sessionName = String(session.name || "").trim();
+        const sessionTitle = formatUserFlowSessionTitle(session, recordedAt);
         const disabled =
           flowState.isRecording ||
           (!session.eventCount && !isReplayingSession) ||
@@ -728,7 +820,7 @@
           >
             <div class="user-flow-session-main">
               <strong class="user-flow-session-time">
-                <span>${escapeHtml(sessionName || recordedAt)}</span>
+                <span>${escapeHtml(sessionTitle)}</span>
               </strong>
               ${sessionName ? `<span class="user-flow-session-recorded-at">${escapeHtml(recordedAt)}</span>` : ""}
               <span class="user-flow-session-meta" data-user-flow-session-meta="${escapeHtml(session.id)}">
@@ -750,7 +842,7 @@
                 class="user-flow-test-remove"
                 type="button"
                 data-user-flow-test-remove="${escapeHtml(session.id)}"
-                aria-label="${escapeHtml(sessionName || recordedAt)} 녹화 테스트 목록에서 제거"
+                aria-label="${escapeHtml(sessionTitle)} 녹화 테스트 목록에서 제거"
                 ${changeDisabled ? "disabled" : ""}
               >목록 제거</button>
             </div>
@@ -898,7 +990,12 @@
       );
     }
 
+    const previousSessionPositions = captureUserFlowSessionPositions();
     reconcileUserFlowTabs(sessions, { removeMissingSessions: hasSessionState });
+    const addedBackupSessionId = placeStoppedRecordingBackup(
+      flowState,
+      sessions,
+    );
     renderUserFlowTabs(sessions);
     renderUserFlowView();
     const visibleSessions = userFlowTabs.tabs.length
@@ -939,11 +1036,19 @@
           : "저장된 녹화가 없습니다.";
       sessionList.innerHTML = `<div class="user-flow-empty">${emptyMessage}</div>`;
       updateUserFlowSessionProgress(flowState, sessions);
+      animateStoppedRecordingBackup(
+        previousSessionPositions,
+        addedBackupSessionId,
+      );
       return;
     }
 
     if (renderedUserFlowSessionSignature === sessionSignature) {
       updateUserFlowSessionProgress(flowState, sessions);
+      animateStoppedRecordingBackup(
+        previousSessionPositions,
+        addedBackupSessionId,
+      );
       return;
     }
 
@@ -955,6 +1060,7 @@
         const isReplayingSession = flowState.replaySessionId === session.id;
         const recordedAt = formatUserFlowRecordedAt(session.recordedAt);
         const sessionName = String(session.name || "").trim();
+        const sessionTitle = formatUserFlowSessionTitle(session, recordedAt);
         const isEditing = editingUserFlowSessionId === session.id;
         const isNavigatingSession = replayNavigationSessionId === session.id;
         const disabled =
@@ -1006,7 +1112,7 @@
           >
             <div class="user-flow-session-main">
               <strong class="user-flow-session-time">
-                <span>${escapeHtml(sessionName || recordedAt)}</span>
+                <span>${escapeHtml(sessionTitle)}</span>
               </strong>
               ${sessionName ? `<span class="user-flow-session-recorded-at">${escapeHtml(recordedAt)}</span>` : ""}
               <span class="user-flow-session-meta" data-user-flow-session-meta="${escapeHtml(session.id)}">
@@ -1036,7 +1142,7 @@
                 type="button"
                 data-user-flow-command="export-recording"
                 data-session-id="${escapeHtml(session.id)}"
-                aria-label="${escapeHtml(sessionName || recordedAt)} 녹화 내보내기"
+                aria-label="${escapeHtml(sessionTitle)} 녹화 내보내기"
                 ${changeDisabled ? "disabled" : ""}
               >내보내기</button>
               <button
@@ -1044,7 +1150,7 @@
                 type="button"
                 data-user-flow-command="delete-session"
                 data-session-id="${escapeHtml(session.id)}"
-                aria-label="${escapeHtml(recordedAt)} 녹화 삭제"
+                aria-label="${escapeHtml(sessionTitle)} 녹화 삭제"
                 ${changeDisabled ? "disabled" : ""}
               >삭제</button>
             </div>
@@ -1052,6 +1158,11 @@
         `;
       })
       .join("");
+
+    animateStoppedRecordingBackup(
+      previousSessionPositions,
+      addedBackupSessionId,
+    );
   }
 
   function isParentWindowOpen(parentWindow) {
@@ -1315,12 +1426,19 @@
     }
 
     if (command === "toggle-record" && !currentUserFlowState.isRecording) {
+      const resumeSessionId =
+        currentUserFlowState.resumeRecordingSessionId || "";
+      const targetTabId = resumeSessionId
+        ? getUserFlowSessionTabId(resumeSessionId)
+        : userFlowTabs.activeTabId;
+      const requiredSlots = resumeSessionId ? 1 : 2;
+
       if (
-        !currentUserFlowState.resumeRecordingSessionId &&
-        getUserFlowTabSessionCount(userFlowTabs.activeTabId) >=
+        targetTabId &&
+        getUserFlowTabSessionCount(targetTabId) + requiredSlots >
           MAX_USER_FLOW_SESSIONS_PER_TAB
       ) {
-        showUserFlowTabLimit(userFlowTabs.activeTabId);
+        showUserFlowTabLimit(targetTabId);
         return;
       }
     }
@@ -1690,6 +1808,44 @@
           }
         });
     });
+  }
+
+  function animateUserFlowSessionAddition(sessionId) {
+    if (!sessionId) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      const session = Array.from(
+        document.querySelectorAll(
+          ".user-flow-view-panel:not([hidden]) .user-flow-session-list [data-user-flow-session-id]",
+        ),
+      ).find((item) => item.dataset.userFlowSessionId === sessionId);
+
+      if (typeof session?.animate !== "function") {
+        return;
+      }
+
+      session.animate(
+        [
+          { opacity: 0, transform: "translate3d(0, -16px, 0)" },
+          { opacity: 1, transform: "translate3d(0, 0, 0)" },
+        ],
+        {
+          duration: USER_FLOW_MOVE_ANIMATION_MS + 80,
+          easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+        },
+      );
+    });
+  }
+
+  function animateStoppedRecordingBackup(previousPositions, sessionId) {
+    if (!sessionId) {
+      return;
+    }
+
+    animateUserFlowSessionMove(previousPositions, sessionId);
+    animateUserFlowSessionAddition(sessionId);
   }
 
   function showUserFlowMoveToast() {
