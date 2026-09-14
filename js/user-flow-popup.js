@@ -434,6 +434,33 @@
     }
   }
 
+  function placeNewRecordingAtTop(sessionId) {
+    const normalizedSessionId = String(sessionId || "");
+
+    if (!normalizedSessionId) {
+      return "";
+    }
+
+    const nextSessionOrder = [
+      normalizedSessionId,
+      ...userFlowTabs.sessionOrder.filter(
+        (orderedSessionId) => orderedSessionId !== normalizedSessionId,
+      ),
+    ];
+
+    if (
+      nextSessionOrder.some(
+        (orderedSessionId, index) =>
+          orderedSessionId !== userFlowTabs.sessionOrder[index],
+      )
+    ) {
+      userFlowTabs.sessionOrder = nextSessionOrder;
+      persistUserFlowTabs();
+    }
+
+    return normalizedSessionId;
+  }
+
   function placeStoppedRecordingBackup(flowState, sessions) {
     const sourceSessionId = String(
       flowState.stoppedRecordingSourceSessionId || "",
@@ -1003,7 +1030,16 @@
     }
 
     const previousSessionPositions = captureUserFlowSessionPositions();
+    const newRecordingSessionId =
+      flowState.isRecording &&
+      flowState.activeRecordingSessionId &&
+      !userFlowTabs.sessionOrder.includes(flowState.activeRecordingSessionId)
+        ? flowState.activeRecordingSessionId
+        : "";
     reconcileUserFlowTabs(sessions, { removeMissingSessions: hasSessionState });
+    const addedRecordingSessionId = placeNewRecordingAtTop(
+      newRecordingSessionId,
+    );
     const addedBackupSessionId = placeStoppedRecordingBackup(
       flowState,
       sessions,
@@ -1052,6 +1088,7 @@
         previousSessionPositions,
         addedBackupSessionId,
       );
+      animateUserFlowSessionAddition(addedRecordingSessionId);
       return;
     }
 
@@ -1061,6 +1098,7 @@
         previousSessionPositions,
         addedBackupSessionId,
       );
+      animateUserFlowSessionAddition(addedRecordingSessionId);
       return;
     }
 
@@ -1175,6 +1213,11 @@
       previousSessionPositions,
       addedBackupSessionId,
     );
+    animateUserFlowSessionMove(
+      previousSessionPositions,
+      addedRecordingSessionId,
+    );
+    animateUserFlowSessionAddition(addedRecordingSessionId);
   }
 
   function isParentWindowOpen(parentWindow) {

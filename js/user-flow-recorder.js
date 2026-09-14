@@ -643,6 +643,28 @@
     state.currentSessionId = selectedSession?.id || "";
     state.events = selectedSession?.events || [];
     state.recordedAt = selectedSession?.recordedAt || null;
+    reconcileResumableRecordingState();
+  }
+
+  function reconcileResumableRecordingState() {
+    const sessionIds = new Set(state.sessions.map((session) => session.id));
+
+    if (
+      state.resumableRecordingSessionId &&
+      !sessionIds.has(state.resumableRecordingSessionId)
+    ) {
+      state.resumableRecordingSessionId = "";
+    }
+
+    if (
+      (state.stoppedRecordingSourceSessionId &&
+        !sessionIds.has(state.stoppedRecordingSourceSessionId)) ||
+      (state.stoppedRecordingBackupSessionId &&
+        !sessionIds.has(state.stoppedRecordingBackupSessionId))
+    ) {
+      state.stoppedRecordingSourceSessionId = "";
+      state.stoppedRecordingBackupSessionId = "";
+    }
   }
 
   function mergeRecordingSessions(storedSessions) {
@@ -2034,6 +2056,9 @@
       events: state.events,
       recordedAt: state.recordedAt,
       sessions: state.sessions,
+      resumableRecordingSessionId: state.resumableRecordingSessionId,
+      stoppedRecordingSourceSessionId: state.stoppedRecordingSourceSessionId,
+      stoppedRecordingBackupSessionId: state.stoppedRecordingBackupSessionId,
     };
     const previousDirtySessionIds = new Set(dirtySessionIds);
     const previousDeletedSessionIds = new Set(deletedSessionIds);
@@ -2042,6 +2067,9 @@
     state.currentSessionId = importedSessions[0].id;
     state.events = importedSessions[0].events;
     state.recordedAt = importedSessions[0].recordedAt;
+    state.resumableRecordingSessionId = "";
+    state.stoppedRecordingSourceSessionId = "";
+    state.stoppedRecordingBackupSessionId = "";
     importedSessions.forEach((session) => dirtySessionIds.add(session.id));
 
     if (!persistRecording()) {
@@ -2049,6 +2077,12 @@
       state.currentSessionId = previousState.currentSessionId;
       state.events = previousState.events;
       state.recordedAt = previousState.recordedAt;
+      state.resumableRecordingSessionId =
+        previousState.resumableRecordingSessionId;
+      state.stoppedRecordingSourceSessionId =
+        previousState.stoppedRecordingSourceSessionId;
+      state.stoppedRecordingBackupSessionId =
+        previousState.stoppedRecordingBackupSessionId;
       dirtySessionIds.clear();
       previousDirtySessionIds.forEach((sessionId) => dirtySessionIds.add(sessionId));
       deletedSessionIds.clear();
