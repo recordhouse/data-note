@@ -14,7 +14,7 @@
     maxImportSessions: 150,
     maxSessions: 150,
     maxSessionsPerTab: 20,
-    maxTabs: 10,
+    maxTabs: 20,
   });
 
   function createController(options = {}) {

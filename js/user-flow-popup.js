@@ -16,7 +16,7 @@
   const DEFAULT_USER_FLOW_TAB_ID = "default";
   const USER_FLOW_VIEW_RECORDINGS = "recordings";
   const USER_FLOW_VIEW_TEST = "test";
-  const MAX_USER_FLOW_TABS = 10;
+  const MAX_USER_FLOW_TABS = 20;
   const MAX_USER_FLOW_SESSIONS_PER_TAB = 20;
   const MAX_USER_FLOW_NOTICE_LENGTH = 1000;
   const USER_FLOW_NOTICE_ALLOWED_TAGS = new Set([
