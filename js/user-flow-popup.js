@@ -1037,7 +1037,9 @@
         ? flowState.activeRecordingSessionId
         : "";
     reconcileUserFlowTabs(sessions, { removeMissingSessions: hasSessionState });
-    placeNewRecordingAtTop(newRecordingSessionId);
+    const addedRecordingSessionId = placeNewRecordingAtTop(
+      newRecordingSessionId,
+    );
     const addedBackupSessionId = placeStoppedRecordingBackup(
       flowState,
       sessions,
@@ -1086,6 +1088,7 @@
         previousSessionPositions,
         addedBackupSessionId,
       );
+      animateUserFlowSessionAddition(addedRecordingSessionId);
       return;
     }
 
@@ -1095,6 +1098,7 @@
         previousSessionPositions,
         addedBackupSessionId,
       );
+      animateUserFlowSessionAddition(addedRecordingSessionId);
       return;
     }
 
@@ -1209,6 +1213,11 @@
       previousSessionPositions,
       addedBackupSessionId,
     );
+    animateUserFlowSessionMove(
+      previousSessionPositions,
+      addedRecordingSessionId,
+    );
+    animateUserFlowSessionAddition(addedRecordingSessionId);
   }
 
   function isParentWindowOpen(parentWindow) {
