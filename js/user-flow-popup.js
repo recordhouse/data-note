@@ -787,6 +787,33 @@
     });
   }
 
+  function isActiveRecordingSessionListStable(
+    sessionList,
+    visibleSessions,
+    activeRecordingSessionId,
+  ) {
+    if (!activeRecordingSessionId) {
+      return false;
+    }
+
+    const renderedSessions = Array.from(sessionList.children).filter(
+      (element) => element.dataset.userFlowSessionId,
+    );
+
+    return (
+      renderedSessions.length === visibleSessions.length &&
+      renderedSessions.every(
+        (element, index) =>
+          element.dataset.userFlowSessionId === visibleSessions[index]?.id,
+      ) &&
+      renderedSessions.some(
+        (element) =>
+          element.dataset.userFlowSessionId === activeRecordingSessionId &&
+          element.dataset.state === "recording",
+      )
+    );
+  }
+
   function renderUserFlowView() {
     const isTestView = activeUserFlowView === USER_FLOW_VIEW_TEST;
     const recordingsTab = document.querySelector("#userFlowRecordingsViewTab");
@@ -1090,6 +1117,19 @@
         addedBackupSessionId,
       );
       animateUserFlowSessionAddition(addedRecordingSessionId);
+      return;
+    }
+
+    if (
+      flowState.isRecording &&
+      isActiveRecordingSessionListStable(
+        sessionList,
+        visibleSessions,
+        flowState.activeRecordingSessionId,
+      )
+    ) {
+      renderedUserFlowSessionSignature = sessionSignature;
+      updateUserFlowSessionProgress(flowState, sessions);
       return;
     }
 
