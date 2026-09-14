@@ -68,7 +68,6 @@
   let editingUserFlowNotice = false;
   let renderedUserFlowSessionSignature = "";
   let renderedUserFlowTestSignature = "";
-  let renderedUserFlowTabSignature = "";
   let draggedUserFlowSessionId = "";
   let placedStoppedRecordingBackupId = "";
   let userFlowMoveToastTimer = 0;
@@ -322,7 +321,6 @@
     editingUserFlowNotice = false;
     renderedUserFlowSessionSignature = "";
     renderedUserFlowTestSignature = "";
-    renderedUserFlowTabSignature = "";
     resetUserFlowSessionDrag();
     persistUserFlowTabs();
     renderUserFlowView();
@@ -603,18 +601,6 @@
     const organizationDisabled = Boolean(
       currentUserFlowState.isRecording || currentUserFlowState.isReplaying,
     );
-    const tabSignature = JSON.stringify({
-      activeTabId: userFlowTabs.activeTabId,
-      editingUserFlowTabId,
-      organizationDisabled,
-      tabs: userFlowTabs.tabs,
-    });
-
-    if (renderedUserFlowTabSignature === tabSignature) {
-      return;
-    }
-
-    renderedUserFlowTabSignature = tabSignature;
 
     tabList.innerHTML = userFlowTabs.tabs
       .map((tab) => {
@@ -771,7 +757,8 @@
       tabs: userFlowTabs.tabs,
       testSessionIds: userFlowTabs.testSessionIds,
       sessions: sessions.map((session) => ({
-        hasEvents: Number(session.eventCount || 0) > 0,
+        durationMs: session.durationMs,
+        eventCount: session.eventCount,
         id: session.id,
         name: session.name || "",
         titlePrefix: session.titlePrefix || "",
@@ -782,10 +769,10 @@
   }
 
   function updateUserFlowSessionProgress(flowState, sessions) {
-    const sessionById = new Map(sessions.map((session) => [session.id, session]));
-
     document.querySelectorAll("[data-user-flow-session-meta]").forEach((meta) => {
-      const session = sessionById.get(meta.dataset.userFlowSessionMeta);
+      const session = sessions.find(
+        (item) => item.id === meta.dataset.userFlowSessionMeta,
+      );
 
       if (!session) {
         return;
@@ -1042,25 +1029,15 @@
       );
     }
 
+    const previousSessionPositions = captureUserFlowSessionPositions();
     const newRecordingSessionId =
       flowState.isRecording &&
       flowState.activeRecordingSessionId &&
       !userFlowTabs.sessionOrder.includes(flowState.activeRecordingSessionId)
         ? flowState.activeRecordingSessionId
         : "";
-    const mayPlaceStoppedRecordingBackup = Boolean(
-      flowState.stoppedRecordingBackupSessionId &&
-        flowState.stoppedRecordingBackupSessionId !==
-          placedStoppedRecordingBackupId,
-    );
-    const previousSessionPositions =
-      newRecordingSessionId || mayPlaceStoppedRecordingBackup
-        ? captureUserFlowSessionPositions()
-        : new Map();
     reconcileUserFlowTabs(sessions, { removeMissingSessions: hasSessionState });
-    const addedRecordingSessionId = placeNewRecordingAtTop(
-      newRecordingSessionId,
-    );
+    placeNewRecordingAtTop(newRecordingSessionId);
     const addedBackupSessionId = placeStoppedRecordingBackup(
       flowState,
       sessions,
@@ -1109,7 +1086,6 @@
         previousSessionPositions,
         addedBackupSessionId,
       );
-      animateUserFlowSessionAddition(addedRecordingSessionId);
       return;
     }
 
@@ -1119,7 +1095,6 @@
         previousSessionPositions,
         addedBackupSessionId,
       );
-      animateUserFlowSessionAddition(addedRecordingSessionId);
       return;
     }
 
@@ -1234,11 +1209,6 @@
       previousSessionPositions,
       addedBackupSessionId,
     );
-    animateUserFlowSessionMove(
-      previousSessionPositions,
-      addedRecordingSessionId,
-    );
-    animateUserFlowSessionAddition(addedRecordingSessionId);
   }
 
   function isParentWindowOpen(parentWindow) {
@@ -1570,7 +1540,6 @@
     editingUserFlowSessionId = "";
     renderedUserFlowSessionSignature = "";
     renderedUserFlowTestSignature = "";
-    renderedUserFlowTabSignature = "";
     renderUserFlowState(currentUserFlowState);
   }
 
