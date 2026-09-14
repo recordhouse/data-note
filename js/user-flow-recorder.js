@@ -39,6 +39,12 @@
   const MAX_NOTICE_LENGTH = 1000;
   const PERCENT_PRECISION = 6;
   const IMPORTABLE_EVENT_TYPES = new Set(["change", "click", "input", "scroll"]);
+  const AUTO_REQUEST_TRACKING_MARKER = Symbol.for(
+    "response-mapping-user-flow-auto-request-tracking",
+  );
+  const XHR_REQUEST_META = Symbol.for(
+    "response-mapping-user-flow-xhr-request-meta",
+  );
   const SENSITIVE_AUTOCOMPLETE = new Set([
     "cc-csc",
     "cc-number",
@@ -1564,6 +1570,185 @@
     return true;
   }
 
+  function getAutomaticRequestId(type, method, requestUrl) {
+    const normalizedMethod = String(method || "GET").trim().toUpperCase() || "GET";
+    let normalizedUrl = String(requestUrl || "").trim();
+
+    try {
+      const parsedUrl = new URL(normalizedUrl, window.location.href);
+      normalizedUrl = `${parsedUrl.origin}${parsedUrl.pathname}`;
+    } catch (error) {
+      normalizedUrl ||= "unknown";
+    }
+
+    return `${type}:${normalizedMethod}:${normalizedUrl}`;
+  }
+
+  function getFetchRequestInfo(input, init) {
+    const isRequest =
+      typeof window.Request === "function" && input instanceof window.Request;
+
+    return {
+      method: init?.method || (isRequest ? input.method : "GET"),
+      url: isRequest ? input.url : input,
+    };
+  }
+
+  function getRejectedRequestInfo(error) {
+    return {
+      message: error?.message || "통신 요청에 실패했습니다.",
+      ok: false,
+      status: 0,
+    };
+  }
+
+  function installFetchRequestTracking() {
+    const originalFetch = window.fetch;
+
+    if (
+      typeof originalFetch !== "function" ||
+      originalFetch[AUTO_REQUEST_TRACKING_MARKER]
+    ) {
+      return;
+    }
+
+    function trackedFetch(input, init) {
+      const requestInfo = getFetchRequestInfo(input, init);
+      const requestId = requestStart(
+        getAutomaticRequestId("fetch", requestInfo.method, requestInfo.url),
+      );
+      let fetchPromise;
+
+      try {
+        fetchPromise = Reflect.apply(originalFetch, window, [input, init]);
+      } catch (error) {
+        requestEnd(requestId, getRejectedRequestInfo(error));
+        throw error;
+      }
+
+      return Promise.resolve(fetchPromise).then(
+        (response) => {
+          requestEnd(requestId, response);
+          return response;
+        },
+        (error) => {
+          requestEnd(requestId, getRejectedRequestInfo(error));
+          throw error;
+        },
+      );
+    }
+
+    Object.defineProperty(trackedFetch, AUTO_REQUEST_TRACKING_MARKER, {
+      value: true,
+    });
+    window.fetch = trackedFetch;
+  }
+
+  function getXhrResponseInfo(xhr, eventType) {
+    if (["abort", "error", "timeout"].includes(eventType)) {
+      return {
+        message:
+          eventType === "abort"
+            ? "통신 요청이 취소되었습니다."
+            : eventType === "timeout"
+              ? "통신 요청 시간이 초과되었습니다."
+              : "통신 요청에 실패했습니다.",
+        ok: false,
+        status: 0,
+      };
+    }
+
+    try {
+      return {
+        status: xhr.status,
+        statusText: xhr.statusText,
+      };
+    } catch (error) {
+      return { status: 0 };
+    }
+  }
+
+  function installXhrRequestTracking() {
+    const XhrConstructor = window.XMLHttpRequest;
+
+    if (typeof XhrConstructor !== "function") {
+      return;
+    }
+
+    const xhrPrototype = XhrConstructor.prototype;
+    const originalOpen = xhrPrototype.open;
+    const originalSend = xhrPrototype.send;
+
+    if (
+      typeof originalOpen !== "function" ||
+      typeof originalSend !== "function" ||
+      originalSend[AUTO_REQUEST_TRACKING_MARKER]
+    ) {
+      return;
+    }
+
+    function trackedOpen(method, requestUrl, ...rest) {
+      this[XHR_REQUEST_META] = {
+        method: method || "GET",
+        url: requestUrl,
+      };
+      return Reflect.apply(originalOpen, this, [method, requestUrl, ...rest]);
+    }
+
+    function trackedSend(...args) {
+      const requestMeta = this[XHR_REQUEST_META] || {};
+      const requestId = requestStart(
+        getAutomaticRequestId("xhr", requestMeta.method, requestMeta.url),
+      );
+      const xhr = this;
+      const completionEvents = ["load", "error", "abort", "timeout", "loadend"];
+      let completed = false;
+
+      function finish(event) {
+        if (completed) {
+          return;
+        }
+
+        completed = true;
+        completionEvents.forEach((eventName) =>
+          xhr.removeEventListener(eventName, finish),
+        );
+        requestEnd(requestId, getXhrResponseInfo(xhr, event?.type || "error"));
+      }
+
+      completionEvents.forEach((eventName) =>
+        xhr.addEventListener(eventName, finish),
+      );
+
+      try {
+        return Reflect.apply(originalSend, xhr, args);
+      } catch (error) {
+        finish({ type: "error" });
+        throw error;
+      }
+    }
+
+    Object.defineProperty(trackedSend, AUTO_REQUEST_TRACKING_MARKER, {
+      value: true,
+    });
+    xhrPrototype.open = trackedOpen;
+    xhrPrototype.send = trackedSend;
+  }
+
+  function installAutomaticRequestTracking() {
+    try {
+      installFetchRequestTracking();
+    } catch (error) {
+      console.warn("UserFlowRecorder: fetch 통신 감지를 설치하지 못했습니다.", error);
+    }
+
+    try {
+      installXhrRequestTracking();
+    } catch (error) {
+      console.warn("UserFlowRecorder: Ajax 통신 감지를 설치하지 못했습니다.", error);
+    }
+  }
+
   function waitForRequests(options = {}) {
     if (!hasBlockingRequests()) {
       return Promise.resolve(true);
@@ -2971,6 +3156,7 @@
 
   readRecording();
   attachListeners();
+  installAutomaticRequestTracking();
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", ensureVisualStyles, { once: true });
