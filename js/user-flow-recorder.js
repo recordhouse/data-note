@@ -16,35 +16,22 @@
   const MESSAGE_COMMAND = "response-mapping-user-flow-command";
   const MESSAGE_STATE = "response-mapping-user-flow-state";
   const IGNORE_ATTRIBUTE = "data-user-flow-ignore";
-  const VISUAL_STYLE_ID = "user-flow-recorder-visual-style";
-  const CLICK_PULSE_MS = 420;
-  const SCREEN_MASK_TRANSITION_MS = 160;
   const MAX_EVENTS = 10000;
   const MAX_SESSIONS = 150;
   const MAX_SESSION_NAME_LENGTH = 40;
   // 목록 제목의 [값]을 읽을 URL 파라미터 키입니다. 예: ?title=Hello
   const USER_FLOW_TITLE_QUERY_PARAM_KEY = "state";
   const MAX_SESSION_TITLE_PREFIX_LENGTH = 80;
-  const SCROLL_SAMPLE_MS = 80;
   const STATE_NOTIFY_MS = 120;
   const REPLAY_PROGRESS_NOTIFY_MS = 250;
-  const TARGET_WAIT_MS = 5000;
   const REQUEST_WAIT_TIMEOUT_MS = 30000;
   const REQUEST_ABORT_POLL_MS = 50;
   const REQUEST_REPEAT_RESUME_LIMIT = 5;
   const AUTO_REPLAY_REQUEST_IDLE_MS = 500;
-  const CHECKABLE_EVENT_GROUP_MS = 150;
   const RECORDING_FORMAT_VERSION = 4;
   const ARCHIVE_MANIFEST_FILE_NAME = "user-flow-manifest.json";
   const MAX_NOTICE_LENGTH = 1000;
-  const PERCENT_PRECISION = 6;
   const IMPORTABLE_EVENT_TYPES = new Set(["change", "click", "input", "scroll"]);
-  const AUTO_REQUEST_TRACKING_MARKER = Symbol.for(
-    "response-mapping-user-flow-auto-request-tracking",
-  );
-  const XHR_REQUEST_META = Symbol.for(
-    "response-mapping-user-flow-xhr-request-meta",
-  );
   const SENSITIVE_AUTOCOMPLETE = new Set([
     "cc-csc",
     "cc-number",
@@ -52,368 +39,6 @@
     "new-password",
     "one-time-code",
   ]);
-  const VISUAL_CSS = `
-    .user-flow-click-pulse {
-      position: fixed;
-      z-index: 2147482999;
-      width: 18px;
-      height: 18px;
-      border: 2px solid #1266d6;
-      border-radius: 50%;
-      background: rgba(18, 102, 214, 0.12);
-      pointer-events: none;
-      transform: translate(-50%, -50%) scale(0.72);
-      animation: user-flow-click-pulse ${CLICK_PULSE_MS}ms ease-out forwards;
-    }
-
-    @keyframes user-flow-click-pulse {
-      0% {
-        opacity: 0.9;
-        transform: translate(-50%, -50%) scale(0.72);
-      }
-
-      100% {
-        opacity: 0;
-        transform: translate(-50%, -50%) scale(1.9);
-      }
-    }
-
-    .user-flow-runtime-status {
-      position: fixed;
-      bottom: 16px;
-      left: 16px;
-      z-index: 2147482999;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      width: auto;
-      min-width: 0;
-      height: auto;
-      min-height: 36px;
-      margin: 0;
-      padding: 7px 11px;
-      border: 1px solid currentColor;
-      border-radius: 6px;
-      background: rgba(255, 255, 255, 0.94);
-      box-shadow: 0 8px 22px rgba(23, 32, 42, 0.16);
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 13px;
-      font-weight: 800;
-      line-height: 20px;
-      opacity: 0;
-      pointer-events: none;
-      transform: translateY(6px);
-      transition:
-        opacity 140ms ease,
-        transform 140ms ease;
-    }
-
-    .user-flow-runtime-status[data-mode="recording"],
-    .user-flow-runtime-status[data-mode="replaying"] {
-      gap: 6px;
-      min-height: 32px;
-      padding: 4px 9px;
-    }
-
-    .user-flow-runtime-status[data-mode="recording"] {
-      color: #b42345;
-    }
-
-    .user-flow-runtime-status[data-mode="recording"] .user-flow-runtime-icon {
-      flex-basis: 20px;
-      width: 20px;
-      height: 20px;
-    }
-
-    .user-flow-runtime-status[data-mode="replaying"] {
-      color: #0f766e;
-    }
-
-    .user-flow-runtime-status.is-visible {
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    .user-flow-runtime-icon {
-      position: relative;
-      flex: 0 0 20px;
-      width: 20px;
-      height: 20px;
-    }
-
-    .user-flow-runtime-status[data-mode="recording"] .user-flow-runtime-icon::before {
-      position: absolute;
-      inset: 5px;
-      border-radius: 50%;
-      background: currentColor;
-      content: "";
-    }
-
-    .user-flow-runtime-status[data-mode="recording"] .user-flow-runtime-icon::after {
-      position: absolute;
-      inset: 2px;
-      border: 1px solid currentColor;
-      border-radius: 50%;
-      content: "";
-    }
-
-    .user-flow-runtime-status[data-mode="recording"][data-state="active"]
-      .user-flow-runtime-icon::before {
-      animation: user-flow-record-pulse 900ms ease-in-out infinite;
-    }
-
-    .user-flow-runtime-status[data-mode="recording"][data-state="active"]
-      .user-flow-runtime-icon::after {
-      animation: user-flow-record-ring 900ms ease-out infinite;
-    }
-
-    .user-flow-runtime-status[data-mode="recording"]:not([data-state="active"])
-      .user-flow-runtime-icon::after {
-      opacity: 0.45;
-    }
-
-    .user-flow-runtime-status[data-mode="replaying"] .user-flow-runtime-icon::before {
-      position: absolute;
-      top: 5px;
-      left: 7px;
-      width: 0;
-      height: 0;
-      border-top: 4px solid transparent;
-      border-bottom: 4px solid transparent;
-      border-left: 6px solid currentColor;
-      content: "";
-    }
-
-    .user-flow-runtime-status[data-mode="replaying"] .user-flow-runtime-icon::after {
-      position: absolute;
-      inset: 2px;
-      border: 1.5px solid currentColor;
-      border-right-color: transparent;
-      border-radius: 50%;
-      content: "";
-    }
-
-    .user-flow-runtime-status[data-mode="replaying"][data-state="active"]
-      .user-flow-runtime-icon::after {
-      animation: user-flow-replay-spin 680ms linear infinite;
-    }
-
-    @keyframes user-flow-record-pulse {
-      50% {
-        opacity: 0.45;
-        transform: scale(0.78);
-      }
-    }
-
-    @keyframes user-flow-record-ring {
-      0% {
-        opacity: 0.8;
-        transform: scale(0.72);
-      }
-
-      100% {
-        opacity: 0;
-        transform: scale(1.35);
-      }
-    }
-
-    .user-flow-screen-mask {
-      position: fixed;
-      inset: 0;
-      z-index: 2147482997;
-      contain: strict;
-      isolation: isolate;
-      opacity: 0;
-      overflow: hidden;
-      pointer-events: none;
-      transition: opacity ${SCREEN_MASK_TRANSITION_MS}ms ease;
-    }
-
-    .user-flow-screen-mask-layer {
-      position: absolute;
-      inset: 0;
-      display: block;
-      background-repeat: no-repeat;
-      background-size: 100% 100%;
-      -webkit-mask-image: linear-gradient(
-        135deg,
-        rgba(0, 0, 0, 0) 0%,
-        rgba(0, 0, 0, 0.2) 28%,
-        #000 50%,
-        rgba(0, 0, 0, 0.2) 72%,
-        rgba(0, 0, 0, 0) 100%
-      );
-      -webkit-mask-position: 0% 0%;
-      -webkit-mask-repeat: no-repeat;
-      -webkit-mask-size: 140% 140%;
-      mask-image: linear-gradient(
-        135deg,
-        rgba(0, 0, 0, 0) 0%,
-        rgba(0, 0, 0, 0.2) 28%,
-        #000 50%,
-        rgba(0, 0, 0, 0.2) 72%,
-        rgba(0, 0, 0, 0) 100%
-      );
-      mask-position: 0% 0%;
-      mask-repeat: no-repeat;
-      mask-size: 140% 140%;
-    }
-
-    .user-flow-screen-mask[data-mode="recording"]
-      .user-flow-screen-mask-layer[data-layer="primary"] {
-      background-image:
-        linear-gradient(to bottom, rgba(244, 63, 94, 0.78) 0, rgba(244, 63, 94, 0.58) 18px, rgba(244, 63, 94, 0.22) 50px, rgba(244, 63, 94, 0) 90px),
-        linear-gradient(to top, rgba(244, 63, 94, 0.78) 0, rgba(244, 63, 94, 0.58) 18px, rgba(244, 63, 94, 0.22) 50px, rgba(244, 63, 94, 0) 90px),
-        linear-gradient(to right, rgba(244, 63, 94, 0.78) 0, rgba(244, 63, 94, 0.58) 18px, rgba(244, 63, 94, 0.22) 50px, rgba(244, 63, 94, 0) 90px),
-        linear-gradient(to left, rgba(244, 63, 94, 0.78) 0, rgba(244, 63, 94, 0.58) 18px, rgba(244, 63, 94, 0.22) 50px, rgba(244, 63, 94, 0) 90px);
-    }
-
-    .user-flow-screen-mask[data-mode="recording"]
-      .user-flow-screen-mask-layer[data-layer="secondary"] {
-      background-image:
-        linear-gradient(to bottom, rgba(167, 139, 250, 0.78) 0, rgba(167, 139, 250, 0.58) 18px, rgba(167, 139, 250, 0.22) 50px, rgba(167, 139, 250, 0) 90px),
-        linear-gradient(to top, rgba(167, 139, 250, 0.78) 0, rgba(167, 139, 250, 0.58) 18px, rgba(167, 139, 250, 0.22) 50px, rgba(167, 139, 250, 0) 90px),
-        linear-gradient(to left, rgba(167, 139, 250, 0.78) 0, rgba(167, 139, 250, 0.58) 18px, rgba(167, 139, 250, 0.22) 50px, rgba(167, 139, 250, 0) 90px),
-        linear-gradient(to right, rgba(167, 139, 250, 0.78) 0, rgba(167, 139, 250, 0.58) 18px, rgba(167, 139, 250, 0.22) 50px, rgba(167, 139, 250, 0) 90px);
-    }
-
-    .user-flow-screen-mask[data-mode="replaying"]
-      .user-flow-screen-mask-layer[data-layer="primary"] {
-      background-image:
-        linear-gradient(to bottom, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 18px, rgba(0, 168, 120, 0.22) 50px, rgba(0, 168, 120, 0) 90px),
-        linear-gradient(to top, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 18px, rgba(0, 168, 120, 0.22) 50px, rgba(0, 168, 120, 0) 90px),
-        linear-gradient(to right, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 18px, rgba(0, 168, 120, 0.22) 50px, rgba(0, 168, 120, 0) 90px),
-        linear-gradient(to left, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 18px, rgba(0, 168, 120, 0.22) 50px, rgba(0, 168, 120, 0) 90px);
-    }
-
-    .user-flow-screen-mask[data-mode="replaying"]
-      .user-flow-screen-mask-layer[data-layer="secondary"] {
-      background-image:
-        linear-gradient(to bottom, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 18px, rgba(0, 160, 184, 0.22) 50px, rgba(0, 160, 184, 0) 90px),
-        linear-gradient(to top, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 18px, rgba(0, 160, 184, 0.22) 50px, rgba(0, 160, 184, 0) 90px),
-        linear-gradient(to left, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 18px, rgba(0, 160, 184, 0.22) 50px, rgba(0, 160, 184, 0) 90px),
-        linear-gradient(to right, rgba(0, 160, 184, 0.78) 0, rgba(0, 160, 184, 0.58) 18px, rgba(0, 160, 184, 0.22) 50px, rgba(0, 160, 184, 0) 90px);
-    }
-
-    .user-flow-screen-mask.is-visible {
-      opacity: 1;
-    }
-
-    .user-flow-screen-mask.is-visible
-      .user-flow-screen-mask-layer[data-layer="primary"] {
-      animation:
-        user-flow-screen-mask-orbit-clockwise 4000ms linear infinite,
-        user-flow-screen-mask-breathe-primary 2700ms ease-in-out infinite alternate,
-        user-flow-screen-mask-pulse 800ms ease-in-out infinite alternate;
-    }
-
-    .user-flow-screen-mask.is-visible
-      .user-flow-screen-mask-layer[data-layer="secondary"] {
-      animation:
-        user-flow-screen-mask-orbit-counterclockwise 7000ms linear infinite,
-        user-flow-screen-mask-breathe-secondary 4600ms ease-in-out -1200ms infinite alternate,
-        user-flow-screen-mask-pulse 1300ms ease-in-out -400ms infinite alternate;
-    }
-
-    @keyframes user-flow-screen-mask-pulse {
-      from {
-        opacity: 0.35;
-      }
-
-      to {
-        opacity: 1;
-      }
-    }
-
-    @keyframes user-flow-screen-mask-orbit-clockwise {
-      0%,
-      100% {
-        -webkit-mask-position: 0% 0%;
-        mask-position: 0% 0%;
-      }
-
-      25% {
-        -webkit-mask-position: 100% 0%;
-        mask-position: 100% 0%;
-      }
-
-      50% {
-        -webkit-mask-position: 100% 100%;
-        mask-position: 100% 100%;
-      }
-
-      75% {
-        -webkit-mask-position: 0% 100%;
-        mask-position: 0% 100%;
-      }
-    }
-
-    @keyframes user-flow-screen-mask-orbit-counterclockwise {
-      0%,
-      100% {
-        -webkit-mask-position: 100% 100%;
-        mask-position: 100% 100%;
-      }
-
-      25% {
-        -webkit-mask-position: 100% 0%;
-        mask-position: 100% 0%;
-      }
-
-      50% {
-        -webkit-mask-position: 0% 0%;
-        mask-position: 0% 0%;
-      }
-
-      75% {
-        -webkit-mask-position: 0% 100%;
-        mask-position: 0% 100%;
-      }
-    }
-
-    @keyframes user-flow-screen-mask-breathe-primary {
-      from {
-        -webkit-mask-size: 125% 125%;
-        mask-size: 125% 125%;
-      }
-
-      to {
-        -webkit-mask-size: 175% 175%;
-        mask-size: 175% 175%;
-      }
-    }
-
-    @keyframes user-flow-screen-mask-breathe-secondary {
-      from {
-        -webkit-mask-size: 135% 135%;
-        mask-size: 135% 135%;
-      }
-
-      to {
-        -webkit-mask-size: 190% 190%;
-        mask-size: 190% 190%;
-      }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .user-flow-screen-mask.is-visible {
-        animation: none;
-        opacity: 0.82;
-      }
-
-      .user-flow-screen-mask.is-visible .user-flow-screen-mask-layer {
-        animation: none;
-        -webkit-mask-position: 50% 50%;
-        mask-position: 50% 50%;
-      }
-    }
-
-    @keyframes user-flow-replay-spin {
-      to {
-        transform: rotate(360deg);
-      }
-    }
-  `;
 
   const state = {
     events: [],
@@ -437,16 +62,8 @@
     responseError: "",
     replayProgressTimer: 0,
     lastError: "",
-    scrollLastAt: new Map(),
-    scrollTimers: new Map(),
     clients: new Map(),
     notifyTimer: 0,
-    runtimeStatus: null,
-    runtimeStatusFrame: 0,
-    runtimeStatusTimer: 0,
-    screenMask: null,
-    screenMaskFrame: 0,
-    screenMaskTimer: 0,
     pendingRequests: new Map(),
     requestWaiters: new Set(),
     replayRequestRepeatCounts: new Map(),
@@ -455,6 +72,39 @@
   const dirtySessionIds = new Set();
   const deletedSessionIds = new Set();
   let pendingRecordingSync = false;
+  const recorderVisuals = window.UserFlowRecorderVisuals?.create({
+    ignoreAttribute: IGNORE_ATTRIBUTE,
+    isRecording: () => state.isRecording,
+    isReplaying: () => state.isReplaying,
+  });
+  const ensureVisualStyles = recorderVisuals?.ensureStyles || (() => {});
+  const hideRuntimeStatus = recorderVisuals?.hideRuntimeStatus || (() => {});
+  const hideScreenMask = recorderVisuals?.hideScreenMask || (() => {});
+  const showClickPulse = recorderVisuals?.showClickPulse || (() => {});
+  const showRuntimeStatus = recorderVisuals?.showRuntimeStatus || (() => {});
+  const showScreenMask = recorderVisuals?.showScreenMask || (() => {});
+  const recorderEvents = window.UserFlowRecorderEvents?.create({
+    ignoreAttribute: IGNORE_ATTRIBUTE,
+    isRecording: () => state.isRecording,
+    isReplaying: () => state.isReplaying,
+    recordEvent: pushEvent,
+    showClickPulse,
+  });
+
+  if (!recorderEvents) {
+    throw new Error("사용자 행동 녹화 모듈을 찾지 못했습니다.");
+  }
+
+  const {
+    createReplayEvents,
+    handleClick,
+    handleFormChange,
+    handleScroll,
+    playEvent,
+    resetScrollTracking,
+    sleep,
+    waitForRenderFrame,
+  } = recorderEvents;
 
   function getCurrentPage() {
     return `${window.location.pathname}${window.location.search}${window.location.hash}`;
@@ -902,368 +552,7 @@
     return event.origin === window.location.origin;
   }
 
-  function ensureVisualStyles() {
-    if (document.getElementById(VISUAL_STYLE_ID)) {
-      return;
-    }
 
-    const style = document.createElement("style");
-    style.id = VISUAL_STYLE_ID;
-    style.setAttribute(IGNORE_ATTRIBUTE, "true");
-    style.textContent = VISUAL_CSS;
-    (document.head || document.body)?.append(style);
-  }
-
-  function showClickPulse(clientX, clientY) {
-    if (!document.body) {
-      return;
-    }
-
-    const pulse = document.createElement("span");
-    pulse.className = "user-flow-click-pulse";
-    pulse.setAttribute(IGNORE_ATTRIBUTE, "true");
-    pulse.style.left = `${Math.round(clientX)}px`;
-    pulse.style.top = `${Math.round(clientY)}px`;
-    document.body.append(pulse);
-
-    window.setTimeout(() => pulse.remove(), CLICK_PULSE_MS);
-  }
-
-  function showRuntimeStatus(mode, statusState = "active") {
-    if (!document.body) {
-      return;
-    }
-
-    let status = state.runtimeStatus;
-
-    if (!status || !status.isConnected) {
-      status = document.createElement("div");
-      status.className = "user-flow-runtime-status";
-      status.setAttribute(IGNORE_ATTRIBUTE, "true");
-      status.setAttribute("role", "status");
-      status.setAttribute("aria-live", "polite");
-      status.innerHTML = `
-        <span class="user-flow-runtime-icon" aria-hidden="true"></span>
-        <span data-user-flow-runtime-label></span>
-      `;
-      document.body.append(status);
-      state.runtimeStatus = status;
-    }
-
-    status.dataset.mode = mode;
-    status.dataset.state = statusState;
-    const isActive = statusState === "active";
-    const isRecordingMode = mode === "recording";
-    const label = isRecordingMode
-      ? isActive
-        ? "녹화 중"
-        : "녹화 중지됨"
-      : isActive
-        ? "재생 중"
-        : statusState === "completed"
-          ? "재생 완료"
-          : "재생 중지됨";
-
-    status.title = label;
-    status.setAttribute("aria-label", status.title);
-    status.querySelector("[data-user-flow-runtime-label]").textContent = label;
-    status.hidden = false;
-
-    window.clearTimeout(state.runtimeStatusTimer);
-    window.cancelAnimationFrame(state.runtimeStatusFrame);
-    state.runtimeStatusFrame = window.requestAnimationFrame(() => {
-      state.runtimeStatusFrame = 0;
-      status.classList.add("is-visible");
-    });
-  }
-
-  function hideRuntimeStatus() {
-    const status = state.runtimeStatus;
-
-    if (!status) {
-      return;
-    }
-
-    window.cancelAnimationFrame(state.runtimeStatusFrame);
-    state.runtimeStatusFrame = 0;
-    window.clearTimeout(state.runtimeStatusTimer);
-    status.classList.remove("is-visible");
-    state.runtimeStatusTimer = window.setTimeout(() => {
-      if (!state.isRecording && !state.isReplaying) {
-        status.hidden = true;
-      }
-    }, 140);
-  }
-
-  function showScreenMask(mode) {
-    if (!document.body) {
-      return;
-    }
-
-    let mask = state.screenMask;
-
-    if (!mask || !mask.isConnected) {
-      mask = document.createElement("div");
-      mask.className = "user-flow-screen-mask";
-      mask.setAttribute(IGNORE_ATTRIBUTE, "true");
-      mask.setAttribute("aria-hidden", "true");
-
-      ["primary", "secondary"].forEach((layerName) => {
-        const layer = document.createElement("span");
-        layer.className = "user-flow-screen-mask-layer";
-        layer.dataset.layer = layerName;
-        layer.setAttribute(IGNORE_ATTRIBUTE, "true");
-        mask.append(layer);
-      });
-
-      document.body.append(mask);
-      state.screenMask = mask;
-    }
-
-    mask.dataset.mode = mode;
-    window.clearTimeout(state.screenMaskTimer);
-    mask.hidden = false;
-    window.cancelAnimationFrame(state.screenMaskFrame);
-    state.screenMaskFrame = window.requestAnimationFrame(() => {
-      state.screenMaskFrame = 0;
-
-      if (
-        (mode === "recording" && state.isRecording) ||
-        (mode === "replaying" && state.isReplaying)
-      ) {
-        mask.classList.add("is-visible");
-      }
-    });
-  }
-
-  function hideScreenMask() {
-    const mask = state.screenMask;
-
-    if (!mask) {
-      return;
-    }
-
-    window.cancelAnimationFrame(state.screenMaskFrame);
-    state.screenMaskFrame = 0;
-    window.clearTimeout(state.screenMaskTimer);
-    mask.classList.remove("is-visible");
-    state.screenMaskTimer = window.setTimeout(() => {
-      if (!state.isRecording && !state.isReplaying) {
-        mask.classList.remove("is-visible");
-        mask.hidden = true;
-      }
-    }, SCREEN_MASK_TRANSITION_MS);
-  }
-
-  function cssEscape(value) {
-    if (window.CSS && typeof window.CSS.escape === "function") {
-      return window.CSS.escape(value);
-    }
-
-    return String(value).replace(/["\\#.;:[\],>+~*^$|=()\s]/g, "\\$&");
-  }
-
-  function cssStringEscape(value) {
-    return String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  }
-
-  function isIgnoredTarget(target) {
-    return Boolean(target?.closest?.(`[${IGNORE_ATTRIBUTE}]`));
-  }
-
-  function clamp(value, minimum, maximum) {
-    return Math.min(maximum, Math.max(minimum, value));
-  }
-
-  function getPercent(position, maximum, fallback = 0) {
-    const numericPosition = Number(position);
-    const numericMaximum = Number(maximum);
-
-    if (!Number.isFinite(numericPosition) || !Number.isFinite(numericMaximum)) {
-      return fallback;
-    }
-
-    if (numericMaximum <= 0) {
-      return fallback;
-    }
-
-    return Number(
-      (clamp(numericPosition / numericMaximum, 0, 1) * 100).toFixed(
-        PERCENT_PRECISION,
-      ),
-    );
-  }
-
-  function getPositionFromPercent(percent, maximum, fallback = 0) {
-    const numericPercent = Number(percent);
-    const numericMaximum = Number(maximum);
-
-    if (Number.isFinite(numericPercent) && Number.isFinite(numericMaximum)) {
-      return Math.max(0, numericMaximum) * (clamp(numericPercent, 0, 100) / 100);
-    }
-
-    const numericFallback = Number(fallback);
-    return Number.isFinite(numericFallback) ? Math.max(0, numericFallback) : 0;
-  }
-
-  function getWindowScrollBounds() {
-    const scrollingElement = document.scrollingElement || document.documentElement;
-    const viewportWidth = window.innerWidth || scrollingElement?.clientWidth || 0;
-    const viewportHeight = window.innerHeight || scrollingElement?.clientHeight || 0;
-
-    return {
-      maxX: Math.max(0, (scrollingElement?.scrollWidth || 0) - viewportWidth),
-      maxY: Math.max(0, (scrollingElement?.scrollHeight || 0) - viewportHeight),
-    };
-  }
-
-  function getElementScrollBounds(element) {
-    return {
-      maxLeft: Math.max(0, element.scrollWidth - element.clientWidth),
-      maxTop: Math.max(0, element.scrollHeight - element.clientHeight),
-    };
-  }
-
-  function getStableSelector(element) {
-    if (!element || element === document) {
-      return "";
-    }
-
-    if (element === window || element === document.documentElement || element === document.body) {
-      return "__window__";
-    }
-
-    if (element.id) {
-      const idSelector = `#${cssEscape(element.id)}`;
-
-      if (document.querySelectorAll(idSelector).length === 1) {
-        return idSelector;
-      }
-    }
-
-    for (const attribute of ["data-testid", "data-test", "data-cy", "name"]) {
-      const value = element.getAttribute(attribute);
-
-      if (!value) {
-        continue;
-      }
-
-      const selector = `${element.tagName.toLowerCase()}[${attribute}="${cssStringEscape(value)}"]`;
-
-      if (document.querySelectorAll(selector).length === 1) {
-        return selector;
-      }
-    }
-
-    const parts = [];
-    let current = element;
-
-    while (current && current.nodeType === Node.ELEMENT_NODE && current !== document.body) {
-      const tagName = current.tagName.toLowerCase();
-      const siblings = Array.from(current.parentElement?.children || []).filter(
-        (sibling) => sibling.tagName === current.tagName,
-      );
-      parts.unshift(`${tagName}:nth-of-type(${siblings.indexOf(current) + 1})`);
-      current = current.parentElement;
-    }
-
-    return parts.length ? `body > ${parts.join(" > ")}` : "body";
-  }
-
-  function isFormElement(element) {
-    return (
-      element instanceof HTMLInputElement ||
-      element instanceof HTMLTextAreaElement ||
-      element instanceof HTMLSelectElement ||
-      element.isContentEditable
-    );
-  }
-
-  function isSensitiveInput(element) {
-    if (!(element instanceof HTMLInputElement)) {
-      return false;
-    }
-
-    return (
-      element.type === "password" ||
-      SENSITIVE_AUTOCOMPLETE.has((element.autocomplete || "").toLowerCase())
-    );
-  }
-
-  function getFormValue(element) {
-    if (isSensitiveInput(element)) {
-      return { redacted: true };
-    }
-
-    if (element instanceof HTMLInputElement) {
-      if (element.type === "file") {
-        return { unsupported: true };
-      }
-
-      if (element.type === "checkbox" || element.type === "radio") {
-        return {
-          checked: element.checked,
-          value: element.value,
-        };
-      }
-
-      return { value: element.value };
-    }
-
-    if (element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
-      return { value: element.value };
-    }
-
-    if (element.isContentEditable) {
-      return { text: element.textContent || "" };
-    }
-
-    return {};
-  }
-
-  function setNativeValue(element, property, value) {
-    let prototype = element;
-
-    while (prototype) {
-      const descriptor = Object.getOwnPropertyDescriptor(prototype, property);
-
-      if (descriptor?.set) {
-        descriptor.set.call(element, value);
-        return;
-      }
-
-      prototype = Object.getPrototypeOf(prototype);
-    }
-
-    element[property] = value;
-  }
-
-  function applyFormValue(element, detail) {
-    if (detail?.redacted || detail?.unsupported) {
-      return false;
-    }
-
-    if (element instanceof HTMLInputElement) {
-      if (element.type === "checkbox" || element.type === "radio") {
-        setNativeValue(element, "checked", Boolean(detail.checked));
-      } else {
-        setNativeValue(element, "value", detail.value ?? "");
-      }
-      return true;
-    }
-
-    if (element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
-      setNativeValue(element, "value", detail.value ?? "");
-      return true;
-    }
-
-    if (element.isContentEditable) {
-      element.textContent = detail.text ?? "";
-      return true;
-    }
-
-    return false;
-  }
 
   function pushEvent(recordedEvent, { persist = true } = {}) {
     if (!state.isRecording || state.isReplaying) {
@@ -1291,131 +580,6 @@
     notifyClients();
   }
 
-  function handleClick(event) {
-    const target = event.target instanceof Element ? event.target : event.target?.parentElement;
-
-    if (!target || isIgnoredTarget(target)) {
-      return;
-    }
-
-    if (state.isRecording && !state.isReplaying) {
-      showClickPulse(event.clientX, event.clientY);
-    }
-
-    const targetRect = target.getBoundingClientRect();
-    const pointerType =
-      event.pointerType || (event.sourceCapabilities?.firesTouchEvents ? "touch" : "mouse");
-
-    pushEvent({
-      type: "click",
-      selector: getStableSelector(target),
-      button: event.button,
-      pointer: {
-        xPercent: getPercent(event.clientX - targetRect.left, targetRect.width, 50),
-        yPercent: getPercent(event.clientY - targetRect.top, targetRect.height, 50),
-        pointerType,
-      },
-    });
-  }
-
-  function handleFormChange(event) {
-    const target = event.target instanceof Element ? event.target : event.target?.parentElement;
-
-    if (!target || isIgnoredTarget(target) || !isFormElement(target)) {
-      return;
-    }
-
-    const detail = getFormValue(target);
-
-    if (detail.unsupported) {
-      return;
-    }
-
-    pushEvent({
-      type: event.type,
-      selector: getStableSelector(target),
-      detail,
-    });
-  }
-
-  function normalizeScrollTarget(target) {
-    if (
-      target === document ||
-      target === document.documentElement ||
-      target === document.body ||
-      target === window
-    ) {
-      return window;
-    }
-
-    return target;
-  }
-
-  function getScrollEvent(target) {
-    const normalizedTarget = normalizeScrollTarget(target);
-
-    if (normalizedTarget === window) {
-      const { maxX, maxY } = getWindowScrollBounds();
-
-      return {
-        type: "scroll",
-        selector: "__window__",
-        scrollXPercent: getPercent(window.scrollX, maxX),
-        scrollYPercent: getPercent(window.scrollY, maxY),
-      };
-    }
-
-    const { maxLeft, maxTop } = getElementScrollBounds(normalizedTarget);
-
-    return {
-      type: "scroll",
-      selector: getStableSelector(normalizedTarget),
-      scrollLeftPercent: getPercent(normalizedTarget.scrollLeft, maxLeft),
-      scrollTopPercent: getPercent(normalizedTarget.scrollTop, maxTop),
-    };
-  }
-
-  function handleScroll(event) {
-    if (!state.isRecording || state.isReplaying) {
-      return;
-    }
-
-    const target = normalizeScrollTarget(event.target);
-    const scrollEvent = getScrollEvent(target);
-    const key = scrollEvent.selector;
-    const now = performance.now();
-    const lastAt = state.scrollLastAt.get(key) || 0;
-
-    if (now - lastAt >= SCROLL_SAMPLE_MS) {
-      state.scrollLastAt.set(key, now);
-      pushEvent(scrollEvent, { persist: false });
-    }
-
-    window.clearTimeout(state.scrollTimers.get(key));
-    state.scrollTimers.set(
-      key,
-      window.setTimeout(() => {
-        state.scrollLastAt.set(key, performance.now());
-        pushEvent(getScrollEvent(target));
-      }, SCROLL_SAMPLE_MS),
-    );
-  }
-
-  function findTarget(selector) {
-    if (selector === "__window__") {
-      return window;
-    }
-
-    try {
-      return document.querySelector(selector);
-    } catch (error) {
-      return null;
-    }
-  }
-
-  function sleep(ms) {
-    return new Promise((resolve) => window.setTimeout(resolve, Math.max(0, ms)));
-  }
 
   function getPendingRequestCount() {
     let requestCount = 0;
@@ -1570,183 +734,18 @@
     return true;
   }
 
-  function getAutomaticRequestId(type, method, requestUrl) {
-    const normalizedMethod = String(method || "GET").trim().toUpperCase() || "GET";
-    let normalizedUrl = String(requestUrl || "").trim();
-
-    try {
-      const parsedUrl = new URL(normalizedUrl, window.location.href);
-      normalizedUrl = `${parsedUrl.origin}${parsedUrl.pathname}`;
-    } catch (error) {
-      normalizedUrl ||= "unknown";
-    }
-
-    return `${type}:${normalizedMethod}:${normalizedUrl}`;
-  }
-
-  function getFetchRequestInfo(input, init) {
-    const isRequest =
-      typeof window.Request === "function" && input instanceof window.Request;
-
-    return {
-      method: init?.method || (isRequest ? input.method : "GET"),
-      url: isRequest ? input.url : input,
-    };
-  }
-
-  function getRejectedRequestInfo(error) {
-    return {
-      message: error?.message || "통신 요청에 실패했습니다.",
-      ok: false,
-      status: 0,
-    };
-  }
-
-  function installFetchRequestTracking() {
-    const originalFetch = window.fetch;
-
-    if (
-      typeof originalFetch !== "function" ||
-      originalFetch[AUTO_REQUEST_TRACKING_MARKER]
-    ) {
-      return;
-    }
-
-    function trackedFetch(input, init) {
-      const requestInfo = getFetchRequestInfo(input, init);
-      const requestId = requestStart(
-        getAutomaticRequestId("fetch", requestInfo.method, requestInfo.url),
-      );
-      let fetchPromise;
-
-      try {
-        fetchPromise = Reflect.apply(originalFetch, window, [input, init]);
-      } catch (error) {
-        requestEnd(requestId, getRejectedRequestInfo(error));
-        throw error;
-      }
-
-      return Promise.resolve(fetchPromise).then(
-        (response) => {
-          requestEnd(requestId, response);
-          return response;
-        },
-        (error) => {
-          requestEnd(requestId, getRejectedRequestInfo(error));
-          throw error;
-        },
-      );
-    }
-
-    Object.defineProperty(trackedFetch, AUTO_REQUEST_TRACKING_MARKER, {
-      value: true,
-    });
-    window.fetch = trackedFetch;
-  }
-
-  function getXhrResponseInfo(xhr, eventType) {
-    if (["abort", "error", "timeout"].includes(eventType)) {
-      return {
-        message:
-          eventType === "abort"
-            ? "통신 요청이 취소되었습니다."
-            : eventType === "timeout"
-              ? "통신 요청 시간이 초과되었습니다."
-              : "통신 요청에 실패했습니다.",
-        ok: false,
-        status: 0,
-      };
-    }
-
-    try {
-      return {
-        status: xhr.status,
-        statusText: xhr.statusText,
-      };
-    } catch (error) {
-      return { status: 0 };
-    }
-  }
-
-  function installXhrRequestTracking() {
-    const XhrConstructor = window.XMLHttpRequest;
-
-    if (typeof XhrConstructor !== "function") {
-      return;
-    }
-
-    const xhrPrototype = XhrConstructor.prototype;
-    const originalOpen = xhrPrototype.open;
-    const originalSend = xhrPrototype.send;
-
-    if (
-      typeof originalOpen !== "function" ||
-      typeof originalSend !== "function" ||
-      originalSend[AUTO_REQUEST_TRACKING_MARKER]
-    ) {
-      return;
-    }
-
-    function trackedOpen(method, requestUrl, ...rest) {
-      this[XHR_REQUEST_META] = {
-        method: method || "GET",
-        url: requestUrl,
-      };
-      return Reflect.apply(originalOpen, this, [method, requestUrl, ...rest]);
-    }
-
-    function trackedSend(...args) {
-      const requestMeta = this[XHR_REQUEST_META] || {};
-      const requestId = requestStart(
-        getAutomaticRequestId("xhr", requestMeta.method, requestMeta.url),
-      );
-      const xhr = this;
-      const completionEvents = ["load", "error", "abort", "timeout", "loadend"];
-      let completed = false;
-
-      function finish(event) {
-        if (completed) {
-          return;
-        }
-
-        completed = true;
-        completionEvents.forEach((eventName) =>
-          xhr.removeEventListener(eventName, finish),
-        );
-        requestEnd(requestId, getXhrResponseInfo(xhr, event?.type || "error"));
-      }
-
-      completionEvents.forEach((eventName) =>
-        xhr.addEventListener(eventName, finish),
-      );
-
-      try {
-        return Reflect.apply(originalSend, xhr, args);
-      } catch (error) {
-        finish({ type: "error" });
-        throw error;
-      }
-    }
-
-    Object.defineProperty(trackedSend, AUTO_REQUEST_TRACKING_MARKER, {
-      value: true,
-    });
-    xhrPrototype.open = trackedOpen;
-    xhrPrototype.send = trackedSend;
-  }
-
   function installAutomaticRequestTracking() {
-    try {
-      installFetchRequestTracking();
-    } catch (error) {
-      console.warn("UserFlowRecorder: fetch 통신 감지를 설치하지 못했습니다.", error);
+    const tracker = window.UserFlowRequestTracker?.create({
+      requestEnd,
+      requestStart,
+    });
+
+    if (!tracker) {
+      console.warn("UserFlowRecorder: 통신 감지 모듈을 찾지 못했습니다.");
+      return;
     }
 
-    try {
-      installXhrRequestTracking();
-    } catch (error) {
-      console.warn("UserFlowRecorder: Ajax 통신 감지를 설치하지 못했습니다.", error);
-    }
+    tracker.install();
   }
 
   function waitForRequests(options = {}) {
@@ -1799,24 +798,6 @@
     });
   }
 
-  function waitForRenderFrame() {
-    return new Promise((resolve) => {
-      let completed = false;
-      const fallbackTimer = window.setTimeout(finish, 100);
-
-      function finish() {
-        if (completed) {
-          return;
-        }
-
-        completed = true;
-        window.clearTimeout(fallbackTimer);
-        resolve();
-      }
-
-      window.requestAnimationFrame(finish);
-    });
-  }
 
   async function waitForReplayRequests(replayRunId) {
     if (!hasBlockingRequests()) {
@@ -1856,257 +837,6 @@
     return true;
   }
 
-  async function waitForTarget(selector) {
-    const startedAt = performance.now();
-
-    while (performance.now() - startedAt < TARGET_WAIT_MS) {
-      const target = findTarget(selector);
-
-      if (target) {
-        return target;
-      }
-
-      await sleep(50);
-    }
-
-    return null;
-  }
-
-  async function playScroll(recordedEvent) {
-    const target = await waitForTarget(recordedEvent.selector);
-
-    if (target === window) {
-      const { maxX, maxY } = getWindowScrollBounds();
-      const left = getPositionFromPercent(
-        recordedEvent.scrollXPercent,
-        maxX,
-        recordedEvent.scrollX,
-      );
-      const top = getPositionFromPercent(
-        recordedEvent.scrollYPercent,
-        maxY,
-        recordedEvent.scrollY,
-      );
-
-      try {
-        window.scrollTo({
-          left,
-          top,
-          behavior: "smooth",
-        });
-      } catch (error) {
-        window.scrollTo(left, top);
-      }
-      return;
-    }
-
-    if (!target) {
-      return;
-    }
-
-    const { maxLeft, maxTop } = getElementScrollBounds(target);
-    const left = getPositionFromPercent(
-      recordedEvent.scrollLeftPercent,
-      maxLeft,
-      recordedEvent.scrollLeft,
-    );
-    const top = getPositionFromPercent(
-      recordedEvent.scrollTopPercent,
-      maxTop,
-      recordedEvent.scrollTop,
-    );
-
-    if (typeof target.scrollTo === "function") {
-      try {
-        target.scrollTo({
-          left,
-          top,
-          behavior: "smooth",
-        });
-        return;
-      } catch (error) {
-        // Fall through for browsers that only support numeric scrollTo arguments.
-      }
-    }
-
-    target.scrollLeft = left;
-    target.scrollTop = top;
-  }
-
-  function playClick(target, recordedEvent) {
-    const pointer = recordedEvent.pointer || {};
-    const targetRect = target.getBoundingClientRect();
-    const clientX = Number.isFinite(Number(pointer.xPercent))
-      ? targetRect.left +
-        getPositionFromPercent(pointer.xPercent, targetRect.width, targetRect.width / 2)
-      : Number.isFinite(Number(pointer.clientX))
-        ? Number(pointer.clientX)
-        : targetRect.left + targetRect.width / 2;
-    const clientY = Number.isFinite(Number(pointer.yPercent))
-      ? targetRect.top +
-        getPositionFromPercent(pointer.yPercent, targetRect.height, targetRect.height / 2)
-      : Number.isFinite(Number(pointer.clientY))
-        ? Number(pointer.clientY)
-        : targetRect.top + targetRect.height / 2;
-    const mouseOptions = {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-      button: recordedEvent.button || 0,
-      clientX,
-      clientY,
-    };
-    const pointerOptions = {
-      ...mouseOptions,
-      isPrimary: true,
-      pointerType: pointer.pointerType || "mouse",
-    };
-
-    showClickPulse(clientX, clientY);
-
-    for (const eventType of ["pointerdown", "mousedown", "pointerup", "mouseup"]) {
-      const isPointerEvent = eventType.startsWith("pointer");
-      const replayEvent =
-        isPointerEvent && typeof window.PointerEvent === "function"
-          ? new window.PointerEvent(eventType, pointerOptions)
-          : new MouseEvent(eventType, isPointerEvent ? pointerOptions : mouseOptions);
-
-      target.dispatchEvent(replayEvent);
-    }
-
-    if (typeof target.click === "function") {
-      target.click();
-    } else {
-      target.dispatchEvent(new MouseEvent("click", mouseOptions));
-    }
-  }
-
-  function playFormChange(target, recordedEvent) {
-    if (!applyFormValue(target, recordedEvent.detail || {})) {
-      return;
-    }
-
-    target.dispatchEvent(
-      new Event(recordedEvent.type, {
-        bubbles: true,
-        cancelable: true,
-      }),
-    );
-  }
-
-  function isCheckableInput(element) {
-    return Boolean(
-      element instanceof HTMLInputElement &&
-        (element.type === "checkbox" || element.type === "radio"),
-    );
-  }
-
-  function createReplayEvents(recordedEvents) {
-    const skippedEventIndexes = new Set();
-
-    return recordedEvents
-      .map((recordedEvent, eventIndex) => {
-        if (skippedEventIndexes.has(eventIndex)) {
-          return null;
-        }
-
-        const replayEvent = {
-          ...recordedEvent,
-          replaySourceEventCount: 1,
-        };
-
-        if (recordedEvent.type !== "click") {
-          return replayEvent;
-        }
-
-        for (
-          let relatedIndex = eventIndex + 1;
-          relatedIndex < recordedEvents.length;
-          relatedIndex += 1
-        ) {
-          const relatedEvent = recordedEvents[relatedIndex];
-          const elapsedMs = Number(relatedEvent.at) - Number(recordedEvent.at);
-
-          if (elapsedMs > CHECKABLE_EVENT_GROUP_MS || relatedEvent.type === "click") {
-            break;
-          }
-
-          if (
-            relatedEvent.selector === recordedEvent.selector &&
-            (relatedEvent.type === "input" || relatedEvent.type === "change") &&
-            typeof relatedEvent.detail?.checked === "boolean"
-          ) {
-            replayEvent.replayChecked = relatedEvent.detail.checked;
-            replayEvent.replaySourceEventCount += 1;
-            skippedEventIndexes.add(relatedIndex);
-          }
-        }
-
-        return replayEvent;
-      })
-      .filter(Boolean);
-  }
-
-  async function playCheckableClick(target, recordedEvent) {
-    const desiredChecked = recordedEvent.replayChecked;
-
-    if (target.type === "radio" && !desiredChecked) {
-      setNativeValue(target, "checked", false);
-      target.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
-      target.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
-      await waitForRenderFrame();
-      return;
-    }
-
-    setNativeValue(target, "checked", !desiredChecked);
-    playClick(target, recordedEvent);
-    await waitForRenderFrame();
-
-    const currentTarget = findTarget(recordedEvent.selector);
-
-    if (!isCheckableInput(currentTarget) || currentTarget.checked === desiredChecked) {
-      return;
-    }
-
-    setNativeValue(currentTarget, "checked", desiredChecked);
-    currentTarget.dispatchEvent(
-      new Event("input", { bubbles: true, composed: true }),
-    );
-    currentTarget.dispatchEvent(
-      new Event("change", { bubbles: true, composed: true }),
-    );
-    await waitForRenderFrame();
-  }
-
-  async function playEvent(recordedEvent) {
-    if (recordedEvent.type === "scroll") {
-      await playScroll(recordedEvent);
-      return;
-    }
-
-    const target = await waitForTarget(recordedEvent.selector);
-
-    if (!target || target === window) {
-      return;
-    }
-
-    if (recordedEvent.type === "click") {
-      if (
-        isCheckableInput(target) &&
-        typeof recordedEvent.replayChecked === "boolean"
-      ) {
-        await playCheckableClick(target, recordedEvent);
-        return;
-      }
-
-      playClick(target, recordedEvent);
-      return;
-    }
-
-    if (recordedEvent.type === "input" || recordedEvent.type === "change") {
-      playFormChange(target, recordedEvent);
-    }
-  }
 
   function createUniqueSessionId(recordedAt = Date.now(), reservedIds) {
     const ids =
@@ -2335,9 +1065,7 @@
     state.lastError = "";
     state.stoppedRecordingSourceSessionId = "";
     state.stoppedRecordingBackupSessionId = "";
-    state.scrollLastAt.clear();
-    state.scrollTimers.forEach((timer) => window.clearTimeout(timer));
-    state.scrollTimers.clear();
+    resetScrollTracking();
     dirtySessionIds.add(session.id);
 
     showScreenMask("recording");
@@ -2391,9 +1119,7 @@
     state.resumableRecordingElapsedMs = 0;
     state.stoppedRecordingSourceSessionId = "";
     state.stoppedRecordingBackupSessionId = "";
-    state.scrollLastAt.clear();
-    state.scrollTimers.forEach((timer) => window.clearTimeout(timer));
-    state.scrollTimers.clear();
+    resetScrollTracking();
     dirtySessionIds.add(session.id);
 
     if (!persistRecording()) {
@@ -2466,8 +1192,7 @@
 
     hideScreenMask();
     showRuntimeStatus("recording", "stopped");
-    state.scrollTimers.forEach((timer) => window.clearTimeout(timer));
-    state.scrollTimers.clear();
+    resetScrollTracking({ preserveLastSample: true });
 
     if (!persistRecording()) {
       state.sessions = previousSessions;

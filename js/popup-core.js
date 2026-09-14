@@ -647,12 +647,28 @@
         "UserFlowArchive",
       ),
       loadFeatureScript(
-        "user-flow-recorder.js",
-        "userFlowRecorderSrc",
-        "UserFlowRecorder",
+        "user-flow-request-tracker.js",
+        "userFlowRequestTrackerSrc",
+        "UserFlowRequestTracker",
+      ),
+      loadFeatureScript(
+        "user-flow-recorder-visuals.js",
+        "userFlowRecorderVisualsSrc",
+        "UserFlowRecorderVisuals",
+      ),
+      loadFeatureScript(
+        "user-flow-recorder-events.js",
+        "userFlowRecorderEventsSrc",
+        "UserFlowRecorderEvents",
       ),
     ])
-      .then(([, recorder]) => recorder)
+      .then(() =>
+        loadFeatureScript(
+          "user-flow-recorder.js",
+          "userFlowRecorderSrc",
+          "UserFlowRecorder",
+        ),
+      )
       .catch((error) => {
         console.error(error);
         return null;
