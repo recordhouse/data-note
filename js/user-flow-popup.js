@@ -7,6 +7,7 @@
 
   const MESSAGE_USER_FLOW_COMMAND = "response-mapping-user-flow-command";
   const MESSAGE_USER_FLOW_STATE = "response-mapping-user-flow-state";
+  const MESSAGE_UPDATE_RECORDING_PROGRESS = "recording-progress";
   const POPUP_TAB_CHANGE_EVENT = "response-mapping-popup-tab-change";
   const PARENT_READY_EVENT = "response-mapping-popup-parent-ready";
   const PENDING_REPLAY_STORAGE_KEY =
@@ -764,7 +765,6 @@
         name: session.name || "",
         titlePrefix: session.titlePrefix || "",
         recordedAt: session.recordedAt,
-        startPage: session.startPage || "",
       })),
     });
   }
@@ -785,33 +785,6 @@
         flowState.replaySessionId === session.id,
       );
     });
-  }
-
-  function isActiveRecordingSessionListStable(
-    sessionList,
-    visibleSessions,
-    activeRecordingSessionId,
-  ) {
-    if (!activeRecordingSessionId) {
-      return false;
-    }
-
-    const renderedSessions = Array.from(sessionList.children).filter(
-      (element) => element.dataset.userFlowSessionId,
-    );
-
-    return (
-      renderedSessions.length === visibleSessions.length &&
-      renderedSessions.every(
-        (element, index) =>
-          element.dataset.userFlowSessionId === visibleSessions[index]?.id,
-      ) &&
-      renderedSessions.some(
-        (element) =>
-          element.dataset.userFlowSessionId === activeRecordingSessionId &&
-          element.dataset.state === "recording",
-      )
-    );
   }
 
   function renderUserFlowView() {
@@ -1117,19 +1090,6 @@
         addedBackupSessionId,
       );
       animateUserFlowSessionAddition(addedRecordingSessionId);
-      return;
-    }
-
-    if (
-      flowState.isRecording &&
-      isActiveRecordingSessionListStable(
-        sessionList,
-        visibleSessions,
-        flowState.activeRecordingSessionId,
-      )
-    ) {
-      renderedUserFlowSessionSignature = sessionSignature;
-      updateUserFlowSessionProgress(flowState, sessions);
       return;
     }
 
@@ -2459,7 +2419,24 @@
         markReplayNavigationParentReady();
       }
 
-      renderUserFlowState(event.data.state || {});
+      const nextFlowState = event.data.state || {};
+      const isRecordingProgressUpdate =
+        event.data.updateKind === MESSAGE_UPDATE_RECORDING_PROGRESS &&
+        currentUserFlowState.isRecording &&
+        nextFlowState.isRecording &&
+        currentUserFlowState.activeRecordingSessionId ===
+          nextFlowState.activeRecordingSessionId;
+
+      if (isRecordingProgressUpdate) {
+        currentUserFlowState = nextFlowState;
+        updateUserFlowSessionProgress(
+          nextFlowState,
+          Array.isArray(nextFlowState.sessions) ? nextFlowState.sessions : [],
+        );
+        return;
+      }
+
+      renderUserFlowState(nextFlowState);
     }
   }
 

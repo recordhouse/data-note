@@ -15,6 +15,7 @@
   const PENDING_REPLAY_MAX_AGE_MS = 60 * 1000;
   const MESSAGE_COMMAND = "response-mapping-user-flow-command";
   const MESSAGE_STATE = "response-mapping-user-flow-state";
+  const MESSAGE_UPDATE_RECORDING_PROGRESS = "recording-progress";
   const IGNORE_ATTRIBUTE = "data-user-flow-ignore";
   const VISUAL_STYLE_ID = "user-flow-recorder-visual-style";
   const CLICK_PULSE_MS = 420;
@@ -830,7 +831,7 @@
     };
   }
 
-  function sendState(targetWindow, targetOrigin) {
+  function sendState(targetWindow, targetOrigin, updateKind = "") {
     if (!targetWindow || targetWindow.closed) {
       return false;
     }
@@ -839,6 +840,7 @@
       targetWindow.postMessage(
         {
           type: MESSAGE_STATE,
+          updateKind,
           state: getPublicState(),
         },
         targetOrigin,
@@ -849,7 +851,7 @@
     }
   }
 
-  function notifyClients({ immediate = false } = {}) {
+  function notifyClients({ immediate = false, updateKind = "" } = {}) {
     if (!immediate) {
       if (state.notifyTimer) {
         return;
@@ -857,7 +859,7 @@
 
       state.notifyTimer = window.setTimeout(() => {
         state.notifyTimer = 0;
-        notifyClients({ immediate: true });
+        notifyClients({ immediate: true, updateKind });
       }, STATE_NOTIFY_MS);
       return;
     }
@@ -866,7 +868,7 @@
     state.notifyTimer = 0;
 
     state.clients.forEach((origin, client) => {
-      if (!sendState(client, origin)) {
+      if (!sendState(client, origin, updateKind)) {
         state.clients.delete(client);
       }
     });
@@ -1283,12 +1285,25 @@
       ...recordedEvent,
     });
     dirtySessionIds.add(state.currentSessionId);
+    const sessionIdsBeforePersist = state.sessions.map((session) => session.id);
+    let recordingPersisted = true;
 
     if (persist) {
-      persistRecording();
+      recordingPersisted = persistRecording();
     }
 
-    notifyClients();
+    const sessionStructureUnchanged =
+      sessionIdsBeforePersist.length === state.sessions.length &&
+      sessionIdsBeforePersist.every(
+        (sessionId, index) => sessionId === state.sessions[index]?.id,
+      );
+
+    notifyClients({
+      updateKind:
+        recordingPersisted && sessionStructureUnchanged
+          ? MESSAGE_UPDATE_RECORDING_PROGRESS
+          : "",
+    });
   }
 
   function handleClick(event) {
