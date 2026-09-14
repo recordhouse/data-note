@@ -664,16 +664,28 @@
   }
 
   function formatUserFlowRecordedAt(recordedAt) {
-    return recordedAt
-      ? new Date(recordedAt).toLocaleString("ko-KR", {
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        })
-      : "녹화 일시 없음";
+    if (!recordedAt) {
+      return "녹화 일시 없음";
+    }
+
+    const date = new Date(recordedAt);
+
+    if (Number.isNaN(date.getTime())) {
+      return "녹화 일시 없음";
+    }
+
+    const dateText = [
+      String(date.getFullYear()).slice(-2),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0"),
+    ].join(".");
+    const timeText = [
+      String(date.getHours()).padStart(2, "0"),
+      String(date.getMinutes()).padStart(2, "0"),
+      String(date.getSeconds()).padStart(2, "0"),
+    ].join(":");
+
+    return `${dateText}. ${timeText}`;
   }
 
   function formatUserFlowSessionTitle(session, recordedAt) {
