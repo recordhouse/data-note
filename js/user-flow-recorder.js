@@ -425,6 +425,7 @@
     replayRequestWaitStartedAt: 0,
     replayCompletedEventCount: 0,
     resumableRecordingSessionId: "",
+    resumableRecordingElapsedMs: 0,
     stoppedRecordingSourceSessionId: "",
     stoppedRecordingBackupSessionId: "",
     responseError: "",
@@ -654,6 +655,9 @@
       !sessionIds.has(state.resumableRecordingSessionId)
     ) {
       state.resumableRecordingSessionId = "";
+      state.resumableRecordingElapsedMs = 0;
+    } else if (!state.resumableRecordingSessionId) {
+      state.resumableRecordingElapsedMs = 0;
     }
 
     if (
@@ -2057,6 +2061,7 @@
       recordedAt: state.recordedAt,
       sessions: state.sessions,
       resumableRecordingSessionId: state.resumableRecordingSessionId,
+      resumableRecordingElapsedMs: state.resumableRecordingElapsedMs,
       stoppedRecordingSourceSessionId: state.stoppedRecordingSourceSessionId,
       stoppedRecordingBackupSessionId: state.stoppedRecordingBackupSessionId,
     };
@@ -2068,6 +2073,7 @@
     state.events = importedSessions[0].events;
     state.recordedAt = importedSessions[0].recordedAt;
     state.resumableRecordingSessionId = "";
+    state.resumableRecordingElapsedMs = 0;
     state.stoppedRecordingSourceSessionId = "";
     state.stoppedRecordingBackupSessionId = "";
     importedSessions.forEach((session) => dirtySessionIds.add(session.id));
@@ -2079,6 +2085,8 @@
       state.recordedAt = previousState.recordedAt;
       state.resumableRecordingSessionId =
         previousState.resumableRecordingSessionId;
+      state.resumableRecordingElapsedMs =
+        previousState.resumableRecordingElapsedMs;
       state.stoppedRecordingSourceSessionId =
         previousState.stoppedRecordingSourceSessionId;
       state.stoppedRecordingBackupSessionId =
@@ -2113,6 +2121,7 @@
 
     if (!sessionId || !session) {
       state.resumableRecordingSessionId = "";
+      state.resumableRecordingElapsedMs = 0;
       state.lastError = "이어서 녹화할 데이터를 찾지 못했습니다.";
       notifyClients({ immediate: true });
       return false;
@@ -2131,7 +2140,12 @@
     state.events = session.events;
     state.recordedAt = resumedAt;
     state.isRecording = true;
-    state.startAt = performance.now() - getDurationMs(session.events);
+    state.startAt =
+      performance.now() -
+      Math.max(
+        getDurationMs(session.events),
+        Number(state.resumableRecordingElapsedMs) || 0,
+      );
     state.responseError = "";
     state.lastError = "";
     state.stoppedRecordingSourceSessionId = "";
@@ -2175,6 +2189,7 @@
       recordedAt: state.recordedAt,
       sessions: state.sessions,
       resumableRecordingSessionId: state.resumableRecordingSessionId,
+      resumableRecordingElapsedMs: state.resumableRecordingElapsedMs,
       stoppedRecordingSourceSessionId: state.stoppedRecordingSourceSessionId,
       stoppedRecordingBackupSessionId: state.stoppedRecordingBackupSessionId,
     };
@@ -2188,6 +2203,7 @@
     state.responseError = "";
     state.lastError = "";
     state.resumableRecordingSessionId = session.id;
+    state.resumableRecordingElapsedMs = 0;
     state.stoppedRecordingSourceSessionId = "";
     state.stoppedRecordingBackupSessionId = "";
     state.scrollLastAt.clear();
@@ -2203,6 +2219,8 @@
       state.recordedAt = previousState.recordedAt;
       state.resumableRecordingSessionId =
         previousState.resumableRecordingSessionId;
+      state.resumableRecordingElapsedMs =
+        previousState.resumableRecordingElapsedMs;
       state.stoppedRecordingSourceSessionId =
         previousState.stoppedRecordingSourceSessionId;
       state.stoppedRecordingBackupSessionId =
@@ -2233,6 +2251,12 @@
       state.stoppedRecordingBackupSessionId;
     const previousDirtySessionIds = new Set(dirtySessionIds);
     const stoppedAt = Date.now();
+    const stoppedRecordingElapsedMs = sourceSession
+      ? Math.max(
+          getDurationMs(sourceSession.events),
+          Math.max(0, Math.round(performance.now() - state.startAt)),
+        )
+      : 0;
     const backupSession =
       sourceSession && state.sessions.length < MAX_SESSIONS
         ? {
@@ -2246,6 +2270,7 @@
 
     state.isRecording = false;
     state.resumableRecordingSessionId = sourceSession?.id || "";
+    state.resumableRecordingElapsedMs = stoppedRecordingElapsedMs;
     state.stoppedRecordingSourceSessionId = sourceSession?.id || "";
     state.stoppedRecordingBackupSessionId = backupSession?.id || "";
 
@@ -2487,6 +2512,7 @@
     state.responseError = "";
     state.lastError = "";
     state.resumableRecordingSessionId = "";
+    state.resumableRecordingElapsedMs = 0;
     state.stoppedRecordingSourceSessionId = "";
     state.stoppedRecordingBackupSessionId = "";
     dirtySessionIds.clear();
@@ -2771,6 +2797,8 @@
     const previousRecordedAt = state.recordedAt;
     const previousResumableRecordingSessionId =
       state.resumableRecordingSessionId;
+    const previousResumableRecordingElapsedMs =
+      state.resumableRecordingElapsedMs;
     const previousStoppedRecordingSourceSessionId =
       state.stoppedRecordingSourceSessionId;
     const previousStoppedRecordingBackupSessionId =
@@ -2793,6 +2821,7 @@
 
     if (requestedIds.has(state.resumableRecordingSessionId)) {
       state.resumableRecordingSessionId = "";
+      state.resumableRecordingElapsedMs = 0;
     }
 
     if (
@@ -2810,6 +2839,8 @@
       state.recordedAt = previousRecordedAt;
       state.resumableRecordingSessionId =
         previousResumableRecordingSessionId;
+      state.resumableRecordingElapsedMs =
+        previousResumableRecordingElapsedMs;
       state.stoppedRecordingSourceSessionId =
         previousStoppedRecordingSourceSessionId;
       state.stoppedRecordingBackupSessionId =
