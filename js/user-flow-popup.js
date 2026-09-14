@@ -7,7 +7,6 @@
 
   const MESSAGE_USER_FLOW_COMMAND = "response-mapping-user-flow-command";
   const MESSAGE_USER_FLOW_STATE = "response-mapping-user-flow-state";
-  const MESSAGE_UPDATE_RECORDING_PROGRESS = "recording-progress";
   const POPUP_TAB_CHANGE_EVENT = "response-mapping-popup-tab-change";
   const PARENT_READY_EVENT = "response-mapping-popup-parent-ready";
   const PENDING_REPLAY_STORAGE_KEY =
@@ -758,13 +757,13 @@
       tabs: userFlowTabs.tabs,
       testSessionIds: userFlowTabs.testSessionIds,
       sessions: sessions.map((session) => ({
-        hasReplayableEvents:
-          session.id === flowState.activeRecordingSessionId ||
-          Number(session.eventCount || 0) > 0,
+        durationMs: session.durationMs,
+        eventCount: session.eventCount,
         id: session.id,
         name: session.name || "",
         titlePrefix: session.titlePrefix || "",
         recordedAt: session.recordedAt,
+        startPage: session.startPage || "",
       })),
     });
   }
@@ -2419,24 +2418,7 @@
         markReplayNavigationParentReady();
       }
 
-      const nextFlowState = event.data.state || {};
-      const isRecordingProgressUpdate =
-        event.data.updateKind === MESSAGE_UPDATE_RECORDING_PROGRESS &&
-        currentUserFlowState.isRecording &&
-        nextFlowState.isRecording &&
-        currentUserFlowState.activeRecordingSessionId ===
-          nextFlowState.activeRecordingSessionId;
-
-      if (isRecordingProgressUpdate) {
-        currentUserFlowState = nextFlowState;
-        updateUserFlowSessionProgress(
-          nextFlowState,
-          Array.isArray(nextFlowState.sessions) ? nextFlowState.sessions : [],
-        );
-        return;
-      }
-
-      renderUserFlowState(nextFlowState);
+      renderUserFlowState(event.data.state || {});
     }
   }
 
