@@ -23,7 +23,7 @@
   const MAX_SESSIONS = 150;
   const MAX_SESSION_NAME_LENGTH = 40;
   // 목록 제목의 [값]을 읽을 URL 파라미터 키입니다. 예: ?title=Hello
-  const USER_FLOW_TITLE_QUERY_PARAM_KEY = "title";
+  const USER_FLOW_TITLE_QUERY_PARAM_KEY = "state";
   const MAX_SESSION_TITLE_PREFIX_LENGTH = 80;
   const SCROLL_SAMPLE_MS = 80;
   const STATE_NOTIFY_MS = 120;
