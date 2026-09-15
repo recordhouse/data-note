@@ -1153,7 +1153,15 @@
     const previousStoppedBackupSessionId =
       state.stoppedRecordingBackupSessionId;
     const previousDirtySessionIds = new Set(dirtySessionIds);
+    const previousSourceTitlePrefix = sourceSession?.titlePrefix || "";
     const stoppedAt = Date.now();
+    const stoppedTitlePrefix = getCurrentSessionTitlePrefix();
+
+    if (sourceSession) {
+      sourceSession.titlePrefix = stoppedTitlePrefix;
+      dirtySessionIds.add(sourceSession.id);
+    }
+
     const stoppedRecordingElapsedMs = sourceSession
       ? Math.max(
           getDurationMs(sourceSession.events),
@@ -1187,6 +1195,10 @@
     resetScrollTracking({ preserveLastSample: true });
 
     if (!persistRecording()) {
+      if (sourceSession) {
+        sourceSession.titlePrefix = previousSourceTitlePrefix;
+      }
+
       state.sessions = previousSessions;
       state.stoppedRecordingSourceSessionId = previousStoppedSourceSessionId;
       state.stoppedRecordingBackupSessionId = previousStoppedBackupSessionId;
