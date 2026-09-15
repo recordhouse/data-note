@@ -72,6 +72,7 @@
   let editingUserFlowTabId = "";
   let editingUserFlowNotice = false;
   let renderedUserFlowSessionSignature = "";
+  let renderedUserFlowTabSignature = "";
   let renderedUserFlowTestSignature = "";
   let draggedUserFlowSessionId = "";
   let placedStoppedRecordingBackupId = "";
@@ -329,6 +330,7 @@
     editingUserFlowTabId = "";
     editingUserFlowNotice = false;
     renderedUserFlowSessionSignature = "";
+    renderedUserFlowTabSignature = "";
     renderedUserFlowTestSignature = "";
     resetUserFlowSessionDrag();
     persistUserFlowTabs();
@@ -610,6 +612,18 @@
     const organizationDisabled = Boolean(
       currentUserFlowState.isRecording || currentUserFlowState.isReplaying,
     );
+    const tabSignature = JSON.stringify({
+      activeTabId: userFlowTabs.activeTabId,
+      editingUserFlowTabId,
+      organizationDisabled,
+      tabs: userFlowTabs.tabs,
+    });
+
+    if (renderedUserFlowTabSignature === tabSignature) {
+      return;
+    }
+
+    renderedUserFlowTabSignature = tabSignature;
 
     tabList.innerHTML = userFlowTabs.tabs
       .map((tab) => {
@@ -808,40 +822,43 @@
       ]),
       tabs: userFlowTabs.tabs,
       testSessionIds: userFlowTabs.testSessionIds,
-      // Live event counts and durations are updated in place so recording does
-      // not destroy and recreate every session element on each state message.
+      // Live recording values do not change the card structure. Counts and
+      // duration are updated in place, while startPage is read from current state.
       sessions: sessions.map((session) => ({
         id: session.id,
         name: session.name || "",
         titlePrefix: session.titlePrefix || "",
         recordedAt: session.recordedAt,
-        startPage: session.startPage || "",
       })),
     });
   }
 
   function updateUserFlowSessionProgress(flowState, sessions) {
+    const sessionById = new Map(sessions.map((session) => [session.id, session]));
+
     document.querySelectorAll("[data-user-flow-session-meta]").forEach((meta) => {
-      const session = sessions.find(
-        (item) => item.id === meta.dataset.userFlowSessionMeta,
-      );
+      const session = sessionById.get(meta.dataset.userFlowSessionMeta);
 
       if (!session) {
         return;
       }
 
-      meta.textContent = getUserFlowSessionMeta(
+      const nextMeta = getUserFlowSessionMeta(
         session,
         flowState,
         flowState.replaySessionId === session.id,
       );
+
+      if (meta.textContent !== nextMeta) {
+        meta.textContent = nextMeta;
+      }
     });
 
     document
       .querySelectorAll("[data-user-flow-session-progress]")
       .forEach((progressElement) => {
-        const session = sessions.find(
-          (item) => item.id === progressElement.dataset.userFlowSessionProgress,
+        const session = sessionById.get(
+          progressElement.dataset.userFlowSessionProgress,
         );
 
         if (!session) {
@@ -849,25 +866,39 @@
         }
 
         const progress = getUserFlowSessionReplayProgress(session, flowState);
-        progressElement.dataset.state = progress.isActive ? "active" : "inactive";
-        progressElement.setAttribute(
-          "aria-disabled",
-          String(!progress.isActive),
-        );
-        progressElement.setAttribute(
-          "aria-valuenow",
-          String(progress.remainingPercent),
-        );
-        progressElement.setAttribute(
-          "aria-valuetext",
-          progress.isActive
-            ? `재생 ${progress.remainingPercent}% 남음`
-            : "재생 대기",
-        );
-        progressElement.style.setProperty(
-          "--user-flow-replay-remaining",
-          progress.remainingRatio.toFixed(4),
-        );
+        const nextState = progress.isActive ? "active" : "inactive";
+        const nextAriaDisabled = String(!progress.isActive);
+        const nextAriaValueNow = String(progress.remainingPercent);
+        const nextAriaValueText = progress.isActive
+          ? `재생 ${progress.remainingPercent}% 남음`
+          : "재생 대기";
+        const nextRemainingRatio = progress.remainingRatio.toFixed(4);
+
+        if (progressElement.dataset.state !== nextState) {
+          progressElement.dataset.state = nextState;
+        }
+
+        if (progressElement.getAttribute("aria-disabled") !== nextAriaDisabled) {
+          progressElement.setAttribute("aria-disabled", nextAriaDisabled);
+        }
+
+        if (progressElement.getAttribute("aria-valuenow") !== nextAriaValueNow) {
+          progressElement.setAttribute("aria-valuenow", nextAriaValueNow);
+        }
+
+        if (progressElement.getAttribute("aria-valuetext") !== nextAriaValueText) {
+          progressElement.setAttribute("aria-valuetext", nextAriaValueText);
+        }
+
+        if (
+          progressElement.style.getPropertyValue("--user-flow-replay-remaining") !==
+          nextRemainingRatio
+        ) {
+          progressElement.style.setProperty(
+            "--user-flow-replay-remaining",
+            nextRemainingRatio,
+          );
+        }
       });
   }
 
@@ -1175,7 +1206,6 @@
       );
     }
 
-    const previousSessionPositions = captureUserFlowSessionPositions();
     const newRecordingSessionId =
       flowState.isRecording &&
       flowState.activeRecordingSessionId &&
@@ -1190,25 +1220,12 @@
       flowState,
       sessions,
     );
-    renderUserFlowTabs(sessions);
-    renderUserFlowView();
     const visibleSessions = userFlowTabs.tabs.length
       ? getOrderedUserFlowSessions(sessions).filter(
           (session) =>
             getUserFlowSessionTabId(session.id) === userFlowTabs.activeTabId,
         )
       : [];
-
-    if (userFlowTabs.activeTabId) {
-      sessionList.setAttribute(
-        "aria-labelledby",
-        getUserFlowTabElementId(userFlowTabs.activeTabId),
-      );
-      sessionList.removeAttribute("aria-label");
-    } else {
-      sessionList.removeAttribute("aria-labelledby");
-      sessionList.setAttribute("aria-label", "녹화 목록");
-    }
 
     if (
       flowState.isRecording ||
@@ -1219,10 +1236,45 @@
     }
 
     const sessionSignature = getUserFlowSessionSignature(flowState, sessions);
+    const shouldRenderSessions =
+      renderedUserFlowSessionSignature !== sessionSignature;
+    const previousSessionPositions = shouldRenderSessions
+      ? captureUserFlowSessionPositions()
+      : new Map();
+
+    renderUserFlowTabs(sessions);
+    renderUserFlowView();
+
+    if (userFlowTabs.activeTabId) {
+      const labelledBy = getUserFlowTabElementId(userFlowTabs.activeTabId);
+
+      if (sessionList.getAttribute("aria-labelledby") !== labelledBy) {
+        sessionList.setAttribute("aria-labelledby", labelledBy);
+      }
+
+      if (sessionList.hasAttribute("aria-label")) {
+        sessionList.removeAttribute("aria-label");
+      }
+    } else {
+      if (sessionList.hasAttribute("aria-labelledby")) {
+        sessionList.removeAttribute("aria-labelledby");
+      }
+
+      if (sessionList.getAttribute("aria-label") !== "녹화 목록") {
+        sessionList.setAttribute("aria-label", "녹화 목록");
+      }
+    }
+
     renderUserFlowTestSessions(flowState, sessions, sessionSignature);
 
+    if (!shouldRenderSessions) {
+      updateUserFlowSessionProgress(flowState, sessions);
+      return;
+    }
+
+    renderedUserFlowSessionSignature = sessionSignature;
+
     if (!visibleSessions.length) {
-      renderedUserFlowSessionSignature = "";
       const emptyMessage = !userFlowTabs.tabs.length
         ? "탭을 추가하면 녹화를 시작할 수 있습니다."
         : sessions.length
@@ -1237,18 +1289,6 @@
       animateUserFlowSessionAddition(addedRecordingSessionId);
       return;
     }
-
-    if (renderedUserFlowSessionSignature === sessionSignature) {
-      updateUserFlowSessionProgress(flowState, sessions);
-      animateStoppedRecordingBackup(
-        previousSessionPositions,
-        addedBackupSessionId,
-      );
-      animateUserFlowSessionAddition(addedRecordingSessionId);
-      return;
-    }
-
-    renderedUserFlowSessionSignature = sessionSignature;
 
     sessionList.innerHTML = visibleSessions
       .map((session) => {
@@ -1689,6 +1729,7 @@
   function rerenderUserFlowOrganization() {
     editingUserFlowSessionId = "";
     renderedUserFlowSessionSignature = "";
+    renderedUserFlowTabSignature = "";
     renderedUserFlowTestSignature = "";
     renderUserFlowState(currentUserFlowState);
   }
