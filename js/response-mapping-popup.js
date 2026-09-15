@@ -694,7 +694,6 @@
       return false;
     }
 
-    const communicationChanged = activeCommunicationId !== communicationId;
     activeCommunicationId = communicationId;
     renderCommunicationTabs();
 
@@ -708,16 +707,6 @@
       renderItemFilter([]);
     } else {
       renderList("#mappingList", communication.mappedList, communication.mappingRows);
-    }
-
-    if (communicationChanged) {
-      const mappingList = document.querySelector("#mappingList");
-
-      if (mappingList) {
-        mappingList.classList.remove("is-tab-switching");
-        void mappingList.offsetWidth;
-        mappingList.classList.add("is-tab-switching");
-      }
     }
 
     if (focus) {
