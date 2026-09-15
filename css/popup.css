@@ -1301,15 +1301,11 @@ body.is-user-flow-file-dragging .wrap {
 
 .user-flow-test-panel {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 8px;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-}
-
-.user-flow-test-panel .user-flow-session-heading {
-  justify-content: flex-end;
 }
 
 .user-flow-empty {

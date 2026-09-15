@@ -892,7 +892,6 @@
 
   function renderUserFlowTestSessions(flowState, sessions, sessionSignature) {
     const sessionList = document.querySelector("#userFlowTestSessionList");
-    const sessionCount = document.querySelector("#userFlowTestSessionCount");
     const sessionById = new Map(sessions.map((session) => [session.id, session]));
     const testSessions = userFlowTabs.testSessionIds
       .map((sessionId) => sessionById.get(sessionId))
@@ -900,12 +899,6 @@
 
     if (!sessionList) {
       return;
-    }
-
-    const countText = testSessions.length.toLocaleString("ko-KR");
-
-    if (sessionCount) {
-      sessionCount.textContent = `${countText}개`;
     }
 
     if (renderedUserFlowTestSignature === sessionSignature) {
