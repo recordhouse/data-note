@@ -808,9 +808,9 @@
       ]),
       tabs: userFlowTabs.tabs,
       testSessionIds: userFlowTabs.testSessionIds,
+      // Live event counts and durations are updated in place so recording does
+      // not destroy and recreate every session element on each state message.
       sessions: sessions.map((session) => ({
-        durationMs: session.durationMs,
-        eventCount: session.eventCount,
         id: session.id,
         name: session.name || "",
         titlePrefix: session.titlePrefix || "",
@@ -1693,6 +1693,18 @@
     renderUserFlowState(currentUserFlowState);
   }
 
+  function animateUserFlowSessionTabSwitch() {
+    const sessionList = document.querySelector("#userFlowSessionList");
+
+    if (!sessionList) {
+      return;
+    }
+
+    sessionList.classList.remove("is-tab-switching");
+    void sessionList.offsetWidth;
+    sessionList.classList.add("is-tab-switching");
+  }
+
   function handleUserFlowViewControl(event) {
     const button = event.target.closest("[data-user-flow-view-select]");
 
@@ -1828,6 +1840,7 @@
       editingUserFlowTabId = "";
       persistUserFlowTabs();
       rerenderUserFlowOrganization();
+      animateUserFlowSessionTabSwitch();
       return;
     }
 
@@ -1916,6 +1929,7 @@
       editingUserFlowTabId = "";
       persistUserFlowTabs();
       rerenderUserFlowOrganization();
+      animateUserFlowSessionTabSwitch();
     }
   }
 
