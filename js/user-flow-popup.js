@@ -9,8 +9,6 @@
   const MESSAGE_USER_FLOW_STATE = "response-mapping-user-flow-state";
   const POPUP_TAB_CHANGE_EVENT = "response-mapping-popup-tab-change";
   const PARENT_READY_EVENT = "response-mapping-popup-parent-ready";
-  const PENDING_REPLAY_STORAGE_KEY =
-    "response-mapping-user-flow-pending-replay:v1";
   const MAX_USER_FLOW_SESSIONS = 150;
   const USER_FLOW_TAB_STORAGE_KEY = "response-mapping-user-flow-tabs:v1";
   const DEFAULT_USER_FLOW_TAB_ID = "default";
@@ -56,6 +54,12 @@
   const REPLAY_NAVIGATION_IDLE_MS = 500;
   const REPLAY_NAVIGATION_TIMEOUT_MS = 60 * 1000;
   const USER_FLOW_STATUS_DOT_INTERVAL_MS = 420;
+  const USER_FLOW_ANIMATED_STATUS_STATES = new Set([
+    "communicating",
+    "navigating",
+    "recording",
+    "replaying",
+  ]);
   const PARENT_CONNECTION_CHECK_MS = 400;
   const PARENT_RECONNECT_TIMEOUT_MS = 60 * 1000;
   const USER_FLOW_DRAG_SCROLL_EDGE_PX = 48;
@@ -1123,7 +1127,7 @@
     }
 
     setUserFlowStatus(status, statusText, statusState, {
-      animateDots: true,
+      animateDots: USER_FLOW_ANIMATED_STATUS_STATES.has(statusState),
     });
 
     const canContinueRecording = Boolean(
@@ -1495,7 +1499,6 @@
         return false;
       }
 
-      const targetPage = `${replayUrl.pathname}${replayUrl.search}${replayUrl.hash}`;
       parentWindow = window.open("about:blank", "_blank");
 
       if (!parentWindow) {
@@ -1505,15 +1508,6 @@
         return false;
       }
 
-      parentWindow.sessionStorage.setItem(
-        PENDING_REPLAY_STORAGE_KEY,
-        JSON.stringify({
-          version: 1,
-          sessionId,
-          targetPage,
-          createdAt: Date.now(),
-        }),
-      );
       activeParentWindow = parentWindow;
       window.PopupCore?.connectParent?.(parentWindow);
       startParentReconnect(parentWindow);
@@ -2479,7 +2473,11 @@
       return;
     }
 
-    setUserFlowStatus(status, message, statusState, { animateDots: true });
+    const isProgressStatus =
+      statusState === "ready" && /(?:중|중입니다)$/.test(String(message).trim());
+    setUserFlowStatus(status, message, statusState, {
+      animateDots: isProgressStatus,
+    });
   }
 
   function handleUserFlowNameControl(event) {
@@ -2688,9 +2686,7 @@
   const initialUserFlowStatus = document.querySelector("#userFlowStatus");
 
   if (initialUserFlowStatus) {
-    setUserFlowStatus(initialUserFlowStatus, "연결 대기", "idle", {
-      animateDots: true,
-    });
+    setUserFlowStatus(initialUserFlowStatus, "연결 대기", "idle");
   }
 
   renderUserFlowTabs([]);
