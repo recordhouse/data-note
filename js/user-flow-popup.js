@@ -728,9 +728,8 @@
     return String(session?.name || "").trim() || recordedAt;
   }
 
-  function formatUserFlowSessionTitlePrefix(session) {
-    const titlePrefix = String(session?.titlePrefix || "").trim();
-    return titlePrefix ? `[${titlePrefix}]` : "";
+  function formatUserFlowSessionSubtitle(session) {
+    return String(session?.titlePrefix || "").trim();
   }
 
   function getUserFlowSessionMeta(session, flowState, isReplayingSession) {
@@ -929,7 +928,7 @@
         const recordedAt = formatUserFlowRecordedAt(session.recordedAt);
         const sessionName = String(session.name || "").trim();
         const sessionTitle = formatUserFlowSessionTitle(session, recordedAt);
-        const sessionTitlePrefix = formatUserFlowSessionTitlePrefix(session);
+        const sessionSubtitle = formatUserFlowSessionSubtitle(session);
         const disabled =
           flowState.isRecording ||
           (!session.eventCount && !isReplayingSession) ||
@@ -946,7 +945,7 @@
           >
             ${renderUserFlowSessionReplayProgress(session, flowState)}
             <div class="user-flow-session-main">
-              ${sessionTitlePrefix ? `<span class="user-flow-session-title-prefix">${escapeHtml(sessionTitlePrefix)}</span>` : ""}
+              ${sessionSubtitle ? `<span class="user-flow-session-subtitle">${escapeHtml(sessionSubtitle)}</span>` : ""}
               <strong class="user-flow-session-time">
                 <span>${escapeHtml(sessionTitle)}</span>
               </strong>
@@ -1258,7 +1257,7 @@
         const recordedAt = formatUserFlowRecordedAt(session.recordedAt);
         const sessionName = String(session.name || "").trim();
         const sessionTitle = formatUserFlowSessionTitle(session, recordedAt);
-        const sessionTitlePrefix = formatUserFlowSessionTitlePrefix(session);
+        const sessionSubtitle = formatUserFlowSessionSubtitle(session);
         const isEditing = editingUserFlowSessionId === session.id;
         const isNavigatingSession = replayNavigationSessionId === session.id;
         const disabled =
@@ -1279,7 +1278,7 @@
             >
               ${renderUserFlowSessionReplayProgress(session, flowState)}
               <div class="user-flow-session-main">
-                ${sessionTitlePrefix ? `<span class="user-flow-session-title-prefix">${escapeHtml(sessionTitlePrefix)}</span>` : ""}
+                ${sessionSubtitle ? `<span class="user-flow-session-subtitle">${escapeHtml(sessionSubtitle)}</span>` : ""}
                 <form class="user-flow-name-editor" data-user-flow-name-form>
                   <input
                     class="user-flow-name-input"
@@ -1312,7 +1311,7 @@
           >
             ${renderUserFlowSessionReplayProgress(session, flowState)}
             <div class="user-flow-session-main">
-              ${sessionTitlePrefix ? `<span class="user-flow-session-title-prefix">${escapeHtml(sessionTitlePrefix)}</span>` : ""}
+              ${sessionSubtitle ? `<span class="user-flow-session-subtitle">${escapeHtml(sessionSubtitle)}</span>` : ""}
               <strong class="user-flow-session-time">
                 <span>${escapeHtml(sessionTitle)}</span>
               </strong>

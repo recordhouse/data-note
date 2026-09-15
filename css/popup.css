@@ -1053,7 +1053,7 @@ body.is-user-flow-file-dragging .wrap {
   min-width: 0;
 }
 
-.user-flow-session-title-prefix {
+.user-flow-session-subtitle {
   justify-self: start;
   max-width: 100%;
   overflow: hidden;
