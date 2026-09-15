@@ -433,6 +433,7 @@ body.is-user-flow-file-dragging .wrap {
 
 .user-flow-status[data-state="replaying"],
 .user-flow-status[data-state="navigating"],
+.user-flow-status[data-state="communicating"],
 .user-flow-status[data-state="ready"] {
   color: #0f766e;
 }
@@ -448,7 +449,8 @@ body.is-user-flow-file-dragging .wrap {
 }
 
 .user-flow-status[data-state="replaying"]::before,
-.user-flow-status[data-state="navigating"]::before {
+.user-flow-status[data-state="navigating"]::before,
+.user-flow-status[data-state="communicating"]::before {
   width: 14px;
   height: 14px;
   border: 2px solid rgba(15, 118, 110, 0.28);
@@ -458,13 +460,15 @@ body.is-user-flow-file-dragging .wrap {
   animation: popup-replaying-spin 650ms linear infinite;
 }
 
-.user-flow-status[data-state="navigating"] {
+.user-flow-status[data-state="navigating"],
+.user-flow-status[data-state="communicating"] {
   border-color: #cbd5e1;
   background: #f8fafc;
   color: #475569;
 }
 
-.user-flow-status[data-state="navigating"]::before {
+.user-flow-status[data-state="navigating"]::before,
+.user-flow-status[data-state="communicating"]::before {
   border-color: rgba(71, 85, 105, 0.24);
   border-top-color: #475569;
   border-right-color: #475569;

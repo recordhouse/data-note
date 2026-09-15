@@ -55,6 +55,7 @@
   ]);
   const REPLAY_NAVIGATION_IDLE_MS = 500;
   const REPLAY_NAVIGATION_TIMEOUT_MS = 60 * 1000;
+  const USER_FLOW_STATUS_DOT_INTERVAL_MS = 420;
   const PARENT_CONNECTION_CHECK_MS = 400;
   const PARENT_RECONNECT_TIMEOUT_MS = 60 * 1000;
   const USER_FLOW_DRAG_SCROLL_EDGE_PX = 48;
@@ -76,6 +77,10 @@
   let replayNavigationParentReady = false;
   let replayNavigationSessionId = "";
   let replayNavigationTimer = 0;
+  let userFlowStatusDotElement = null;
+  let userFlowStatusDotText = "";
+  let userFlowStatusDotStep = 0;
+  let userFlowStatusDotTimer = 0;
   let activeParentWindow = window.opener || null;
   let parentConnectionCheckTimer = 0;
   let parentReconnectStartedAt = 0;
@@ -936,6 +941,54 @@
     }
   }
 
+  function stopUserFlowStatusDots() {
+    window.clearInterval(userFlowStatusDotTimer);
+    userFlowStatusDotElement = null;
+    userFlowStatusDotText = "";
+    userFlowStatusDotStep = 0;
+    userFlowStatusDotTimer = 0;
+  }
+
+  function setUserFlowStatus(
+    status,
+    statusText,
+    statusState,
+    { animateDots = false } = {},
+  ) {
+    status.dataset.state = statusState;
+
+    if (!animateDots) {
+      stopUserFlowStatusDots();
+      status.textContent = statusText;
+      return;
+    }
+
+    const baseText = String(statusText || "").replace(/\.+$/, "");
+
+    if (
+      userFlowStatusDotTimer &&
+      userFlowStatusDotElement === status &&
+      userFlowStatusDotText === baseText
+    ) {
+      return;
+    }
+
+    stopUserFlowStatusDots();
+    userFlowStatusDotElement = status;
+    userFlowStatusDotText = baseText;
+    userFlowStatusDotStep = 0;
+    status.textContent = baseText;
+    userFlowStatusDotTimer = window.setInterval(() => {
+      if (!status.isConnected) {
+        stopUserFlowStatusDots();
+        return;
+      }
+
+      userFlowStatusDotStep = (userFlowStatusDotStep + 1) % 3;
+      status.textContent = `${baseText}${".".repeat(userFlowStatusDotStep)}`;
+    }, USER_FLOW_STATUS_DOT_INTERVAL_MS);
+  }
+
   function renderUserFlowState(flowState = {}) {
     currentUserFlowState = flowState;
     updateReplayNavigationState(flowState);
@@ -953,23 +1006,36 @@
     renderUserFlowNotice(flowState);
 
     const hasUserFlowTabs = userFlowTabs.tabs.length > 0;
+    const pendingRequestCount = Math.max(
+      0,
+      Number(flowState.pendingRequestCount || 0),
+    );
+    const isWaitingForCommunication = Boolean(
+      pendingRequestCount > 0 || flowState.isWaitingForRequests,
+    );
     let statusText = "저장된 녹화가 없습니다";
     let statusState = "idle";
+    let animateStatusDots = false;
 
     if (flowState.responseError) {
       statusText = flowState.responseError;
       statusState = "error";
     } else if (replayNavigationSessionId) {
-      statusText = "녹화 시작 페이지로 이동 중입니다";
-      statusState = "navigating";
+      statusText = isWaitingForCommunication
+        ? "통신 중입니다"
+        : "녹화 시작 페이지로 이동 중입니다";
+      statusState = isWaitingForCommunication ? "communicating" : "navigating";
+      animateStatusDots = true;
     } else if (flowState.isRecording) {
       statusText = "사용자 행동을 녹화하고 있습니다";
       statusState = "recording";
+      animateStatusDots = true;
     } else if (flowState.isReplaying) {
       statusText = flowState.isWaitingForRequests
         ? "통신이 완료될 때까지 재생을 기다리고 있습니다"
         : "녹화된 사용자 행동을 재생하고 있습니다";
       statusState = "replaying";
+      animateStatusDots = true;
     } else if (flowState.error) {
       statusText = flowState.error;
       statusState = "error";
@@ -980,8 +1046,9 @@
       statusState = "ready";
     }
 
-    status.textContent = statusText;
-    status.dataset.state = statusState;
+    setUserFlowStatus(status, statusText, statusState, {
+      animateDots: animateStatusDots,
+    });
 
     const canContinueRecording = Boolean(
       !flowState.isRecording &&
@@ -2331,8 +2398,7 @@
       return;
     }
 
-    status.textContent = message;
-    status.dataset.state = statusState;
+    setUserFlowStatus(status, message, statusState);
   }
 
   function handleUserFlowNameControl(event) {
@@ -2532,6 +2598,7 @@
     "pagehide",
     () => {
       window.clearInterval(parentConnectionCheckTimer);
+      stopUserFlowStatusDots();
       stopParentReconnect();
     },
     { once: true },
