@@ -721,9 +721,12 @@
   }
 
   function formatUserFlowSessionTitle(session, recordedAt) {
+    return String(session?.name || "").trim() || recordedAt;
+  }
+
+  function formatUserFlowSessionTitlePrefix(session) {
     const titlePrefix = String(session?.titlePrefix || "").trim();
-    const baseTitle = String(session?.name || "").trim() || recordedAt;
-    return titlePrefix ? `[${titlePrefix}] ${baseTitle}` : baseTitle;
+    return titlePrefix ? `[${titlePrefix}]` : "";
   }
 
   function getUserFlowSessionMeta(session, flowState, isReplayingSession) {
@@ -738,6 +741,47 @@
     }
 
     return `${eventCount.toLocaleString("ko-KR")}개 행동 · ${formatFlowDuration(session.durationMs)}`;
+  }
+
+  function getUserFlowSessionReplayProgress(session, flowState) {
+    const isActive = Boolean(
+      flowState.isReplaying && flowState.replaySessionId === session.id,
+    );
+    const durationMs = Math.max(0, Number(session.durationMs || 0));
+    const remainingMs = Math.max(0, Number(flowState.replayRemainingMs || 0));
+    const remainingRatio = isActive
+      ? durationMs > 0
+        ? Math.min(1, remainingMs / durationMs)
+        : 0
+      : 1;
+
+    return {
+      isActive,
+      remainingPercent: Math.round(remainingRatio * 100),
+      remainingRatio,
+    };
+  }
+
+  function renderUserFlowSessionReplayProgress(session, flowState) {
+    const progress = getUserFlowSessionReplayProgress(session, flowState);
+
+    return `
+      <div
+        class="user-flow-session-replay-progress"
+        data-state="${progress.isActive ? "active" : "inactive"}"
+        data-user-flow-session-progress="${escapeHtml(session.id)}"
+        role="progressbar"
+        aria-label="재생 남은 시간"
+        aria-disabled="${String(!progress.isActive)}"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow="${progress.remainingPercent}"
+        aria-valuetext="${progress.isActive ? `재생 ${progress.remainingPercent}% 남음` : "재생 대기"}"
+        style="--user-flow-replay-remaining: ${progress.remainingRatio.toFixed(4)}"
+      >
+        <span class="user-flow-session-replay-progress-fill"></span>
+      </div>
+    `;
   }
 
   function getUserFlowSessionSignature(flowState, sessions) {
@@ -789,6 +833,39 @@
         flowState.replaySessionId === session.id,
       );
     });
+
+    document
+      .querySelectorAll("[data-user-flow-session-progress]")
+      .forEach((progressElement) => {
+        const session = sessions.find(
+          (item) => item.id === progressElement.dataset.userFlowSessionProgress,
+        );
+
+        if (!session) {
+          return;
+        }
+
+        const progress = getUserFlowSessionReplayProgress(session, flowState);
+        progressElement.dataset.state = progress.isActive ? "active" : "inactive";
+        progressElement.setAttribute(
+          "aria-disabled",
+          String(!progress.isActive),
+        );
+        progressElement.setAttribute(
+          "aria-valuenow",
+          String(progress.remainingPercent),
+        );
+        progressElement.setAttribute(
+          "aria-valuetext",
+          progress.isActive
+            ? `재생 ${progress.remainingPercent}% 남음`
+            : "재생 대기",
+        );
+        progressElement.style.setProperty(
+          "--user-flow-replay-remaining",
+          progress.remainingRatio.toFixed(4),
+        );
+      });
   }
 
   function renderUserFlowView() {
@@ -848,6 +925,7 @@
         const recordedAt = formatUserFlowRecordedAt(session.recordedAt);
         const sessionName = String(session.name || "").trim();
         const sessionTitle = formatUserFlowSessionTitle(session, recordedAt);
+        const sessionTitlePrefix = formatUserFlowSessionTitlePrefix(session);
         const disabled =
           flowState.isRecording ||
           (!session.eventCount && !isReplayingSession) ||
@@ -862,7 +940,9 @@
             data-state="${isRecordingSession ? "recording" : isReplayingSession ? "replaying" : "idle"}"
             data-user-flow-session-id="${escapeHtml(session.id)}"
           >
+            ${renderUserFlowSessionReplayProgress(session, flowState)}
             <div class="user-flow-session-main">
+              ${sessionTitlePrefix ? `<span class="user-flow-session-title-prefix">${escapeHtml(sessionTitlePrefix)}</span>` : ""}
               <strong class="user-flow-session-time">
                 <span>${escapeHtml(sessionTitle)}</span>
               </strong>
@@ -1174,6 +1254,7 @@
         const recordedAt = formatUserFlowRecordedAt(session.recordedAt);
         const sessionName = String(session.name || "").trim();
         const sessionTitle = formatUserFlowSessionTitle(session, recordedAt);
+        const sessionTitlePrefix = formatUserFlowSessionTitlePrefix(session);
         const isEditing = editingUserFlowSessionId === session.id;
         const isNavigatingSession = replayNavigationSessionId === session.id;
         const disabled =
@@ -1192,7 +1273,9 @@
               data-state="idle"
               data-user-flow-session-id="${escapeHtml(session.id)}"
             >
+              ${renderUserFlowSessionReplayProgress(session, flowState)}
               <div class="user-flow-session-main">
+                ${sessionTitlePrefix ? `<span class="user-flow-session-title-prefix">${escapeHtml(sessionTitlePrefix)}</span>` : ""}
                 <form class="user-flow-name-editor" data-user-flow-name-form>
                   <input
                     class="user-flow-name-input"
@@ -1223,7 +1306,9 @@
             data-state="${isRecordingSession ? "recording" : isReplayingSession ? "replaying" : "idle"}"
             data-user-flow-session-id="${escapeHtml(session.id)}"
           >
+            ${renderUserFlowSessionReplayProgress(session, flowState)}
             <div class="user-flow-session-main">
+              ${sessionTitlePrefix ? `<span class="user-flow-session-title-prefix">${escapeHtml(sessionTitlePrefix)}</span>` : ""}
               <strong class="user-flow-session-time">
                 <span>${escapeHtml(sessionTitle)}</span>
               </strong>

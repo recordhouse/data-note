@@ -920,10 +920,45 @@ body.is-user-flow-file-dragging .wrap {
   gap: 10px;
   min-width: 0;
   min-height: 52px;
-  padding: 8px 10px;
+  padding: 14px 10px 8px;
   border: 1px solid #d9e1ea;
   border-radius: 6px;
   background: #fbfdff;
+}
+
+.user-flow-session-replay-progress {
+  --user-flow-replay-remaining: 1;
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  left: 10px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.1);
+  pointer-events: none;
+}
+
+.user-flow-session-replay-progress-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: rgba(148, 163, 184, 0.2);
+  transform: scaleX(var(--user-flow-replay-remaining));
+  transform-origin: right center;
+}
+
+.user-flow-session-replay-progress[data-state="active"] {
+  background: rgba(20, 184, 166, 0.12);
+}
+
+.user-flow-session-replay-progress[data-state="active"]
+  .user-flow-session-replay-progress-fill {
+  background: linear-gradient(90deg, #22c55e, #14b8a6);
+  box-shadow: 0 0 4px rgba(20, 184, 166, 0.38);
+  transition: transform 320ms linear;
+  will-change: transform;
 }
 
 .user-flow-session[draggable="true"] {
@@ -1016,6 +1051,18 @@ body.is-user-flow-file-dragging .wrap {
   display: grid;
   gap: 4px;
   min-width: 0;
+}
+
+.user-flow-session-title-prefix {
+  justify-self: start;
+  max-width: 100%;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-flow-session-time {
