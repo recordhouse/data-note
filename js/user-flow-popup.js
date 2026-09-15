@@ -1693,6 +1693,18 @@
     renderUserFlowState(currentUserFlowState);
   }
 
+  function animateUserFlowSessionTabSwitch() {
+    const sessionList = document.querySelector("#userFlowSessionList");
+
+    if (!sessionList) {
+      return;
+    }
+
+    sessionList.classList.remove("is-tab-switching");
+    void sessionList.offsetWidth;
+    sessionList.classList.add("is-tab-switching");
+  }
+
   function handleUserFlowViewControl(event) {
     const button = event.target.closest("[data-user-flow-view-select]");
 
@@ -1828,6 +1840,7 @@
       editingUserFlowTabId = "";
       persistUserFlowTabs();
       rerenderUserFlowOrganization();
+      animateUserFlowSessionTabSwitch();
       return;
     }
 
@@ -1916,6 +1929,7 @@
       editingUserFlowTabId = "";
       persistUserFlowTabs();
       rerenderUserFlowOrganization();
+      animateUserFlowSessionTabSwitch();
     }
   }
 
