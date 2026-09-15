@@ -1015,7 +1015,6 @@
     );
     let statusText = "저장된 녹화가 없습니다";
     let statusState = "idle";
-    let animateStatusDots = false;
 
     if (flowState.responseError) {
       statusText = flowState.responseError;
@@ -1025,17 +1024,14 @@
         ? "통신 중입니다"
         : "녹화 시작 페이지로 이동 중입니다";
       statusState = isWaitingForCommunication ? "communicating" : "navigating";
-      animateStatusDots = true;
     } else if (flowState.isRecording) {
       statusText = "사용자 행동을 녹화하고 있습니다";
       statusState = "recording";
-      animateStatusDots = true;
     } else if (flowState.isReplaying) {
       statusText = flowState.isWaitingForRequests
         ? "통신이 완료될 때까지 재생을 기다리고 있습니다"
         : "녹화된 사용자 행동을 재생하고 있습니다";
       statusState = "replaying";
-      animateStatusDots = true;
     } else if (flowState.error) {
       statusText = flowState.error;
       statusState = "error";
@@ -1047,7 +1043,7 @@
     }
 
     setUserFlowStatus(status, statusText, statusState, {
-      animateDots: animateStatusDots,
+      animateDots: true,
     });
 
     const canContinueRecording = Boolean(
@@ -2398,7 +2394,7 @@
       return;
     }
 
-    setUserFlowStatus(status, message, statusState);
+    setUserFlowStatus(status, message, statusState, { animateDots: true });
   }
 
   function handleUserFlowNameControl(event) {
@@ -2603,6 +2599,14 @@
     },
     { once: true },
   );
+
+  const initialUserFlowStatus = document.querySelector("#userFlowStatus");
+
+  if (initialUserFlowStatus) {
+    setUserFlowStatus(initialUserFlowStatus, "연결 대기", "idle", {
+      animateDots: true,
+    });
+  }
 
   renderUserFlowTabs([]);
   sendUserFlowCommand("get-state");

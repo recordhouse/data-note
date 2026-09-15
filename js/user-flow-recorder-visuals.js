@@ -329,25 +329,25 @@
 
     @keyframes user-flow-screen-mask-breathe-primary {
       from {
-        -webkit-mask-size: 125% 125%;
-        mask-size: 125% 125%;
+        -webkit-mask-size: 105% 105%;
+        mask-size: 105% 105%;
       }
 
       to {
-        -webkit-mask-size: 175% 175%;
-        mask-size: 175% 175%;
+        -webkit-mask-size: 300% 300%;
+        mask-size: 300% 300%;
       }
     }
 
     @keyframes user-flow-screen-mask-breathe-secondary {
       from {
-        -webkit-mask-size: 135% 135%;
-        mask-size: 135% 135%;
+        -webkit-mask-size: 115% 115%;
+        mask-size: 115% 115%;
       }
 
       to {
-        -webkit-mask-size: 190% 190%;
-        mask-size: 190% 190%;
+        -webkit-mask-size: 360% 360%;
+        mask-size: 360% 360%;
       }
     }
 
