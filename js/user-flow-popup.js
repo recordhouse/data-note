@@ -99,6 +99,7 @@
   let userFlowTestReplayStartTimer = 0;
   let userFlowTestReplayStarted = false;
   let userFlowImportController = null;
+  let syncingUserFlowTabsFromStorage = false;
   let userFlowTabs = readUserFlowTabs();
 
   function createDefaultUserFlowTabs({ withInitialTab = true } = {}) {
@@ -321,6 +322,10 @@
   }
 
   function persistUserFlowTabs() {
+    if (syncingUserFlowTabsFromStorage) {
+      return true;
+    }
+
     try {
       userFlowTabs.version = 9;
       window.localStorage.setItem(USER_FLOW_TAB_STORAGE_KEY, JSON.stringify(userFlowTabs));
@@ -2688,10 +2693,22 @@
       return;
     }
 
-    userFlowTabs = readUserFlowTabs();
+    const nextUserFlowTabs = readUserFlowTabs();
+
+    if (JSON.stringify(nextUserFlowTabs) === JSON.stringify(userFlowTabs)) {
+      return;
+    }
+
+    userFlowTabs = nextUserFlowTabs;
     editingUserFlowTabId = "";
     editingUserFlowNotice = false;
-    rerenderUserFlowOrganization();
+    syncingUserFlowTabsFromStorage = true;
+
+    try {
+      rerenderUserFlowOrganization();
+    } finally {
+      syncingUserFlowTabsFromStorage = false;
+    }
   }
 
   function handleUserFlowNoticeControl(event) {
@@ -2865,18 +2882,6 @@
     return event.origin === window.location.origin;
   }
 
-  function getUserFlowStateRenderSignature(flowState = {}) {
-    const renderState = { ...flowState };
-
-    if (!flowState.isReplaying && !replayNavigationSessionId) {
-      delete renderState.pendingRequestCount;
-      delete renderState.blockingRequestCount;
-      delete renderState.isWaitingForRequests;
-    }
-
-    return JSON.stringify(renderState);
-  }
-
   function handleUserFlowStateMessage(event) {
     if (
       event.data?.type === MESSAGE_USER_FLOW_STATE &&
@@ -2893,15 +2898,6 @@
         currentUserFlowState,
         nextUserFlowState,
       );
-
-      if (
-        getUserFlowStateRenderSignature(currentUserFlowState) ===
-        getUserFlowStateRenderSignature(nextUserFlowState)
-      ) {
-        currentUserFlowState = nextUserFlowState;
-        return;
-      }
-
       renderUserFlowState(nextUserFlowState);
     }
   }
