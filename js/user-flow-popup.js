@@ -1093,8 +1093,6 @@
   }
 
   function renderUserFlowState(flowState = {}) {
-
-    debugger;
     currentUserFlowState = flowState;
     updateReplayNavigationState(flowState);
     const status = document.querySelector("#userFlowStatus");
