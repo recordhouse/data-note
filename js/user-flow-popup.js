@@ -1696,6 +1696,7 @@
 
     const commandSent = sendUserFlowCommand("toggle-replay-session", {
       sessionId,
+      waitForNetworkIdle: true,
     });
 
     if (!commandSent) {

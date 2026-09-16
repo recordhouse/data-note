@@ -23,6 +23,7 @@
   const REPLAY_PROGRESS_NOTIFY_MS = 250;
   const REQUEST_WAIT_TIMEOUT_MS = 30000;
   const REQUEST_ABORT_POLL_MS = 50;
+  const REQUEST_IDLE_MS = 500;
   const REQUEST_REPEAT_RESUME_LIMIT = 5;
   const RECORDING_FORMAT_VERSION = 4;
   const ARCHIVE_MANIFEST_FILE_NAME = "user-flow-manifest.json";
@@ -583,9 +584,7 @@
       }
     }
 
-    if (!hasBlockingRequests()) {
-      settleRequestWaiters(true);
-    }
+    settleRequestWaiters(true);
 
     notifyClients({ immediate: reachedRepeatLimit });
     return normalizedId;
@@ -660,9 +659,7 @@
       state.responseError = responseError;
     }
 
-    if (!hasBlockingRequests()) {
-      settleRequestWaiters(true);
-    }
+    settleRequestWaiters(true);
 
     notifyClients({ immediate: Boolean(responseError) });
     return true;
@@ -699,7 +696,13 @@
   }
 
   function waitForRequests(options = {}) {
-    if (!hasBlockingRequests()) {
+    const includeIgnoredRequests = options?.includeIgnoredRequests === true;
+    const hasRequests = includeIgnoredRequests
+      ? () => getPendingRequestCount() > 0
+      : hasBlockingRequests;
+    const idleMs = Math.max(0, Number(options?.idleMs) || 0);
+
+    if (!idleMs && !hasRequests()) {
       return Promise.resolve(true);
     }
 
@@ -715,7 +718,8 @@
     return new Promise((resolve) => {
       let completed = false;
       let timeoutTimer = 0;
-      let abortTimer = 0;
+      let checkTimer = 0;
+      let idleStartedAt = null;
 
       function finish(requestsCompleted) {
         if (completed) {
@@ -723,34 +727,48 @@
         }
 
         completed = true;
-        state.requestWaiters.delete(finish);
+        state.requestWaiters.delete(check);
         window.clearTimeout(timeoutTimer);
-        window.clearInterval(abortTimer);
+        window.clearInterval(checkTimer);
         resolve(requestsCompleted);
       }
 
-      state.requestWaiters.add(finish);
+      function check(requestsCompleted = true) {
+        if (!requestsCompleted || shouldAbort?.()) {
+          finish(false);
+          return;
+        }
+
+        if (hasRequests()) {
+          idleStartedAt = null;
+          return;
+        }
+
+        const now = performance.now();
+        idleStartedAt ??= now;
+
+        if (now - idleStartedAt >= idleMs) {
+          finish(true);
+        }
+      }
+
+      state.requestWaiters.add(check);
       timeoutTimer = window.setTimeout(() => finish(false), timeoutMs);
 
-      if (shouldAbort) {
-        abortTimer = window.setInterval(() => {
-          if (shouldAbort()) {
-            finish(false);
-          }
-        }, REQUEST_ABORT_POLL_MS);
+      if (shouldAbort || idleMs) {
+        checkTimer = window.setInterval(check, REQUEST_ABORT_POLL_MS);
       }
 
-      if (!hasBlockingRequests()) {
-        finish(true);
-      } else if (shouldAbort?.()) {
-        finish(false);
-      }
+      check();
     });
   }
 
 
-  async function waitForReplayRequests(replayRunId) {
-    if (!hasBlockingRequests()) {
+  async function waitForReplayRequests(
+    replayRunId,
+    { waitForNetworkIdle = false } = {},
+  ) {
+    if (!waitForNetworkIdle && !hasBlockingRequests()) {
       return true;
     }
 
@@ -758,24 +776,38 @@
     state.replayRequestWaitStartedAt = waitStartedAt;
     notifyClients({ immediate: true });
 
-    const requestsCompleted = await waitForRequests({
-      timeoutMs: REQUEST_WAIT_TIMEOUT_MS,
-      shouldAbort: () => state.replayAbort || state.replayRunId !== replayRunId,
-    });
-    const replayIsActive = !state.replayAbort && state.replayRunId === replayRunId;
+    do {
+      const requestsCompleted = await waitForRequests({
+        timeoutMs: Math.max(
+          0,
+          REQUEST_WAIT_TIMEOUT_MS - (performance.now() - waitStartedAt),
+        ),
+        includeIgnoredRequests: waitForNetworkIdle,
+        idleMs: waitForNetworkIdle ? REQUEST_IDLE_MS : 0,
+        shouldAbort: () => state.replayAbort || state.replayRunId !== replayRunId,
+      });
+      const replayIsActive = !state.replayAbort && state.replayRunId === replayRunId;
 
-    if (!replayIsActive) {
-      return false;
-    }
+      if (!replayIsActive) {
+        return false;
+      }
 
-    if (!requestsCompleted && hasBlockingRequests()) {
-      const timeoutMessage = `통신 대기 시간이 ${REQUEST_WAIT_TIMEOUT_MS / 1000}초를 초과했습니다.`;
-      console.warn(`UserFlowRecorder: ${timeoutMessage} 다음 행동을 계속합니다.`);
-      state.lastError = timeoutMessage;
-      resetPendingRequests();
-    }
+      if (!requestsCompleted) {
+        const timeoutMessage = `통신 대기 시간이 ${REQUEST_WAIT_TIMEOUT_MS / 1000}초를 초과했습니다.`;
 
-    await waitForRenderFrame();
+        if (waitForNetworkIdle) {
+          throw new Error(`${timeoutMessage} 통신 중에는 로그 테스트를 진행하지 않습니다.`);
+        }
+
+        if (hasBlockingRequests()) {
+          console.warn(`UserFlowRecorder: ${timeoutMessage} 다음 행동을 계속합니다.`);
+          state.lastError = timeoutMessage;
+          resetPendingRequests();
+        }
+      }
+
+      await waitForRenderFrame();
+    } while (waitForNetworkIdle && getPendingRequestCount() > 0);
 
     if (state.replayRunId !== replayRunId) {
       return false;
@@ -1199,7 +1231,10 @@
     notifyClients({ immediate: true });
   }
 
-  async function replay(sessionId = state.currentSessionId || state.sessions[0]?.id) {
+  async function replay(
+    sessionId = state.currentSessionId || state.sessions[0]?.id,
+    { waitForNetworkIdle = false } = {},
+  ) {
     const session = state.sessions.find((item) => item.id === sessionId);
 
     if (!session?.events.length || state.isReplaying) {
@@ -1244,7 +1279,7 @@
       const replayStartedAt = state.replayStartedAt;
       const replayEvents = createReplayEvents(state.events);
 
-      if (!(await waitForReplayRequests(replayRunId))) {
+      if (!(await waitForReplayRequests(replayRunId, { waitForNetworkIdle }))) {
         return;
       }
 
@@ -1265,7 +1300,9 @@
           break;
         }
 
-        if (!(await waitForReplayRequests(replayRunId))) {
+        if (!(await waitForReplayRequests(replayRunId, {
+          waitForNetworkIdle: waitForNetworkIdle && getPendingRequestCount() > 0,
+        }))) {
           break;
         }
 
@@ -1281,7 +1318,7 @@
       }
 
       if (!state.replayAbort && state.replayRunId === replayRunId) {
-        await waitForReplayRequests(replayRunId);
+        await waitForReplayRequests(replayRunId, { waitForNetworkIdle });
       }
     } catch (error) {
       if (!state.replayAbort && state.replayRunId === replayRunId) {
@@ -1715,7 +1752,9 @@
             stopReplay();
           }
         } else {
-          replay(event.data.sessionId);
+          replay(event.data.sessionId, {
+            waitForNetworkIdle: event.data.waitForNetworkIdle === true,
+          });
         }
         break;
       case "delete-session":

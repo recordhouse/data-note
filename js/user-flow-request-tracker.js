@@ -15,6 +15,7 @@
   function create(options = {}) {
     const requestStart = options.requestStart;
     const requestEnd = options.requestEnd;
+    const trackedFetchResponses = new WeakSet();
 
     if (typeof requestStart !== "function" || typeof requestEnd !== "function") {
       throw new TypeError("통신 시작 및 종료 처리 함수가 필요합니다.");
@@ -41,6 +42,59 @@
         ok: false,
         status: 0,
       };
+    }
+
+    function trackFetchResponseBody(response, requestId) {
+      if (!response || trackedFetchResponses.has(response)) {
+        return;
+      }
+
+      trackedFetchResponses.add(response);
+
+      ["arrayBuffer", "blob", "formData", "json", "text", "clone"].forEach((methodName) => {
+        const originalMethod = response[methodName];
+
+        if (typeof originalMethod !== "function") {
+          return;
+        }
+
+        try {
+          Object.defineProperty(response, methodName, {
+            configurable: true,
+            writable: true,
+            value: function (...args) {
+              if (methodName === "clone") {
+                const clonedResponse = Reflect.apply(originalMethod, this, args);
+                trackFetchResponseBody(clonedResponse, requestId);
+                return clonedResponse;
+              }
+
+              const bodyRequestId = requestStart(requestId);
+              let bodyPromise;
+
+              try {
+                bodyPromise = Reflect.apply(originalMethod, this, args);
+              } catch (error) {
+                requestEnd(bodyRequestId);
+                throw error;
+              }
+
+              return Promise.resolve(bodyPromise).then(
+                (body) => {
+                  requestEnd(bodyRequestId);
+                  return body;
+                },
+                (error) => {
+                  requestEnd(bodyRequestId);
+                  throw error;
+                },
+              );
+            },
+          });
+        } catch (error) {
+          // Leave non-configurable response methods unchanged.
+        }
+      });
     }
 
     function installFetchTracking() {
@@ -70,6 +124,10 @@
 
         return Promise.resolve(fetchPromise).then(
           (response) => {
+            trackFetchResponseBody(
+              response,
+              getRequestId("fetch-body", method, requestUrl),
+            );
             requestEnd(requestId, response);
             return response;
           },
