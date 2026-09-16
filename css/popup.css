@@ -1279,8 +1279,8 @@ body.is-user-flow-file-dragging .wrap {
   opacity: 0.45;
 }
 
-.user-flow-session[data-test-state="error"] {
-  border-color: #f0a3b3;
+.user-flow-session[data-test-state="completed"] {
+  border-color: #86d8bd;
 }
 
 .user-flow-test-replay-error {
@@ -1288,10 +1288,6 @@ body.is-user-flow-file-dragging .wrap {
   display: grid;
   gap: 3px;
   margin: 3px 0 0;
-  padding: 8px 10px;
-  border-top: 1px solid #fecdd3;
-  border-radius: 4px;
-  background: #fff1f4;
   color: #9f1239;
   font-size: 11px;
   line-height: 1.45;
@@ -1299,6 +1295,22 @@ body.is-user-flow-file-dragging .wrap {
 }
 
 .user-flow-test-replay-error strong {
+  font-size: 11px;
+}
+
+.user-flow-test-replay-complete {
+  grid-column: 1 / -1;
+  margin: 3px 0 0;
+  padding: 8px 10px;
+  border-top: 1px solid #a7f3d0;
+  border-radius: 4px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.user-flow-test-replay-complete strong {
   font-size: 11px;
 }
 

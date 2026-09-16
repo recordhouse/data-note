@@ -591,7 +591,30 @@
     return normalizedId;
   }
 
-  function getResponseErrorMessage(responseInfo) {
+  function getRequestErrorLabel(requestId) {
+    const match = String(requestId || "").match(/^(?:fetch|xhr):([^:]+):(.+)$/);
+
+    if (!match) {
+      return "";
+    }
+
+    const method = String(match[1] || "GET").toUpperCase();
+    let requestUrl = String(match[2] || "");
+
+    try {
+      const parsedUrl = new URL(requestUrl, window.location.href);
+      requestUrl =
+        parsedUrl.origin === window.location.origin
+          ? parsedUrl.pathname
+          : `${parsedUrl.origin}${parsedUrl.pathname}`;
+    } catch (error) {
+      // Keep the original request URL when it cannot be parsed.
+    }
+
+    return `${method} ${requestUrl}`.trim().slice(0, 220);
+  }
+
+  function getResponseErrorMessage(responseInfo, requestId) {
     if (!responseInfo || typeof responseInfo !== "object") {
       return "";
     }
@@ -612,8 +635,9 @@
     const statusLabel = hasStatus
       ? `${Math.round(status)}${statusText ? ` ${statusText}` : ""}`
       : "네트워크 오류";
+    const requestLabel = getRequestErrorLabel(requestId);
 
-    return `응답 오류: ${statusLabel}${detail ? ` - ${detail}` : ""}`;
+    return `응답 오류: ${statusLabel}${requestLabel ? ` · ${requestLabel}` : ""}${detail ? ` - ${detail}` : ""}`;
   }
 
   function requestEnd(requestId, responseInfo) {
@@ -630,7 +654,7 @@
       state.pendingRequests.delete(normalizedId);
     }
 
-    const responseError = getResponseErrorMessage(responseInfo);
+    const responseError = getResponseErrorMessage(responseInfo, normalizedId);
 
     if (state.isReplaying && responseError) {
       state.responseError = responseError;
@@ -1161,6 +1185,7 @@
     state.replayPausedMs = 0;
     state.replayRequestWaitStartedAt = 0;
     state.replayCompletedEventCount = 0;
+    state.responseError = "";
     state.lastError = "";
     clearReplayRequestTracking();
     stopReplayProgressNotifications();
@@ -1276,6 +1301,7 @@
         state.replayPausedMs = 0;
         state.replayRequestWaitStartedAt = 0;
         state.replayCompletedEventCount = 0;
+        state.responseError = "";
         clearReplayRequestTracking();
         stopReplayProgressNotifications();
         showRuntimeStatus("replaying", "completed");

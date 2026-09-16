@@ -92,6 +92,7 @@
   let parentReconnectStartedAt = 0;
   let parentReconnectTimer = 0;
   let userFlowTestReplayAdvanceTimer = 0;
+  let userFlowTestReplayCompletedSessionIds = new Set();
   let userFlowTestReplayCurrentSessionId = "";
   let userFlowTestReplayErrors = new Map();
   let userFlowTestReplayIndex = -1;
@@ -823,6 +824,9 @@
       ]),
       tabs: userFlowTabs.tabs,
       testSessionIds: userFlowTabs.testSessionIds,
+      testReplayCompletedSessionIds: Array.from(
+        userFlowTestReplayCompletedSessionIds,
+      ),
       testReplayCurrentSessionId: userFlowTestReplayCurrentSessionId,
       testReplayErrors: Array.from(userFlowTestReplayErrors.entries()),
       sessions: sessions.map((session) => ({
@@ -941,6 +945,9 @@
         const sessionTitle = formatUserFlowSessionTitle(session, recordedAt);
         const sessionSubtitle = formatUserFlowSessionSubtitle(session);
         const replayError = userFlowTestReplayErrors.get(session.id) || "";
+        const isTestReplayCompleted =
+          !replayError &&
+          userFlowTestReplayCompletedSessionIds.has(session.id);
         const isTestReplayCurrent =
           userFlowTestReplayCurrentSessionId === session.id;
         const disabled =
@@ -959,7 +966,7 @@
             class="user-flow-session"
             draggable="false"
             data-state="${isRecordingSession ? "recording" : isReplayingSession ? "replaying" : "idle"}"
-            data-test-state="${replayError ? "error" : isTestReplayCurrent ? "queued" : "idle"}"
+            data-test-state="${replayError ? "error" : isTestReplayCurrent ? "queued" : isTestReplayCompleted ? "completed" : "idle"}"
             data-user-flow-session-id="${escapeHtml(session.id)}"
           >
             ${renderUserFlowSessionReplayProgress(session, flowState)}
@@ -992,7 +999,7 @@
                 ${changeDisabled ? "disabled" : ""}
               >목록 제거</button>
             </div>
-            ${replayError ? `<p class="user-flow-test-replay-error" role="alert"><strong>재생 오류</strong><span>${escapeHtml(replayError)}</span></p>` : ""}
+            ${replayError ? `<p class="user-flow-test-replay-error" role="alert"><strong>재생 오류</strong><span>${escapeHtml(replayError)}</span></p>` : isTestReplayCompleted ? '<p class="user-flow-test-replay-complete" role="status"><strong>테스트 완료</strong></p>' : ""}
           </article>
         `;
       })
@@ -1591,6 +1598,23 @@
     }
 
     userFlowTestReplayErrors.set(normalizedSessionId, normalizedMessage);
+    userFlowTestReplayCompletedSessionIds.delete(normalizedSessionId);
+    renderedUserFlowTestSignature = "";
+    return true;
+  }
+
+  function setUserFlowTestReplayCompleted(sessionId) {
+    const normalizedSessionId = String(sessionId || "");
+
+    if (
+      !normalizedSessionId ||
+      userFlowTestReplayErrors.has(normalizedSessionId) ||
+      userFlowTestReplayCompletedSessionIds.has(normalizedSessionId)
+    ) {
+      return false;
+    }
+
+    userFlowTestReplayCompletedSessionIds.add(normalizedSessionId);
     renderedUserFlowTestSignature = "";
     return true;
   }
@@ -1618,6 +1642,7 @@
 
     if (clearErrors) {
       userFlowTestReplayErrors.clear();
+      userFlowTestReplayCompletedSessionIds.clear();
     }
 
     if (navigationBelongsToTest) {
@@ -1779,9 +1804,18 @@
       userFlowTestReplayStarted = true;
     }
 
-    const replayError = String(
-      nextState?.responseError || nextState?.error || "",
+    const previousResponseError = String(
+      previousState?.responseError || "",
     ).trim();
+    const nextResponseError = String(nextState?.responseError || "").trim();
+    const previousReplayError = String(previousState?.error || "").trim();
+    const nextReplayError = String(nextState?.error || "").trim();
+    const replayError =
+      nextResponseError && nextResponseError !== previousResponseError
+        ? nextResponseError
+        : nextReplayError && nextReplayError !== previousReplayError
+          ? nextReplayError
+          : "";
 
     if (
       replayError &&
@@ -1791,6 +1825,7 @@
     }
 
     if (wasReplaying && !isReplaying && userFlowTestReplayStarted) {
+      setUserFlowTestReplayCompleted(sessionId);
       scheduleNextUserFlowTestReplay();
     }
   }
@@ -2028,6 +2063,7 @@
       userFlowTabs.testSessionIds = previousTestSessionIds;
     } else {
       userFlowTestReplayErrors.delete(sessionId);
+      userFlowTestReplayCompletedSessionIds.delete(sessionId);
     }
 
     rerenderUserFlowOrganization();
