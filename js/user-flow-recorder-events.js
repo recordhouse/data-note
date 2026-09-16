@@ -407,6 +407,15 @@
       return null;
     }
 
+    function createReplayTargetError(selector) {
+      const targetSelector = String(selector || "").trim().slice(0, 180);
+      return new Error(
+        targetSelector
+          ? `재생 대상 요소를 찾지 못했습니다. (${targetSelector})`
+          : "재생 대상 요소의 선택자 정보가 없습니다.",
+      );
+    }
+
     async function playScroll(recordedEvent) {
       const target = await waitForTarget(recordedEvent.selector);
 
@@ -436,7 +445,7 @@
       }
 
       if (!target) {
-        return;
+        throw createReplayTargetError(recordedEvent.selector);
       }
 
       const { maxLeft, maxTop } = getElementScrollBounds(target);
@@ -622,7 +631,7 @@
       const target = await waitForTarget(recordedEvent.selector);
 
       if (!target || target === window) {
-        return;
+        throw createReplayTargetError(recordedEvent.selector);
       }
 
       if (recordedEvent.type === "click") {

@@ -745,9 +745,9 @@
     }
 
     if (!requestsCompleted && hasBlockingRequests()) {
-      console.warn(
-        `UserFlowRecorder: 통신 대기 시간이 ${REQUEST_WAIT_TIMEOUT_MS / 1000}초를 초과해 다음 행동을 계속합니다.`,
-      );
+      const timeoutMessage = `통신 대기 시간이 ${REQUEST_WAIT_TIMEOUT_MS / 1000}초를 초과했습니다.`;
+      console.warn(`UserFlowRecorder: ${timeoutMessage} 다음 행동을 계속합니다.`);
+      state.lastError = timeoutMessage;
       resetPendingRequests();
     }
 
@@ -1257,6 +1257,15 @@
 
       if (!state.replayAbort && state.replayRunId === replayRunId) {
         await waitForReplayRequests(replayRunId);
+      }
+    } catch (error) {
+      if (!state.replayAbort && state.replayRunId === replayRunId) {
+        state.lastError = String(
+          error?.message || "사용자 행동을 재생하지 못했습니다.",
+        )
+          .trim()
+          .slice(0, 500);
+        notifyClients({ immediate: true });
       }
     } finally {
       if (state.replayRunId === replayRunId) {

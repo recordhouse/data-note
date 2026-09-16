@@ -62,6 +62,8 @@
   ]);
   const PARENT_CONNECTION_CHECK_MS = 400;
   const PARENT_RECONNECT_TIMEOUT_MS = 60 * 1000;
+  const USER_FLOW_TEST_REPLAY_ADVANCE_MS = 350;
+  const USER_FLOW_TEST_REPLAY_START_TIMEOUT_MS = 15 * 1000;
   const USER_FLOW_DRAG_SCROLL_EDGE_PX = 48;
   const USER_FLOW_DRAG_SCROLL_STEP_PX = 18;
   const USER_FLOW_MOVE_ANIMATION_MS = 260;
@@ -89,6 +91,13 @@
   let parentConnectionCheckTimer = 0;
   let parentReconnectStartedAt = 0;
   let parentReconnectTimer = 0;
+  let userFlowTestReplayAdvanceTimer = 0;
+  let userFlowTestReplayCurrentSessionId = "";
+  let userFlowTestReplayErrors = new Map();
+  let userFlowTestReplayIndex = -1;
+  let userFlowTestReplayQueue = [];
+  let userFlowTestReplayStartTimer = 0;
+  let userFlowTestReplayStarted = false;
   let userFlowImportController = null;
   let userFlowTabs = readUserFlowTabs();
 
@@ -323,6 +332,7 @@
   }
 
   function resetUserFlowOrganization() {
+    cancelUserFlowTestReplay({ clearErrors: true, rerender: false });
     userFlowTabs = createDefaultUserFlowTabs({ withInitialTab: false });
     activeUserFlowView = USER_FLOW_VIEW_RECORDINGS;
     editingUserFlowSessionId = "";
@@ -808,6 +818,8 @@
       ]),
       tabs: userFlowTabs.tabs,
       testSessionIds: userFlowTabs.testSessionIds,
+      testReplayCurrentSessionId: userFlowTestReplayCurrentSessionId,
+      testReplayErrors: Array.from(userFlowTestReplayErrors.entries()),
       sessions: sessions.map((session) => ({
         durationMs: session.durationMs,
         eventCount: session.eventCount,
@@ -896,6 +908,7 @@
     const testSessions = userFlowTabs.testSessionIds
       .map((sessionId) => sessionById.get(sessionId))
       .filter(Boolean);
+    const isTestReplayRunning = Boolean(userFlowTestReplayCurrentSessionId);
 
     if (!sessionList) {
       return;
@@ -922,18 +935,26 @@
         const sessionName = String(session.name || "").trim();
         const sessionTitle = formatUserFlowSessionTitle(session, recordedAt);
         const sessionSubtitle = formatUserFlowSessionSubtitle(session);
+        const replayError = userFlowTestReplayErrors.get(session.id) || "";
+        const isTestReplayCurrent =
+          userFlowTestReplayCurrentSessionId === session.id;
         const disabled =
           flowState.isRecording ||
           (!session.eventCount && !isReplayingSession) ||
           (flowState.isReplaying && !isReplayingSession);
-        const replayDisabled = disabled || Boolean(replayNavigationSessionId);
-        const changeDisabled = flowState.isRecording || flowState.isReplaying;
+        const replayDisabled =
+          disabled ||
+          Boolean(replayNavigationSessionId) ||
+          (isTestReplayRunning && !isReplayingSession);
+        const changeDisabled =
+          flowState.isRecording || flowState.isReplaying || isTestReplayRunning;
         const sessionMeta = getUserFlowSessionMeta(session, flowState, isReplayingSession);
         return `
           <article
             class="user-flow-session"
             draggable="false"
             data-state="${isRecordingSession ? "recording" : isReplayingSession ? "replaying" : "idle"}"
+            data-test-state="${replayError ? "error" : isTestReplayCurrent ? "queued" : "idle"}"
             data-user-flow-session-id="${escapeHtml(session.id)}"
           >
             ${renderUserFlowSessionReplayProgress(session, flowState)}
@@ -957,7 +978,7 @@
                 aria-busy="${String(isNavigatingSession)}"
                 data-navigating="${String(isNavigatingSession)}"
                 ${replayDisabled ? "disabled" : ""}
-              >${isNavigatingSession ? "이동 중" : isReplayingSession ? "재생 중지" : "재생"}</button>
+              >${isNavigatingSession ? "이동 중" : isReplayingSession ? "재생 중지" : isTestReplayCurrent ? "재생 대기" : "재생"}</button>
               <button
                 class="user-flow-test-remove"
                 type="button"
@@ -966,6 +987,7 @@
                 ${changeDisabled ? "disabled" : ""}
               >목록 제거</button>
             </div>
+            ${replayError ? `<p class="user-flow-test-replay-error" role="alert"><strong>재생 오류</strong><span>${escapeHtml(replayError)}</span></p>` : ""}
           </article>
         `;
       })
@@ -1533,6 +1555,241 @@
     );
   }
 
+  function isUserFlowTestReplayRunning() {
+    return Boolean(userFlowTestReplayCurrentSessionId);
+  }
+
+  function clearUserFlowTestReplayTimers() {
+    window.clearTimeout(userFlowTestReplayAdvanceTimer);
+    window.clearTimeout(userFlowTestReplayStartTimer);
+    userFlowTestReplayAdvanceTimer = 0;
+    userFlowTestReplayStartTimer = 0;
+  }
+
+  function rerenderUserFlowTestReplay() {
+    renderedUserFlowTestSignature = "";
+    renderUserFlowState(currentUserFlowState);
+  }
+
+  function setUserFlowTestReplayError(sessionId, message) {
+    const normalizedSessionId = String(sessionId || "");
+    const normalizedMessage = String(message || "")
+      .trim()
+      .slice(0, 500);
+
+    if (!normalizedSessionId || !normalizedMessage) {
+      return false;
+    }
+
+    if (userFlowTestReplayErrors.get(normalizedSessionId) === normalizedMessage) {
+      return false;
+    }
+
+    userFlowTestReplayErrors.set(normalizedSessionId, normalizedMessage);
+    renderedUserFlowTestSignature = "";
+    return true;
+  }
+
+  function finishUserFlowTestReplay() {
+    clearUserFlowTestReplayTimers();
+    userFlowTestReplayCurrentSessionId = "";
+    userFlowTestReplayIndex = -1;
+    userFlowTestReplayQueue = [];
+    userFlowTestReplayStarted = false;
+    rerenderUserFlowTestReplay();
+  }
+
+  function cancelUserFlowTestReplay({ clearErrors = false, rerender = true } = {}) {
+    const navigationBelongsToTest = Boolean(
+      replayNavigationSessionId &&
+        replayNavigationSessionId === userFlowTestReplayCurrentSessionId,
+    );
+
+    clearUserFlowTestReplayTimers();
+    userFlowTestReplayCurrentSessionId = "";
+    userFlowTestReplayIndex = -1;
+    userFlowTestReplayQueue = [];
+    userFlowTestReplayStarted = false;
+
+    if (clearErrors) {
+      userFlowTestReplayErrors.clear();
+    }
+
+    if (navigationBelongsToTest) {
+      clearReplayNavigationState({ rerender: false });
+    }
+
+    if (rerender) {
+      rerenderUserFlowTestReplay();
+    }
+  }
+
+  function scheduleUserFlowTestReplayStartTimeout(sessionId) {
+    window.clearTimeout(userFlowTestReplayStartTimer);
+    userFlowTestReplayStartTimer = window.setTimeout(() => {
+      if (
+        userFlowTestReplayCurrentSessionId !== sessionId ||
+        userFlowTestReplayStarted ||
+        replayNavigationSessionId === sessionId
+      ) {
+        return;
+      }
+
+      setUserFlowTestReplayError(
+        sessionId,
+        "재생 시작 상태를 확인하지 못했습니다.",
+      );
+      scheduleNextUserFlowTestReplay();
+      rerenderUserFlowTestReplay();
+    }, USER_FLOW_TEST_REPLAY_START_TIMEOUT_MS);
+  }
+
+  function requestUserFlowTestReplay(sessionId) {
+    if (!getActiveParentWindow()) {
+      if (openParentForReplay(sessionId)) {
+        startReplayNavigationState(sessionId);
+        return true;
+      }
+
+      setUserFlowTestReplayError(
+        sessionId,
+        "재생할 부모 화면을 열지 못했습니다.",
+      );
+      return false;
+    }
+
+    const startsPageNavigation = willReplayNavigate(sessionId);
+
+    if (startsPageNavigation) {
+      startReplayNavigationState(sessionId);
+    }
+
+    const commandSent = sendUserFlowCommand("toggle-replay-session", {
+      sessionId,
+    });
+
+    if (!commandSent) {
+      if (startsPageNavigation) {
+        clearReplayNavigationState({ rerender: false });
+      }
+
+      setUserFlowTestReplayError(
+        sessionId,
+        "부모 화면에 재생 명령을 전달하지 못했습니다.",
+      );
+      return false;
+    }
+
+    if (!startsPageNavigation) {
+      scheduleUserFlowTestReplayStartTimeout(sessionId);
+    }
+
+    return true;
+  }
+
+  function playCurrentUserFlowTestReplay() {
+    const sessionId = userFlowTestReplayQueue[userFlowTestReplayIndex] || "";
+
+    if (!sessionId) {
+      finishUserFlowTestReplay();
+      return;
+    }
+
+    userFlowTestReplayCurrentSessionId = sessionId;
+    userFlowTestReplayStarted = false;
+    const session = (currentUserFlowState.sessions || []).find(
+      (item) => item.id === sessionId,
+    );
+
+    if (!session?.eventCount) {
+      setUserFlowTestReplayError(
+        sessionId,
+        session
+          ? "재생할 행동이 없습니다."
+          : "저장된 녹화를 찾지 못했습니다.",
+      );
+      scheduleNextUserFlowTestReplay();
+      rerenderUserFlowTestReplay();
+      return;
+    }
+
+    rerenderUserFlowTestReplay();
+
+    if (!requestUserFlowTestReplay(sessionId)) {
+      scheduleNextUserFlowTestReplay();
+      rerenderUserFlowTestReplay();
+    }
+  }
+
+  function scheduleNextUserFlowTestReplay() {
+    window.clearTimeout(userFlowTestReplayStartTimer);
+    window.clearTimeout(userFlowTestReplayAdvanceTimer);
+    userFlowTestReplayStartTimer = 0;
+    userFlowTestReplayStarted = false;
+    userFlowTestReplayAdvanceTimer = window.setTimeout(() => {
+      userFlowTestReplayAdvanceTimer = 0;
+      userFlowTestReplayIndex += 1;
+      playCurrentUserFlowTestReplay();
+    }, USER_FLOW_TEST_REPLAY_ADVANCE_MS);
+  }
+
+  function startUserFlowTestReplay(sessionId) {
+    const availableSessionIds = new Set(
+      (currentUserFlowState.sessions || []).map((session) => session.id),
+    );
+    const orderedSessionIds = userFlowTabs.testSessionIds.filter((testSessionId) =>
+      availableSessionIds.has(testSessionId),
+    );
+    const startIndex = orderedSessionIds.indexOf(sessionId);
+
+    if (startIndex < 0) {
+      showUserFlowImportStatus("녹화 테스트 목록에서 재생 항목을 찾지 못했습니다.");
+      return false;
+    }
+
+    cancelUserFlowTestReplay({ clearErrors: true, rerender: false });
+    userFlowTestReplayQueue = orderedSessionIds.slice(startIndex);
+    userFlowTestReplayIndex = 0;
+    playCurrentUserFlowTestReplay();
+    return true;
+  }
+
+  function updateUserFlowTestReplayState(previousState, nextState) {
+    const sessionId = userFlowTestReplayCurrentSessionId;
+
+    if (!sessionId) {
+      return;
+    }
+
+    const wasReplaying = Boolean(
+      previousState?.isReplaying && previousState.replaySessionId === sessionId,
+    );
+    const isReplaying = Boolean(
+      nextState?.isReplaying && nextState.replaySessionId === sessionId,
+    );
+
+    if (isReplaying) {
+      window.clearTimeout(userFlowTestReplayStartTimer);
+      userFlowTestReplayStartTimer = 0;
+      userFlowTestReplayStarted = true;
+    }
+
+    const replayError = String(
+      nextState?.responseError || nextState?.error || "",
+    ).trim();
+
+    if (
+      replayError &&
+      (isReplaying || wasReplaying || userFlowTestReplayStarted)
+    ) {
+      setUserFlowTestReplayError(sessionId, replayError);
+    }
+
+    if (wasReplaying && !isReplaying && userFlowTestReplayStarted) {
+      scheduleNextUserFlowTestReplay();
+    }
+  }
+
   function clearReplayNavigationState({ rerender = true } = {}) {
     window.clearTimeout(replayNavigationIdleTimer);
     window.clearTimeout(replayNavigationTimer);
@@ -1558,7 +1815,21 @@
     replayNavigationParentReady = false;
     replayNavigationSessionId = sessionId;
     replayNavigationTimer = window.setTimeout(() => {
-      clearReplayNavigationState();
+      const isTestReplayNavigation =
+        userFlowTestReplayCurrentSessionId === sessionId;
+      clearReplayNavigationState({ rerender: false });
+
+      if (isTestReplayNavigation) {
+        setUserFlowTestReplayError(
+          sessionId,
+          "재생할 페이지 연결 시간이 초과되었습니다.",
+        );
+        scheduleNextUserFlowTestReplay();
+        rerenderUserFlowTestReplay();
+      } else {
+        rerenderUserFlowOrganization();
+      }
+
       sendUserFlowCommand("get-state");
     }, REPLAY_NAVIGATION_TIMEOUT_MS);
     rerenderUserFlowOrganization();
@@ -1586,7 +1857,20 @@
         replayNavigationSessionId === expectedSessionId &&
         replayNavigationParentReady
       ) {
-        clearReplayNavigationState();
+        const shouldStartTestReplay =
+          userFlowTestReplayCurrentSessionId === expectedSessionId;
+        clearReplayNavigationState({ rerender: false });
+
+        if (shouldStartTestReplay) {
+          rerenderUserFlowTestReplay();
+
+          if (!requestUserFlowTestReplay(expectedSessionId)) {
+            scheduleNextUserFlowTestReplay();
+            rerenderUserFlowTestReplay();
+          }
+        } else {
+          rerenderUserFlowOrganization();
+        }
       }
     }, REPLAY_NAVIGATION_IDLE_MS);
   }
@@ -1635,6 +1919,25 @@
     const payload = {
       sessionId: button.dataset.sessionId || "",
     };
+    const isTestReplayButton = Boolean(
+      button.closest("#userFlowTestSessionList"),
+    );
+
+    if (
+      command === "toggle-replay-session" &&
+      isUserFlowTestReplayRunning() &&
+      currentUserFlowState.isReplaying &&
+      currentUserFlowState.replaySessionId === payload.sessionId
+    ) {
+      cancelUserFlowTestReplay();
+    } else if (
+      command === "toggle-replay-session" &&
+      isTestReplayButton &&
+      !currentUserFlowState.isReplaying
+    ) {
+      startUserFlowTestReplay(payload.sessionId);
+      return;
+    }
 
     if (
       command === "toggle-replay-session" &&
@@ -1730,6 +2033,8 @@
 
     if (!persistUserFlowTabs()) {
       userFlowTabs.testSessionIds = previousTestSessionIds;
+    } else {
+      userFlowTestReplayErrors.delete(sessionId);
     }
 
     rerenderUserFlowOrganization();
@@ -2569,7 +2874,12 @@
         markReplayNavigationParentReady();
       }
 
-      renderUserFlowState(event.data.state || {});
+      const nextUserFlowState = event.data.state || {};
+      updateUserFlowTestReplayState(
+        currentUserFlowState,
+        nextUserFlowState,
+      );
+      renderUserFlowState(nextUserFlowState);
     }
   }
 
@@ -2610,6 +2920,14 @@
     activeParentWindow = null;
     stopParentReconnect();
     clearReplayNavigationState({ rerender: false });
+
+    if (userFlowTestReplayCurrentSessionId) {
+      setUserFlowTestReplayError(
+        userFlowTestReplayCurrentSessionId,
+        "재생 중 부모 화면 연결이 끊어졌습니다.",
+      );
+      scheduleNextUserFlowTestReplay();
+    }
 
     if (currentUserFlowState.isRecording || currentUserFlowState.isReplaying) {
       renderUserFlowState({
@@ -2683,6 +3001,7 @@
     "pagehide",
     () => {
       window.clearInterval(parentConnectionCheckTimer);
+      clearUserFlowTestReplayTimers();
       stopUserFlowStatusDots();
       stopParentReconnect();
     },
