@@ -80,7 +80,7 @@
   });
 
   if (!recorderEvents) {
-    throw new Error("사용자 행동 로그 저장 모듈을 찾지 못했습니다.");
+    throw new Error("로그 저장 모듈을 찾지 못했습니다.");
   }
 
   const {
@@ -1261,7 +1261,7 @@
     } catch (error) {
       if (!state.replayAbort && state.replayRunId === replayRunId) {
         state.lastError = String(
-          error?.message || "사용자 행동 로그를 재생하지 못했습니다.",
+          error?.message || "로그를 재생하지 못했습니다.",
         )
           .trim()
           .slice(0, 500);

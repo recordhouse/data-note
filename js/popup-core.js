@@ -5,6 +5,8 @@
     return;
   }
 
+  // 변경사항을 배포할 때 마지막 버전 숫자를 올려주세요.
+  const DATA_NOTE_VERSION = "1.0.0+0004";
   const MESSAGE_READY = "response-mapping-popup-ready";
   const MESSAGE_RENDER = "response-mapping-popup-render";
   const MESSAGE_RENDERED = "response-mapping-popup-rendered";
@@ -24,6 +26,11 @@
     : new URL("./js/", window.location.href);
   const isPopupRuntime = Boolean(document.querySelector("[data-popup-tab]"));
   const context = isPopupRuntime ? "popup" : "parent";
+
+  if (isPopupRuntime) {
+    document.title = `Data Note · v${DATA_NOTE_VERSION}`;
+  }
+
   const featureLoads = new Map();
   let featureReadyPromise = Promise.resolve();
   let connectedParentDocument = null;

@@ -1128,12 +1128,12 @@
         : "로그 시작 페이지로 이동 중입니다";
       statusState = isWaitingForCommunication ? "communicating" : "navigating";
     } else if (flowState.isRecording) {
-      statusText = "사용자 행동 로그를 저장하고 있습니다";
+      statusText = "로그를 저장하고 있습니다";
       statusState = "recording";
     } else if (flowState.isReplaying) {
       statusText = flowState.isWaitingForRequests
         ? "통신이 완료될 때까지 재생을 기다리고 있습니다"
-        : "저장된 사용자 행동 로그를 재생하고 있습니다";
+        : "저장된 로그를 재생하고 있습니다";
       statusState = "replaying";
     } else if (flowState.error) {
       statusText = flowState.error;
