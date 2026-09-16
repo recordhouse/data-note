@@ -611,7 +611,7 @@
     const tabName =
       userFlowTabs.tabs.find((tab) => tab.id === tabId)?.name || "선택한";
     showUserFlowImportStatus(
-      `${tabName} 탭에는 녹화를 최대 ${MAX_USER_FLOW_SESSIONS_PER_TAB}개까지 추가할 수 있습니다.`,
+      `${tabName} 탭에는 로그를 최대 ${MAX_USER_FLOW_SESSIONS_PER_TAB}개까지 추가할 수 있습니다.`,
     );
   }
 
@@ -716,13 +716,13 @@
 
   function formatUserFlowRecordedAt(recordedAt) {
     if (!recordedAt) {
-      return "녹화 일시 없음";
+      return "로그 일시 없음";
     }
 
     const date = new Date(recordedAt);
 
     if (Number.isNaN(date.getTime())) {
-      return "녹화 일시 없음";
+      return "로그 일시 없음";
     }
 
     const dateText = [
@@ -927,7 +927,7 @@
 
     if (!testSessions.length) {
       sessionList.innerHTML =
-        '<div class="user-flow-empty">녹화 목록을 이 탭으로 끌어다 놓아주세요.</div>';
+        '<div class="user-flow-empty">로그 목록을 이 탭으로 끌어다 놓아주세요.</div>';
       return;
     }
 
@@ -988,7 +988,7 @@
                 class="user-flow-test-remove"
                 type="button"
                 data-user-flow-test-remove="${escapeHtml(session.id)}"
-                aria-label="${escapeHtml(sessionTitle)} 녹화 테스트 목록에서 제거"
+                aria-label="${escapeHtml(sessionTitle)} 로그 테스트 목록에서 제거"
                 ${changeDisabled ? "disabled" : ""}
               >목록 제거</button>
             </div>
@@ -1116,7 +1116,7 @@
     const isWaitingForCommunication = Boolean(
       pendingRequestCount > 0 || flowState.isWaitingForRequests,
     );
-    let statusText = "저장된 녹화가 없습니다";
+    let statusText = "저장된 로그가 없습니다";
     let statusState = "idle";
 
     if (flowState.responseError) {
@@ -1125,23 +1125,23 @@
     } else if (replayNavigationSessionId) {
       statusText = isWaitingForCommunication
         ? "통신 중입니다"
-        : "녹화 시작 페이지로 이동 중입니다";
+        : "로그 시작 페이지로 이동 중입니다";
       statusState = isWaitingForCommunication ? "communicating" : "navigating";
     } else if (flowState.isRecording) {
-      statusText = "사용자 행동을 녹화하고 있습니다";
+      statusText = "사용자 행동 로그를 저장하고 있습니다";
       statusState = "recording";
     } else if (flowState.isReplaying) {
       statusText = flowState.isWaitingForRequests
         ? "통신이 완료될 때까지 재생을 기다리고 있습니다"
-        : "녹화된 사용자 행동을 재생하고 있습니다";
+        : "저장된 사용자 행동 로그를 재생하고 있습니다";
       statusState = "replaying";
     } else if (flowState.error) {
       statusText = flowState.error;
       statusState = "error";
     } else if (!hasUserFlowTabs) {
-      statusText = "녹화를 시작하려면 목록 탭을 추가해주세요";
+      statusText = "로그를 저장하려면 목록 탭을 추가해주세요";
     } else if (flowState.canReplay) {
-      statusText = "녹화 재생을 준비했습니다";
+      statusText = "로그 재생을 준비했습니다";
       statusState = "ready";
     }
 
@@ -1160,12 +1160,12 @@
     );
 
     recordButton.textContent = flowState.isRecording
-      ? "녹화 중지"
+      ? "저장 중지"
       : canContinueRecording
-        ? "이어서 녹화"
-        : "녹화";
+        ? "이어서 저장"
+        : "로그 저장";
     recordButton.title = canContinueRecording
-      ? `${continueEventCount.toLocaleString("ko-KR")}개 행동 다음부터 이어서 녹화합니다.`
+      ? `${continueEventCount.toLocaleString("ko-KR")}개 행동 다음부터 이어서 저장합니다.`
       : "";
     recordButton.setAttribute("aria-pressed", String(Boolean(flowState.isRecording)));
     recordButton.disabled = Boolean(
@@ -1227,7 +1227,7 @@
       sessionList.removeAttribute("aria-label");
     } else {
       sessionList.removeAttribute("aria-labelledby");
-      sessionList.setAttribute("aria-label", "녹화 목록");
+      sessionList.setAttribute("aria-label", "로그 목록");
     }
 
     if (
@@ -1244,10 +1244,10 @@
     if (!visibleSessions.length) {
       renderedUserFlowSessionSignature = "";
       const emptyMessage = !userFlowTabs.tabs.length
-        ? "탭을 추가하면 녹화를 시작할 수 있습니다."
+        ? "탭을 추가하면 로그 저장을 시작할 수 있습니다."
         : sessions.length
-          ? "이 탭에 저장된 녹화가 없습니다."
-          : "저장된 녹화가 없습니다.";
+          ? "이 탭에 저장된 로그가 없습니다."
+          : "저장된 로그가 없습니다.";
       sessionList.innerHTML = `<div class="user-flow-empty">${emptyMessage}</div>`;
       updateUserFlowSessionProgress(flowState, sessions);
       animateStoppedRecordingBackup(
@@ -1305,8 +1305,8 @@
                     type="text"
                     value="${escapeHtml(sessionName)}"
                     maxlength="40"
-                    placeholder="녹화 이름"
-                    aria-label="녹화 이름"
+                    placeholder="로그 이름"
+                    aria-label="로그 이름"
                     required
                     data-user-flow-name-input
                   />
@@ -1363,7 +1363,7 @@
                 type="button"
                 data-user-flow-command="export-recording"
                 data-session-id="${escapeHtml(session.id)}"
-                aria-label="${escapeHtml(sessionTitle)} 녹화 내보내기"
+                aria-label="${escapeHtml(sessionTitle)} 로그 내보내기"
                 ${changeDisabled ? "disabled" : ""}
               >내보내기</button>
               <button
@@ -1371,7 +1371,7 @@
                 type="button"
                 data-user-flow-command="delete-session"
                 data-session-id="${escapeHtml(session.id)}"
-                aria-label="${escapeHtml(sessionTitle)} 녹화 삭제"
+                aria-label="${escapeHtml(sessionTitle)} 로그 삭제"
                 ${changeDisabled ? "disabled" : ""}
               >삭제</button>
             </div>
@@ -1504,7 +1504,7 @@
     const startPage = String(session?.startPage || "").trim();
 
     if (!session?.eventCount || !startPage) {
-      showUserFlowImportStatus("재생할 녹화의 시작 페이지를 찾지 못했습니다.");
+      showUserFlowImportStatus("재생할 로그의 시작 페이지를 찾지 못했습니다.");
       return false;
     }
 
@@ -1514,7 +1514,7 @@
       const replayUrl = new URL(startPage, window.location.href);
 
       if (replayUrl.origin !== window.location.origin) {
-        showUserFlowImportStatus("다른 사이트의 녹화 페이지는 열 수 없습니다.");
+        showUserFlowImportStatus("다른 사이트의 로그 페이지는 열 수 없습니다.");
         return false;
       }
 
@@ -1711,7 +1711,7 @@
         sessionId,
         session
           ? "재생할 행동이 없습니다."
-          : "저장된 녹화를 찾지 못했습니다.",
+          : "저장된 로그를 찾지 못했습니다.",
       );
       scheduleNextUserFlowTestReplay();
       rerenderUserFlowTestReplay();
@@ -1748,7 +1748,7 @@
     const startIndex = orderedSessionIds.indexOf(sessionId);
 
     if (startIndex < 0) {
-      showUserFlowImportStatus("녹화 테스트 목록에서 재생 항목을 찾지 못했습니다.");
+      showUserFlowImportStatus("로그 테스트 목록에서 재생 항목을 찾지 못했습니다.");
       return false;
     }
 
@@ -1896,7 +1896,7 @@
       if (
         (!sessionCount && !tabCount) ||
         !window.confirm(
-          `현재 팝업에 저장된 녹화 ${sessionCount.toLocaleString("ko-KR")}개와 탭 ${tabCount.toLocaleString("ko-KR")}개를 모두 삭제합니다.\n이 작업은 되돌릴 수 없습니다. 삭제하시겠습니까?`,
+          `현재 팝업에 저장된 로그 ${sessionCount.toLocaleString("ko-KR")}개와 탭 ${tabCount.toLocaleString("ko-KR")}개를 모두 삭제합니다.\n이 작업은 되돌릴 수 없습니다. 삭제하시겠습니까?`,
         )
       ) {
         return;
@@ -1992,18 +1992,6 @@
     renderedUserFlowSessionSignature = "";
     renderedUserFlowTestSignature = "";
     renderUserFlowState(currentUserFlowState);
-  }
-
-  function animateUserFlowSessionTabSwitch() {
-    const sessionList = document.querySelector("#userFlowSessionList");
-
-    if (!sessionList) {
-      return;
-    }
-
-    sessionList.classList.remove("is-tab-switching");
-    void sessionList.offsetWidth;
-    sessionList.classList.add("is-tab-switching");
   }
 
   function handleUserFlowViewControl(event) {
@@ -2143,7 +2131,6 @@
       editingUserFlowTabId = "";
       persistUserFlowTabs();
       rerenderUserFlowOrganization();
-      animateUserFlowSessionTabSwitch();
       return;
     }
 
@@ -2180,7 +2167,7 @@
 
       if (
         !window.confirm(
-          `${tab.name} 탭을 삭제하면 탭 안의 녹화 ${sessionIds.length.toLocaleString("ko-KR")}개도 모두 삭제됩니다.\n삭제하시겠습니까?`,
+          `${tab.name} 탭을 삭제하면 탭 안의 로그 ${sessionIds.length.toLocaleString("ko-KR")}개도 모두 삭제됩니다.\n삭제하시겠습니까?`,
         )
       ) {
         return;
@@ -2232,7 +2219,6 @@
       editingUserFlowTabId = "";
       persistUserFlowTabs();
       rerenderUserFlowOrganization();
-      animateUserFlowSessionTabSwitch();
     }
   }
 

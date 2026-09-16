@@ -222,7 +222,7 @@
 
     async function importFromUrl(item) {
       if (isBlocked() || isUrlImporting) {
-        showStatus("녹화 또는 재생 중에는 가져올 수 없습니다.");
+        showStatus("로그 저장 또는 재생 중에는 가져올 수 없습니다.");
         return;
       }
 
@@ -507,7 +507,7 @@
 
             if (importedSessions.length >= limits.maxImportSessions) {
               throw new Error(
-                `한 번에 녹화 ${limits.maxImportSessions}개까지 가져올 수 있습니다.`,
+                `한 번에 로그 ${limits.maxImportSessions}개까지 가져올 수 있습니다.`,
               );
             }
 
@@ -531,7 +531,7 @@
         !importedSessions.length &&
         !skipZipNameDuplicateCheck
       ) {
-        throw new Error("ZIP 파일의 녹화가 이미 목록에 추가되어 있습니다.");
+        throw new Error("ZIP 파일의 로그가 이미 목록에 추가되어 있습니다.");
       }
 
       const previousTabs = JSON.parse(JSON.stringify(tabsState));
@@ -546,7 +546,7 @@
 
         if ((state.sessions || []).length + importedSessions.length > limits.maxSessions) {
           throw new Error(
-            `전체 녹화는 최대 ${limits.maxSessions}개까지 저장할 수 있습니다.`,
+            `전체 로그는 최대 ${limits.maxSessions}개까지 저장할 수 있습니다.`,
           );
         }
 
@@ -562,7 +562,7 @@
 
           if (tabSessionCount >= limits.maxSessionsPerTab) {
             throw new Error(
-              `${tab.name} 탭에는 녹화를 최대 ${limits.maxSessionsPerTab}개까지 가져올 수 있습니다.`,
+              `${tab.name} 탭에는 로그를 최대 ${limits.maxSessionsPerTab}개까지 가져올 수 있습니다.`,
             );
           }
 
@@ -584,7 +584,7 @@
           rerender();
           showStatus(
             archiveSessionCount
-              ? "새로 가져올 녹화가 없습니다. 알림과 탭 구성을 적용했습니다."
+              ? "새로 가져올 로그가 없습니다. 알림과 탭 구성을 적용했습니다."
               : "빈 탭 폴더를 가져왔습니다.",
             "ready",
           );
@@ -595,7 +595,7 @@
           folderNames.map((name) => name.toLowerCase()),
         ).size;
         showStatus(
-          `탭 ${importedTabCount}개 · 녹화 ${importedSessions.length}개 가져오는 중`,
+          `탭 ${importedTabCount}개 · 로그 ${importedSessions.length}개 가져오는 중`,
           "ready",
         );
 
@@ -616,7 +616,7 @@
 
     async function importFile(file, { skipZipNameDuplicateCheck = false } = {}) {
       if (isBlocked()) {
-        showStatus("녹화 또는 재생 중에는 가져올 수 없습니다.");
+        showStatus("로그 저장 또는 재생 중에는 가져올 수 없습니다.");
         return;
       }
 
@@ -653,7 +653,7 @@
           importSessionCount &&
           !tabsState.tabs.some((tab) => tab.id === tabsState.activeTabId)
         ) {
-          showStatus("녹화를 가져오려면 목록 탭을 먼저 추가해주세요.");
+          showStatus("로그를 가져오려면 목록 탭을 먼저 추가해주세요.");
           return;
         }
 

@@ -80,7 +80,7 @@
   });
 
   if (!recorderEvents) {
-    throw new Error("사용자 행동 녹화 모듈을 찾지 못했습니다.");
+    throw new Error("사용자 행동 로그 저장 모듈을 찾지 못했습니다.");
   }
 
   const {
@@ -160,7 +160,7 @@
       window.location.assign(targetPage);
     } catch (error) {
       window.ResponseMappingPopup?.preserveForNavigation?.(false);
-      state.lastError = "녹화를 시작한 페이지로 이동하지 못했습니다.";
+      state.lastError = "로그 저장을 시작한 페이지로 이동하지 못했습니다.";
       notifyClients({ immediate: true });
     }
 
@@ -293,7 +293,7 @@
 
       return true;
     } catch (error) {
-      state.lastError = "저장된 녹화 데이터를 불러오지 못했습니다.";
+      state.lastError = "저장된 로그 데이터를 불러오지 못했습니다.";
 
       if (notify) {
         notifyClients({ immediate: true });
@@ -315,7 +315,7 @@
       const mergedSessions = mergeRecordingSessions(readStoredRecordingSessions());
 
       if (mergedSessions.length > MAX_SESSIONS) {
-        state.lastError = `녹화는 최대 ${MAX_SESSIONS.toLocaleString("ko-KR")}개까지 저장할 수 있습니다. 기존 녹화를 삭제하거나 내보내 주세요.`;
+        state.lastError = `로그는 최대 ${MAX_SESSIONS.toLocaleString("ko-KR")}개까지 저장할 수 있습니다. 기존 로그를 삭제하거나 내보내 주세요.`;
         return false;
       }
 
@@ -338,7 +338,7 @@
       state.lastError = "";
       return true;
     } catch (error) {
-      state.lastError = "녹화 데이터를 로컬 스토리지에 저장하지 못했습니다.";
+      state.lastError = "로그 데이터를 로컬 스토리지에 저장하지 못했습니다.";
       return false;
     }
   }
@@ -872,7 +872,7 @@
 
   function importRecordings(importData, options = {}) {
     if (state.isRecording || state.isReplaying) {
-      state.lastError = "녹화 또는 재생 중에는 가져올 수 없습니다.";
+      state.lastError = "로그 저장 또는 재생 중에는 가져올 수 없습니다.";
       notifyClients({ immediate: true });
       return false;
     }
@@ -885,13 +885,13 @@
     const importedSessions = normalizeImportedSessions(importData, options);
 
     if (!importedSessions.length) {
-      state.lastError = "가져올 새 녹화가 없거나 이미 존재하는 녹화입니다.";
+      state.lastError = "가져올 새 로그가 없거나 이미 존재하는 로그입니다.";
       notifyClients({ immediate: true });
       return false;
     }
 
     if (state.sessions.length + importedSessions.length > MAX_SESSIONS) {
-      state.lastError = `녹화는 최대 ${MAX_SESSIONS.toLocaleString("ko-KR")}개까지 저장할 수 있습니다. 기존 녹화를 삭제하거나 내보내 주세요.`;
+      state.lastError = `로그는 최대 ${MAX_SESSIONS.toLocaleString("ko-KR")}개까지 저장할 수 있습니다. 기존 로그를 삭제하거나 내보내 주세요.`;
       notifyClients({ immediate: true });
       return false;
     }
@@ -963,13 +963,13 @@
     if (!sessionId || !session) {
       state.resumableRecordingSessionId = "";
       state.resumableRecordingElapsedMs = 0;
-      state.lastError = "이어서 녹화할 데이터를 찾지 못했습니다.";
+      state.lastError = "이어서 저장할 로그를 찾지 못했습니다.";
       notifyClients({ immediate: true });
       return false;
     }
 
     if (state.sessions.length >= MAX_SESSIONS) {
-      state.lastError = `이어서 녹화하려면 중지 시점 복사본을 저장할 공간이 필요합니다. 기존 녹화를 삭제한 뒤 다시 시도해주세요.`;
+      state.lastError = `이어서 저장하려면 중지 시점 복사본을 저장할 공간이 필요합니다. 기존 로그를 삭제한 뒤 다시 시도해주세요.`;
       notifyClients({ immediate: true });
       return false;
     }
@@ -1009,7 +1009,7 @@
     }
 
     if (state.sessions.length + 2 > MAX_SESSIONS) {
-      state.lastError = `새 녹화와 중지 시점 복사본을 저장할 공간이 필요합니다. 기존 녹화를 삭제하거나 내보내 주세요.`;
+      state.lastError = `새 로그와 중지 시점 복사본을 저장할 공간이 필요합니다. 기존 로그를 삭제하거나 내보내 주세요.`;
       notifyClients({ immediate: true });
       return false;
     }
@@ -1261,7 +1261,7 @@
     } catch (error) {
       if (!state.replayAbort && state.replayRunId === replayRunId) {
         state.lastError = String(
-          error?.message || "사용자 행동을 재생하지 못했습니다.",
+          error?.message || "사용자 행동 로그를 재생하지 못했습니다.",
         )
           .trim()
           .slice(0, 500);
@@ -1483,7 +1483,7 @@
       notifyClients({ immediate: true });
       return true;
     } catch (error) {
-      state.lastError = error?.message || "전체 녹화를 ZIP 파일로 내보내지 못했습니다.";
+      state.lastError = error?.message || "전체 로그를 ZIP 파일로 내보내지 못했습니다.";
       notifyClients({ immediate: true });
       return false;
     }
@@ -1520,7 +1520,7 @@
       state.lastError = "";
       return true;
     } catch (error) {
-      state.lastError = "선택한 녹화를 JSON 파일로 내보내지 못했습니다.";
+      state.lastError = "선택한 로그를 JSON 파일로 내보내지 못했습니다.";
       notifyClients({ immediate: true });
       return false;
     }

@@ -439,8 +439,8 @@
       const isRecordingMode = mode === "recording";
       const label = isRecordingMode
         ? isActive
-          ? "녹화 중"
-          : "녹화 중지됨"
+          ? "로그 저장 중"
+          : "로그 저장 중지됨"
         : isActive
           ? "재생 중"
           : statusState === "completed"

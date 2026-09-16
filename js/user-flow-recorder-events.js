@@ -33,7 +33,7 @@
     const scrollTimers = new Map();
 
     if (typeof recordEvent !== "function") {
-      throw new TypeError("녹화 이벤트 처리 함수가 필요합니다.");
+      throw new TypeError("로그 저장 이벤트 처리 함수가 필요합니다.");
     }
 
     function cssEscape(value) {
