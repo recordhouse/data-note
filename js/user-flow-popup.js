@@ -91,6 +91,7 @@
   let parentReconnectTimer = 0;
   let userFlowTestReplayAdvanceTimer = 0;
   let userFlowTestReplayCompletedSessionIds = new Set();
+  const userFlowTestReplayWindows = new Map();
   let userFlowTestReplayCurrentSessionId = "";
   let userFlowTestReplayIndex = -1;
   let userFlowTestReplayQueue = [];
@@ -847,6 +848,25 @@
     testView.hidden = !isTestView;
   }
 
+  function renderUserFlowTestReplayResult(sessionId) {
+    if (!userFlowTestReplayCompletedSessionIds.has(sessionId)) {
+      return "";
+    }
+
+    return `
+      <p class="user-flow-test-replay-complete" role="status">
+        <strong>재생 완료</strong>
+        ${userFlowTestReplayWindows.has(sessionId) ? `
+          <button
+            class="user-flow-test-result-view"
+            type="button"
+            data-user-flow-test-result-view="${escapeHtml(sessionId)}"
+          >결과 화면 보기</button>
+        ` : ""}
+      </p>
+    `;
+  }
+
   function renderUserFlowTestSessions(flowState, sessions, sessionSignature) {
     const sessionList = document.querySelector("#userFlowTestSessionList");
     const sessionById = new Map(sessions.map((session) => [session.id, session]));
@@ -930,7 +950,7 @@
                 ${changeDisabled ? "disabled" : ""}
               >목록 제거</button>
             </div>
-            ${isTestReplayCompleted ? '<p class="user-flow-test-replay-complete" role="status"><strong>테스트 완료</strong></p>' : ""}
+            ${renderUserFlowTestReplayResult(session.id)}
           </article>
         `;
       })
@@ -1455,7 +1475,7 @@
       startParentReconnect(parentWindow);
       parentWindow.location.replace(replayUrl.href);
       parentWindow.focus();
-      return true;
+      return parentWindow;
     } catch (error) {
       try {
         parentWindow?.close();
@@ -1546,9 +1566,15 @@
     }
   }
 
-  function requestUserFlowReplay(sessionId) {
-    if (!getActiveParentWindow()) {
-      if (openParentForReplay(sessionId)) {
+  function requestUserFlowReplay(sessionId, { openInNewTab = false } = {}) {
+    if (openInNewTab || !getActiveParentWindow()) {
+      const replayWindow = openParentForReplay(sessionId);
+
+      if (replayWindow) {
+        if (openInNewTab) {
+          userFlowTestReplayWindows.set(sessionId, replayWindow);
+        }
+
         startReplayNavigationState(sessionId);
         return true;
       }
@@ -1600,9 +1626,12 @@
 
     rerenderUserFlowTestReplay();
 
-    if (!requestUserFlowReplay(sessionId)) {
-      scheduleNextUserFlowTestReplay();
-      rerenderUserFlowTestReplay();
+    if (!requestUserFlowReplay(sessionId, { openInNewTab: true })) {
+      // Do not silently skip lists when the browser blocks their result tabs.
+      cancelUserFlowTestReplay();
+      showUserFlowImportStatus(
+        "새 탭을 열지 못해 로그 테스트를 중지했습니다. 팝업 허용 여부와 시작 페이지 주소를 확인해주세요.",
+      );
     }
   }
 
@@ -1759,6 +1788,30 @@
         }
       }
     }, REPLAY_NAVIGATION_IDLE_MS);
+  }
+
+  function handleUserFlowTestResultView(event) {
+    const button = event.target.closest("[data-user-flow-test-result-view]");
+
+    if (!button) {
+      return;
+    }
+
+    const resultWindow = userFlowTestReplayWindows.get(
+      button.dataset.userFlowTestResultView,
+    );
+
+    if (!isParentWindowOpen(resultWindow)) {
+      showUserFlowImportStatus("결과 화면 탭이 닫혀 있습니다.");
+      return;
+    }
+
+    try {
+      // Viewing a completed result must not switch the active replay connection.
+      resultWindow.focus();
+    } catch (error) {
+      showUserFlowImportStatus("결과 화면 탭으로 이동하지 못했습니다.");
+    }
   }
 
   function handleUserFlowControl(event) {
@@ -2827,6 +2880,7 @@
   userFlowImportController.attach();
 
   document.addEventListener("click", handleUserFlowControl);
+  document.addEventListener("click", handleUserFlowTestResultView);
   document.addEventListener("click", handleUserFlowViewControl);
   document.addEventListener("click", handleUserFlowTestSessionRemove);
   document.addEventListener("click", handleUserFlowTabControl);
