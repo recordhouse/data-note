@@ -7,7 +7,7 @@ const { performance } = require("node:perf_hooks");
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function createRecorder(t, { fetch, timeoutCap = Infinity } = {}) {
+function createRecorder(t, { fetch, playEvent, events, timeoutCap = Infinity } = {}) {
   const timers = new Set();
   const listeners = new Map();
   const clicks = [];
@@ -15,7 +15,7 @@ function createRecorder(t, { fetch, timeoutCap = Infinity } = {}) {
   const sessions = ["first", "second"].map((id) => ({
     id,
     recordedAt: Date.now(),
-    events: [{ type: "click", selector: `#${id}`, at: 0, page: "/test" }],
+    events: events || [{ type: "click", selector: `#${id}`, at: 0, page: "/test" }],
   }));
   storage.set(
     "response-mapping-user-flow-recording:v1",
@@ -63,7 +63,7 @@ function createRecorder(t, { fetch, timeoutCap = Infinity } = {}) {
         resetScrollTracking() {},
         sleep: delay,
         waitForRenderFrame: () => delay(1),
-        playEvent: async (event) => clicks.push({ selector: event.selector, at: performance.now() }),
+        playEvent: playEvent || (async (event) => clicks.push({ selector: event.selector, at: performance.now() })),
       }),
     },
   };
@@ -98,6 +98,7 @@ test("each test item waits for a parent's outstanding Ajax request", async (t) =
     const completedAt = performance.now();
     xhr.complete();
     await replay;
+    assert.equal(recorder.getState().completedReplaySessionId, sessionId);
     assert.equal(clicks[index].selector, `#${sessionId}`);
     assert.ok(clicks[index].at - completedAt >= 490);
   }
@@ -161,6 +162,8 @@ test("stopping a waiting test never executes its first action", async (t) => {
   await replay;
   assert.equal(clicks.length, 0);
   assert.equal(recorder.getState().pendingRequestCount, 1);
+  assert.equal(recorder.getState().completedReplaySessionId, "");
+  assert.equal(recorder.getState().failedReplaySessionId, "");
 });
 
 test("timeout leaves real requests pending and subsequent tests cannot bypass them", async (t) => {
@@ -171,6 +174,7 @@ test("timeout leaves real requests pending and subsequent tests cannot bypass th
     assert.match(recorder.getState().error, /통신 대기 시간/);
     assert.equal(recorder.getState().pendingRequestCount, 1);
     assert.equal(clicks.length, 0);
+    assert.equal(recorder.getState().completedReplaySessionId, "");
   }
 });
 
@@ -190,7 +194,7 @@ test("normal replay and the public request wait retain their existing behavior",
   assert.equal(completed, true);
 });
 
-test("popup test commands enable the strict parent-side wait", async (t) => {
+test("explicit replay commands can request the strict parent-side wait", async (t) => {
   const { recorder, clicks, listeners, window } = createRecorder(t);
   const request = recorder.requestStart("parent-busy");
   listeners.get("message")({
@@ -210,6 +214,57 @@ test("popup test commands enable the strict parent-side wait", async (t) => {
   await delay(650);
   assert.equal(clicks.length, 1);
   recorder.stopReplay();
+});
+
+test("unrecoverable playback reports failure rather than a completed session", async (t) => {
+  const { recorder } = createRecorder(t, {
+    playEvent: async () => { throw new Error("Missing click target"); },
+  });
+  await recorder.replay("first");
+  assert.equal(recorder.getState().isReplaying, false);
+  assert.equal(recorder.getState().completedReplaySessionId, "");
+  assert.equal(recorder.getState().failedReplaySessionId, "first");
+  assert.match(recorder.getState().error, /Missing click target/);
+});
+
+test("HTTP response errors do not interrupt remaining replay actions", async (t) => {
+  const played = [];
+  let recorder;
+  ({ recorder } = createRecorder(t, {
+    events: [
+      { type: "click", selector: "#first-step", at: 0, page: "/test" },
+      { type: "click", selector: "#second-step", at: 1, page: "/test" },
+    ],
+    playEvent: async (event) => {
+      played.push(event.selector);
+      if (played.length === 1) {
+        const request = recorder.requestStart("fetch:GET:https://example.test/api/fail");
+        recorder.requestEnd(request, { status: 500, ok: false });
+        assert.match(recorder.getState().responseError, /500/);
+      }
+    },
+  }));
+  await recorder.replay("first");
+  assert.deepEqual(played, ["#first-step", "#second-step"]);
+  assert.equal(recorder.getState().completedReplaySessionId, "first");
+  assert.equal(recorder.getState().failedReplaySessionId, "");
+});
+
+test("ordinary communication timeout continues playback instead of reporting fatal failure", async (t) => {
+  const { recorder, clicks } = createRecorder(t, { timeoutCap: 180 });
+  recorder.requestStart("slow-parent-request");
+  await recorder.replay("first");
+  assert.equal(clicks.length, 1);
+  assert.equal(recorder.getState().completedReplaySessionId, "first");
+  assert.equal(recorder.getState().failedReplaySessionId, "");
+});
+
+test("missing recording reports a failed replay without attempting an action", async (t) => {
+  const { recorder, clicks } = createRecorder(t);
+  await recorder.replay("missing-session");
+  assert.equal(clicks.length, 0);
+  assert.equal(recorder.getState().failedReplaySessionId, "missing-session");
+  assert.equal(recorder.getState().completedReplaySessionId, "");
 });
 
 test("native cloned fetch responses retain body semantics and release pending reads", async (t) => {

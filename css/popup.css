@@ -1283,21 +1283,6 @@ body.is-user-flow-file-dragging .wrap {
   border-color: #86d8bd;
 }
 
-.user-flow-test-replay-error {
-  grid-column: 1 / -1;
-  display: grid;
-  gap: 3px;
-  margin: 3px 0 0;
-  color: #9f1239;
-  font-size: 11px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.user-flow-test-replay-error strong {
-  font-size: 11px;
-}
-
 .user-flow-test-replay-complete {
   grid-column: 1 / -1;
   margin: 3px 0 0;

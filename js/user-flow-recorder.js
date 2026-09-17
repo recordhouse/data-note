@@ -36,6 +36,8 @@
     isRecording: false,
     isReplaying: false,
     replaySessionId: "",
+    completedReplaySessionId: "",
+    failedReplaySessionId: "",
     recordedAt: null,
     startAt: 0,
     replayAbort: false,
@@ -161,6 +163,7 @@
     } catch (error) {
       window.ResponseMappingPopup?.preserveForNavigation?.(false);
       state.lastError = "로그 저장을 시작한 페이지로 이동하지 못했습니다.";
+      state.failedReplaySessionId = session.id;
       notifyClients({ immediate: true });
     }
 
@@ -359,6 +362,8 @@
       canReplay: state.sessions.some((session) => session.events.length > 0),
       activeRecordingSessionId: state.isRecording ? state.currentSessionId : "",
       replaySessionId: state.replaySessionId,
+      completedReplaySessionId: state.completedReplaySessionId,
+      failedReplaySessionId: state.failedReplaySessionId,
       replayCompletedEventCount: state.replayCompletedEventCount,
       resumeRecordingSessionId:
         !state.isRecording && !state.isReplaying
@@ -1188,6 +1193,8 @@
     state.replayRunId += 1;
     state.isReplaying = false;
     state.replaySessionId = "";
+    state.completedReplaySessionId = "";
+    state.failedReplaySessionId = "";
     state.replayStartedAt = 0;
     state.replayPausedMs = 0;
     state.replayRequestWaitStartedAt = 0;
@@ -1212,13 +1219,25 @@
   ) {
     const session = state.sessions.find((item) => item.id === sessionId);
 
-    if (!session?.events.length || state.isReplaying) {
+    if (state.isReplaying) {
       return;
     }
 
     state.responseError = "";
     state.lastError = "";
+    state.completedReplaySessionId = "";
+    state.failedReplaySessionId = "";
     notifyClients({ immediate: true });
+
+    if (!session?.events.length) {
+      state.lastError = session
+        ? "재생할 행동이 없습니다."
+        : "재생할 로그를 찾지 못했습니다.";
+      state.failedReplaySessionId = sessionId || "";
+      notifyClients({ immediate: true });
+      return;
+    }
+
     stopRecording();
 
     if (navigateToReplayStart(session)) {
@@ -1249,6 +1268,9 @@
     } catch (error) {
       // Browsers may ignore focus requests between windows.
     }
+
+    let replayCompleted = false;
+    let replayFailed = false;
 
     try {
       const replayStartedAt = state.replayStartedAt;
@@ -1293,10 +1315,13 @@
       }
 
       if (!state.replayAbort && state.replayRunId === replayRunId) {
-        await waitForReplayRequests(replayRunId, { waitForNetworkIdle });
+        replayCompleted =
+          (await waitForReplayRequests(replayRunId, { waitForNetworkIdle })) &&
+          state.replayCompletedEventCount >= session.events.length;
       }
     } catch (error) {
       if (!state.replayAbort && state.replayRunId === replayRunId) {
+        replayFailed = true;
         state.lastError = String(
           error?.message || "로그를 재생하지 못했습니다.",
         )
@@ -1309,6 +1334,8 @@
         state.isReplaying = false;
         state.replayAbort = false;
         state.replaySessionId = "";
+        state.completedReplaySessionId = replayCompleted ? session.id : "";
+        state.failedReplaySessionId = replayFailed ? session.id : "";
         state.replayStartedAt = 0;
         state.replayPausedMs = 0;
         state.replayRequestWaitStartedAt = 0;
@@ -1337,6 +1364,8 @@
     state.recordedAt = null;
     state.responseError = "";
     state.lastError = "";
+    state.completedReplaySessionId = "";
+    state.failedReplaySessionId = "";
     state.resumableRecordingSessionId = "";
     state.resumableRecordingElapsedMs = 0;
     state.continuedRecordingSourceSessionId = "";
