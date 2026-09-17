@@ -110,8 +110,16 @@
         return "";
       }
 
-      if (element === window || element === document.documentElement || element === document.body) {
+      if (element === window) {
         return "__window__";
+      }
+
+      if (element === document.documentElement) {
+        return "html";
+      }
+
+      if (element === document.body) {
+        return "body";
       }
 
       if (element.id) {
@@ -391,11 +399,16 @@
       });
     }
 
-    async function waitForTarget(selector) {
+    async function waitForTarget(selector, { elementOnly = false } = {}) {
       const startedAt = performance.now();
 
       while (performance.now() - startedAt < TARGET_WAIT_MS) {
-        const target = findTarget(selector);
+        const resolvedTarget = findTarget(selector);
+        // Older logs used the window marker for both body and html clicks.
+        // Keep scrolling on Window, but replay element actions on the page root.
+        const target = elementOnly && resolvedTarget === window
+          ? document.body || document.documentElement
+          : resolvedTarget;
 
         if (target) {
           return target;
@@ -628,7 +641,7 @@
         return;
       }
 
-      const target = await waitForTarget(recordedEvent.selector);
+      const target = await waitForTarget(recordedEvent.selector, { elementOnly: true });
 
       if (!target || target === window) {
         throw createReplayTargetError(recordedEvent.selector);

@@ -99,6 +99,20 @@ test("completed sessions advance through the test list in order", () => {
   assert.deepEqual([...fixture.context.userFlowTestReplayCompletedSessionIds], ["second", "third"]);
 });
 
+test("test playback follows the saved reordered list", () => {
+  const fixture = createSequence();
+  fixture.context.userFlowTabs.testSessionIds = ["third", "first", "second"];
+  fixture.start("third");
+  for (const sessionId of ["third", "first", "second"]) {
+    assert.equal(fixture.commands.at(-1).sessionId, sessionId);
+    fixture.update({ isReplaying: true, replaySessionId: sessionId });
+    fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: sessionId });
+    fixture.runAdvance();
+  }
+  assert.deepEqual(fixture.commands.map((command) => command.sessionId), ["third", "first", "second"]);
+  assert.equal(fixture.context.userFlowTestReplayCurrentSessionId, "");
+});
+
 test("completed test sessions display the replay complete label", () => {
   assert.match(source, /isTestReplayCompleted\s*\?\s*'<p class="user-flow-test-replay-complete"[^>]*><strong>재생 완료<\/strong><\/p>'\s*:\s*""/);
 });

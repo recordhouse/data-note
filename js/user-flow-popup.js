@@ -890,12 +890,15 @@
         const replayDisabled =
           disabled || Boolean(replayNavigationSessionId);
         const changeDisabled =
-          flowState.isRecording || flowState.isReplaying;
+          flowState.isRecording ||
+          flowState.isReplaying ||
+          isUserFlowTestReplayRunning() ||
+          Boolean(replayNavigationSessionId);
         const sessionMeta = getUserFlowSessionMeta(session, flowState, isReplayingSession);
         return `
           <article
             class="user-flow-session"
-            draggable="false"
+            draggable="${String(!changeDisabled)}"
             data-state="${isRecordingSession ? "recording" : isReplayingSession ? "replaying" : "idle"}"
             data-test-state="${isTestReplayCurrent ? "queued" : isTestReplayCompleted ? "completed" : "idle"}"
             data-user-flow-session-id="${escapeHtml(session.id)}"
@@ -2299,8 +2302,23 @@
     tab.classList.add("is-drop-target");
   }
 
+  function getActiveUserFlowSessionList() {
+    return document.querySelector(
+      activeUserFlowView === USER_FLOW_VIEW_TEST
+        ? "#userFlowTestSessionList"
+        : "#userFlowSessionList",
+    );
+  }
+
+  function isUserFlowSessionOrderBlocked() {
+    return isUserFlowOrganizationBlocked() || (
+      activeUserFlowView === USER_FLOW_VIEW_TEST &&
+      (isUserFlowTestReplayRunning() || Boolean(replayNavigationSessionId))
+    );
+  }
+
   function getUserFlowSessionOrderDropPosition(event) {
-    const sessionList = document.querySelector("#userFlowSessionList");
+    const sessionList = getActiveUserFlowSessionList();
 
     if (
       !sessionList ||
@@ -2342,12 +2360,13 @@
 
     return {
       dropBefore: event.clientY < targetRect.top + targetRect.height / 2,
+      sessionList,
       targetSession,
     };
   }
 
   function scrollUserFlowSessionListDuringDrag(event) {
-    const sessionList = document.querySelector("#userFlowSessionList");
+    const sessionList = getActiveUserFlowSessionList();
 
     if (!sessionList) {
       return;
@@ -2377,7 +2396,7 @@
     if (
       !dropPosition ||
       !draggedUserFlowSessionId ||
-      isUserFlowOrganizationBlocked() ||
+      isUserFlowSessionOrderBlocked() ||
       hasDraggedFiles(event)
     ) {
       return;
@@ -2444,7 +2463,7 @@
     if (
       !dropPosition ||
       !draggedUserFlowSessionId ||
-      isUserFlowOrganizationBlocked() ||
+      isUserFlowSessionOrderBlocked() ||
       hasDraggedFiles(event)
     ) {
       return;
@@ -2453,13 +2472,16 @@
     event.preventDefault();
     const movedSessionId = draggedUserFlowSessionId;
     const previousPositions = captureUserFlowSessionPositions();
-    const previousOrder = [...userFlowTabs.sessionOrder];
-    const nextOrder = userFlowTabs.sessionOrder.filter(
+    const orderKey = dropPosition.sessionList.id === "userFlowTestSessionList"
+      ? "testSessionIds"
+      : "sessionOrder";
+    const previousOrder = [...userFlowTabs[orderKey]];
+    const nextOrder = previousOrder.filter(
       (sessionId) => sessionId !== draggedUserFlowSessionId,
     );
     const targetIndex = nextOrder.indexOf(targetSessionId);
 
-    if (targetIndex < 0) {
+    if (targetIndex < 0 || !previousOrder.includes(draggedUserFlowSessionId)) {
       resetUserFlowSessionDrag();
       return;
     }
@@ -2470,10 +2492,10 @@
         ? false
         : !dropPosition.dropBefore;
     nextOrder.splice(targetIndex + (dropAfter ? 1 : 0), 0, draggedUserFlowSessionId);
-    userFlowTabs.sessionOrder = nextOrder;
+    userFlowTabs[orderKey] = nextOrder;
 
     if (!persistUserFlowTabs()) {
-      userFlowTabs.sessionOrder = previousOrder;
+      userFlowTabs[orderKey] = previousOrder;
     }
 
     resetUserFlowSessionDrag();
