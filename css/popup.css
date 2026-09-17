@@ -1291,24 +1291,35 @@ body.is-user-flow-file-dragging .wrap {
   opacity: 0.45;
 }
 
-.user-flow-session[data-test-state="completed"] {
-  border-color: #86d8bd;
-}
-
 .user-flow-test-replay-complete {
   grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin: 3px 0 0;
-  padding: 8px 10px;
-  border-top: 1px solid #a7f3d0;
-  border-radius: 4px;
-  background: #ecfdf5;
-  color: #047857;
+  padding: 0;
   font-size: 11px;
   line-height: 1.45;
 }
 
 .user-flow-test-replay-complete strong {
+  color: #047857;
   font-size: 11px;
+}
+
+.user-flow-test-result-view {
+  padding: 3px 8px;
+  border: 1px solid #94a3b8;
+  border-radius: 4px;
+  background: transparent;
+  color: #475569;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.user-flow-test-result-view:hover {
+  background: #f1f5f9;
 }
 
 .user-flow-test-panel {

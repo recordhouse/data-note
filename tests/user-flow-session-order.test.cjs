@@ -87,6 +87,7 @@ function createOrdering({ view = "test", failSave = false } = {}) {
     syncingUserFlowTabsFromStorage: false,
     renderedUserFlowTestSignature: "",
     userFlowTestReplayCompletedSessionIds: new Set(),
+    userFlowTestReplayWindows: new Map(),
     userFlowTestReplayCurrentSessionId: "",
     currentUserFlowState: { isRecording: false, isReplaying: false },
     userFlowTabs: {
@@ -119,7 +120,7 @@ function createOrdering({ view = "test", failSave = false } = {}) {
   vm.runInContext(extract("handleUserFlowSessionDragStart", "handleUserFlowTabDragOver"), context);
   vm.runInContext(extract("getActiveUserFlowSessionList", "handleUserFlowTestDrop"), context);
   vm.runInContext(extract("handleUserFlowSessionOrderDrop", "handleUserFlowSessionDrop"), context);
-  vm.runInContext(extract("renderUserFlowTestSessions", "renderUserFlowNotice"), context);
+  vm.runInContext(extract("renderUserFlowTestReplayResult", "renderUserFlowNotice"), context);
   function event(y, target = lists[view], types = []) {
     return {
       target, clientX: 150, clientY: y, prevented: false,
