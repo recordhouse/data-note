@@ -1308,6 +1308,10 @@ body.is-user-flow-file-dragging .wrap {
   font-size: 11px;
 }
 
+.user-flow-test-replay-complete[data-result="failed"] strong {
+  color: #b42345;
+}
+
 .user-flow-test-result-view {
   padding: 3px 8px;
   border: 1px solid #94a3b8;

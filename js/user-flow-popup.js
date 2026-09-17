@@ -91,6 +91,7 @@
   let parentReconnectTimer = 0;
   let userFlowTestReplayAdvanceTimer = 0;
   let userFlowTestReplayCompletedSessionIds = new Set();
+  const userFlowTestReplayFailedSessionIds = new Set();
   const userFlowTestReplayWindows = new Map();
   let userFlowTestReplayCurrentSessionId = "";
   let userFlowTestReplayIndex = -1;
@@ -765,6 +766,7 @@
       testReplayCompletedSessionIds: Array.from(
         userFlowTestReplayCompletedSessionIds,
       ),
+      testReplayFailedSessionIds: Array.from(userFlowTestReplayFailedSessionIds),
       testReplayCurrentSessionId: userFlowTestReplayCurrentSessionId,
       sessions: sessions.map((session) => ({
         durationMs: session.durationMs,
@@ -849,13 +851,15 @@
   }
 
   function renderUserFlowTestReplayResult(sessionId) {
-    if (!userFlowTestReplayCompletedSessionIds.has(sessionId)) {
+    const isFailed = userFlowTestReplayFailedSessionIds.has(sessionId);
+
+    if (!isFailed && !userFlowTestReplayCompletedSessionIds.has(sessionId)) {
       return "";
     }
 
     return `
-      <p class="user-flow-test-replay-complete" role="status">
-        <strong>재생 완료</strong>
+      <p class="user-flow-test-replay-complete" data-result="${isFailed ? "failed" : "completed"}" role="status">
+        <strong>${isFailed ? "끝까지 재생 실패" : "재생 완료"}</strong>
         ${userFlowTestReplayWindows.has(sessionId) ? `
           <button
             class="user-flow-test-result-view"
@@ -901,6 +905,8 @@
         const sessionSubtitle = formatUserFlowSessionSubtitle(session);
         const isTestReplayCompleted =
           userFlowTestReplayCompletedSessionIds.has(session.id);
+        const isTestReplayFailed =
+          userFlowTestReplayFailedSessionIds.has(session.id);
         const isTestReplayCurrent =
           userFlowTestReplayCurrentSessionId === session.id;
         const disabled =
@@ -920,7 +926,7 @@
             class="user-flow-session"
             draggable="${String(!changeDisabled)}"
             data-state="${isRecordingSession ? "recording" : isReplayingSession ? "replaying" : "idle"}"
-            data-test-state="${isTestReplayCurrent ? "queued" : isTestReplayCompleted ? "completed" : "idle"}"
+            data-test-state="${isTestReplayCurrent ? "queued" : isTestReplayFailed ? "failed" : isTestReplayCompleted ? "completed" : "idle"}"
             data-user-flow-session-id="${escapeHtml(session.id)}"
           >
             ${renderUserFlowSessionReplayProgress(session, flowState)}
@@ -1527,7 +1533,24 @@
       return false;
     }
 
+    userFlowTestReplayFailedSessionIds.delete(normalizedSessionId);
     userFlowTestReplayCompletedSessionIds.add(normalizedSessionId);
+    renderedUserFlowTestSignature = "";
+    return true;
+  }
+
+  function setUserFlowTestReplayFailed(sessionId) {
+    const normalizedSessionId = String(sessionId || "");
+
+    if (
+      !normalizedSessionId ||
+      userFlowTestReplayFailedSessionIds.has(normalizedSessionId)
+    ) {
+      return false;
+    }
+
+    userFlowTestReplayCompletedSessionIds.delete(normalizedSessionId);
+    userFlowTestReplayFailedSessionIds.add(normalizedSessionId);
     renderedUserFlowTestSignature = "";
     return true;
   }
@@ -1555,6 +1578,7 @@
 
     if (clearResults) {
       userFlowTestReplayCompletedSessionIds.clear();
+      userFlowTestReplayFailedSessionIds.clear();
     }
 
     if (navigationBelongsToTest) {
@@ -1695,6 +1719,7 @@
         clearReplayNavigationState({ rerender: false });
       }
 
+      setUserFlowTestReplayFailed(sessionId);
       scheduleNextUserFlowTestReplay();
       return;
     }
@@ -1739,6 +1764,7 @@
       clearReplayNavigationState({ rerender: false });
 
       if (isTestReplayNavigation) {
+        setUserFlowTestReplayFailed(sessionId);
         scheduleNextUserFlowTestReplay();
         rerenderUserFlowTestReplay();
       } else {
@@ -1780,6 +1806,7 @@
           rerenderUserFlowTestReplay();
 
           if (!requestUserFlowReplay(expectedSessionId)) {
+            setUserFlowTestReplayFailed(expectedSessionId);
             scheduleNextUserFlowTestReplay();
             rerenderUserFlowTestReplay();
           }
@@ -1946,6 +1973,7 @@
       userFlowTabs.testSessionIds = previousTestSessionIds;
     } else {
       userFlowTestReplayCompletedSessionIds.delete(sessionId);
+      userFlowTestReplayFailedSessionIds.delete(sessionId);
     }
 
     rerenderUserFlowOrganization();

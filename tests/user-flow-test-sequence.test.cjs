@@ -47,6 +47,7 @@ function createSequence({
     userFlowTestReplayAdvanceTimer: 0,
     userFlowTestReplayCurrentSessionId: "",
     userFlowTestReplayCompletedSessionIds: new Set(),
+    userFlowTestReplayFailedSessionIds: new Set(),
     userFlowTestReplayWindows: new Map(),
     userFlowTestReplayIndex: -1,
     userFlowTestReplayQueue: [],
@@ -192,15 +193,77 @@ test("completed test sessions display the replay complete label", () => {
   assert.equal(fixture.resultMarkup("second"), "");
 });
 
-test("an unrecoverable replay advances to the next list without marking success", () => {
+test("an unrecoverable replay displays failure and retains its result tab through the sequence", () => {
   const fixture = createSequence();
   fixture.start();
   fixture.update({ isReplaying: true, replaySessionId: "first" });
   fixture.update({ isReplaying: false, replaySessionId: "", error: "Missing target", completedReplaySessionId: "", failedReplaySessionId: "first" });
   assert.equal(fixture.commands.length, 1);
   assert.equal(fixture.context.userFlowTestReplayCompletedSessionIds.size, 0);
+  assert.ok(fixture.context.userFlowTestReplayFailedSessionIds.has("first"));
+  const markup = fixture.resultMarkup("first");
+  assert.match(markup, /class="user-flow-test-replay-complete" data-result="failed"/);
+  assert.match(markup, /<strong>끝까지 재생 실패<\/strong>/);
+  assert.match(markup, /data-user-flow-test-result-view="first"/);
+  assert.doesNotMatch(markup, /재생 완료/);
   fixture.runAdvance();
   assert.equal(fixture.commands[1].sessionId, "second");
+  fixture.viewResult("first");
+  assert.equal(fixture.windows[0].focusCount, 1);
+  assert.equal(fixture.getActiveParent(), fixture.windows[1]);
+  for (const sessionId of ["second", "third"]) {
+    fixture.update({ isReplaying: true, replaySessionId: sessionId });
+    fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: sessionId });
+    fixture.runAdvance();
+  }
+  assert.equal(fixture.context.userFlowTestReplayCurrentSessionId, "");
+  assert.equal(fixture.resultMarkup("first"), markup);
+  assert.equal(fixture.windows[0].closed, false);
+});
+
+test("a failed final list remains visible after the test queue finishes", () => {
+  const fixture = createSequence();
+  fixture.start("third");
+  fixture.update({ isReplaying: true, replaySessionId: "third" });
+  fixture.update({ isReplaying: false, replaySessionId: "", failedReplaySessionId: "third" });
+  fixture.runAdvance();
+  assert.equal(fixture.context.userFlowTestReplayCurrentSessionId, "");
+  assert.equal(fixture.timers.size, 0);
+  assert.match(fixture.resultMarkup("third"), /끝까지 재생 실패/);
+  assert.match(fixture.resultMarkup("third"), /data-user-flow-test-result-view="third"/);
+  assert.equal(fixture.windows[0].closed, false);
+});
+
+test("retesting clears prior failure and success replaces it with the new result tab", () => {
+  const fixture = createSequence();
+  fixture.start();
+  fixture.update({ isReplaying: false, replaySessionId: "", failedReplaySessionId: "first" });
+  assert.match(fixture.resultMarkup("first"), /끝까지 재생 실패/);
+  fixture.start();
+  assert.equal(fixture.context.userFlowTestReplayFailedSessionIds.size, 0);
+  assert.equal(fixture.resultMarkup("first"), "");
+  assert.equal(fixture.windows[0].closed, false);
+  fixture.update({ isReplaying: true, replaySessionId: "first" });
+  fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "first" });
+  assert.match(fixture.resultMarkup("first"), /data-result="completed"/);
+  assert.match(fixture.resultMarkup("first"), /재생 완료/);
+  assert.doesNotMatch(fixture.resultMarkup("first"), /끝까지 재생 실패/);
+  fixture.viewResult("first");
+  assert.equal(fixture.windows[0].focusCount, 0);
+  assert.equal(fixture.windows[1].focusCount, 1);
+});
+
+test("failure updates the rendering signature only when the result changes", () => {
+  const fixture = createSequence();
+  fixture.context.editingUserFlowSessionId = "";
+  vm.runInContext(extract("getUserFlowSessionSignature", "updateUserFlowSessionProgress"), fixture.context);
+  const before = vm.runInContext("getUserFlowSessionSignature(currentUserFlowState, [])", fixture.context);
+  vm.runInContext('setUserFlowTestReplayFailed("first")', fixture.context);
+  const after = vm.runInContext("getUserFlowSessionSignature(currentUserFlowState, [])", fixture.context);
+  assert.notEqual(before, after);
+  assert.deepEqual(JSON.parse(after).testReplayFailedSessionIds, ["first"]);
+  assert.equal(vm.runInContext('setUserFlowTestReplayFailed("first")', fixture.context), false);
+  assert.equal(vm.runInContext("getUserFlowSessionSignature(currentUserFlowState, [])", fixture.context), after);
 });
 
 test("response errors have no separate skip logic while ordinary replay continues", () => {
@@ -209,6 +272,8 @@ test("response errors have no separate skip logic while ordinary replay continue
   fixture.update({ isReplaying: true, replaySessionId: "first", responseError: "HTTP 500" });
   assert.equal(fixture.commands.length, 1);
   assert.equal(fixture.timers.size, 0);
+  assert.equal(fixture.context.userFlowTestReplayFailedSessionIds.size, 0);
+  assert.equal(fixture.resultMarkup("first"), "");
   fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "first" });
   fixture.runAdvance();
   assert.equal(fixture.commands[1].sessionId, "second");
@@ -252,6 +317,8 @@ test("failed replay commands move to the next list", () => {
   const fixture = createSequence({ sendSucceeds: false });
   fixture.start();
   assert.equal(fixture.commands.length, 1);
+  assert.match(fixture.resultMarkup("first"), /끝까지 재생 실패/);
+  assert.match(fixture.resultMarkup("first"), /data-user-flow-test-result-view="first"/);
   fixture.runAdvance();
   assert.equal(fixture.commands[1].sessionId, "second");
 });
@@ -287,6 +354,8 @@ test("page connection timeout advances to the next test session", () => {
   fixture.timers.delete(entry[0]);
   entry[1].callback();
   assert.deepEqual(fixture.commands, [{ command: "get-state" }]);
+  assert.match(fixture.resultMarkup("first"), /끝까지 재생 실패/);
+  assert.match(fixture.resultMarkup("first"), /data-user-flow-test-result-view="first"/);
   fixture.runAdvance();
   assert.equal(fixture.windows[1].sessionId, "second");
   assert.equal(fixture.commands.length, 1);
@@ -300,6 +369,8 @@ test("manual stop is not treated as a fatal failure and stops the sequence", () 
   assert.equal(fixture.context.userFlowTestReplayCurrentSessionId, "");
   assert.equal(fixture.timers.size, 0);
   assert.equal(fixture.commands.length, 1);
+  assert.equal(fixture.context.userFlowTestReplayFailedSessionIds.size, 0);
+  assert.equal(fixture.resultMarkup("first"), "");
 });
 
 test("a fatal failure before playback starts advances exactly once", () => {

@@ -87,6 +87,7 @@ function createOrdering({ view = "test", failSave = false } = {}) {
     syncingUserFlowTabsFromStorage: false,
     renderedUserFlowTestSignature: "",
     userFlowTestReplayCompletedSessionIds: new Set(),
+    userFlowTestReplayFailedSessionIds: new Set(),
     userFlowTestReplayWindows: new Map(),
     userFlowTestReplayCurrentSessionId: "",
     currentUserFlowState: { isRecording: false, isReplaying: false },
@@ -239,4 +240,16 @@ test("test rows enable dragging only while editing the order is safe", () => {
   fixture.context.userFlowTestReplayCurrentSessionId = "";
   fixture.context.replayNavigationSessionId = "first";
   assert.match(fixture.markup(), /draggable="false"/);
+});
+
+test("failed test rows retain the shared result layout and result-view button", () => {
+  const fixture = createOrdering();
+  fixture.context.userFlowTestReplayFailedSessionIds.add("first");
+  fixture.context.userFlowTestReplayWindows.set("first", {});
+  const markup = fixture.markup();
+  assert.match(markup, /data-test-state="failed"/);
+  assert.match(markup, /class="user-flow-test-replay-complete" data-result="failed"/);
+  assert.match(markup, /<strong>끝까지 재생 실패<\/strong>/);
+  assert.match(markup, /data-user-flow-test-result-view="first"/);
+  assert.doesNotMatch(markup, /재생 완료/);
 });
