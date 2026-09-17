@@ -76,7 +76,6 @@
   let renderedUserFlowSessionSignature = "";
   let renderedUserFlowTestSignature = "";
   let draggedUserFlowSessionId = "";
-  let placedStoppedRecordingBackupId = "";
   let userFlowMoveToastTimer = 0;
   let userFlowMoveToastClearTimer = 0;
   let replayNavigationIdleTimer = 0;
@@ -459,11 +458,29 @@
     }
   }
 
-  function placeNewRecordingAtTop(sessionId) {
+  function placeNewRecordingAtTop(sessionId, sourceSessionId = "") {
     const normalizedSessionId = String(sessionId || "");
 
     if (!normalizedSessionId) {
       return "";
+    }
+
+    let changed = false;
+
+    if (sourceSessionId) {
+      const sourceTabId = getUserFlowSessionTabId(sourceSessionId);
+
+      if (sourceTabId) {
+        if (userFlowTabs.sessionTabs[normalizedSessionId] !== sourceTabId) {
+          userFlowTabs.sessionTabs[normalizedSessionId] = sourceTabId;
+          changed = true;
+        }
+
+        if (userFlowTabs.activeTabId !== sourceTabId) {
+          userFlowTabs.activeTabId = sourceTabId;
+          changed = true;
+        }
+      }
     }
 
     const nextSessionOrder = [
@@ -480,89 +497,14 @@
       )
     ) {
       userFlowTabs.sessionOrder = nextSessionOrder;
-      persistUserFlowTabs();
-    }
-
-    return normalizedSessionId;
-  }
-
-  function placeStoppedRecordingBackup(flowState, sessions) {
-    const sourceSessionId = String(
-      flowState.stoppedRecordingSourceSessionId || "",
-    );
-    const backupSessionId = String(
-      flowState.stoppedRecordingBackupSessionId || "",
-    );
-    const sessionIds = new Set(sessions.map((session) => session.id));
-
-    if (
-      !sourceSessionId ||
-      !backupSessionId ||
-      backupSessionId === placedStoppedRecordingBackupId ||
-      !sessionIds.has(sourceSessionId) ||
-      !sessionIds.has(backupSessionId)
-    ) {
-      return "";
-    }
-
-    placedStoppedRecordingBackupId = backupSessionId;
-    let changed = false;
-    const sourceTabId = getUserFlowSessionTabId(sourceSessionId);
-
-    if (
-      sourceTabId &&
-      userFlowTabs.sessionTabs[backupSessionId] !== sourceTabId
-    ) {
-      userFlowTabs.sessionTabs[backupSessionId] = sourceTabId;
       changed = true;
-    }
-
-    const nextSessionOrder = userFlowTabs.sessionOrder.filter(
-      (sessionId) => sessionId !== backupSessionId,
-    );
-    const sourceOrderIndex = nextSessionOrder.indexOf(sourceSessionId);
-
-    if (sourceOrderIndex >= 0) {
-      nextSessionOrder.splice(sourceOrderIndex + 1, 0, backupSessionId);
-    }
-
-    if (
-      nextSessionOrder.length !== userFlowTabs.sessionOrder.length ||
-      nextSessionOrder.some(
-        (sessionId, index) => sessionId !== userFlowTabs.sessionOrder[index],
-      )
-    ) {
-      userFlowTabs.sessionOrder = nextSessionOrder;
-      changed = true;
-    }
-
-    if (userFlowTabs.testSessionIds.includes(sourceSessionId)) {
-      const nextTestSessionIds = userFlowTabs.testSessionIds.filter(
-        (sessionId) => sessionId !== backupSessionId,
-      );
-      const sourceTestIndex = nextTestSessionIds.indexOf(sourceSessionId);
-
-      if (sourceTestIndex >= 0) {
-        nextTestSessionIds.splice(sourceTestIndex + 1, 0, backupSessionId);
-      }
-
-      if (
-        nextTestSessionIds.length !== userFlowTabs.testSessionIds.length ||
-        nextTestSessionIds.some(
-          (sessionId, index) =>
-            sessionId !== userFlowTabs.testSessionIds[index],
-        )
-      ) {
-        userFlowTabs.testSessionIds = nextTestSessionIds;
-        changed = true;
-      }
     }
 
     if (changed) {
       persistUserFlowTabs();
     }
 
-    return backupSessionId;
+    return normalizedSessionId;
   }
 
   function getOrderedUserFlowSessions(sessions) {
@@ -811,10 +753,8 @@
       isRecording: Boolean(flowState.isRecording),
       isReplaying: Boolean(flowState.isReplaying),
       resumeRecordingSessionId: flowState.resumeRecordingSessionId || "",
-      stoppedRecordingSourceSessionId:
-        flowState.stoppedRecordingSourceSessionId || "",
-      stoppedRecordingBackupSessionId:
-        flowState.stoppedRecordingBackupSessionId || "",
+      continuedRecordingSourceSessionId:
+        flowState.continuedRecordingSourceSessionId || "",
       replayNavigationSessionId,
       replaySessionId: flowState.replaySessionId || "",
       sessionOrder: userFlowTabs.sessionOrder,
@@ -1212,10 +1152,7 @@
     reconcileUserFlowTabs(sessions, { removeMissingSessions: hasSessionState });
     const addedRecordingSessionId = placeNewRecordingAtTop(
       newRecordingSessionId,
-    );
-    const addedBackupSessionId = placeStoppedRecordingBackup(
-      flowState,
-      sessions,
+      flowState.continuedRecordingSourceSessionId,
     );
     renderUserFlowTabs(sessions);
     renderUserFlowView();
@@ -1257,20 +1194,12 @@
           : "저장된 로그가 없습니다.";
       sessionList.innerHTML = `<div class="user-flow-empty">${emptyMessage}</div>`;
       updateUserFlowSessionProgress(flowState, sessions);
-      animateStoppedRecordingBackup(
-        previousSessionPositions,
-        addedBackupSessionId,
-      );
       animateUserFlowSessionAddition(addedRecordingSessionId);
       return;
     }
 
     if (renderedUserFlowSessionSignature === sessionSignature) {
       updateUserFlowSessionProgress(flowState, sessions);
-      animateStoppedRecordingBackup(
-        previousSessionPositions,
-        addedBackupSessionId,
-      );
       animateUserFlowSessionAddition(addedRecordingSessionId);
       return;
     }
@@ -1387,10 +1316,6 @@
       })
       .join("");
 
-    animateStoppedRecordingBackup(
-      previousSessionPositions,
-      addedBackupSessionId,
-    );
     animateUserFlowSessionMove(
       previousSessionPositions,
       addedRecordingSessionId,
@@ -1945,11 +1870,9 @@
       const targetTabId = resumeSessionId
         ? getUserFlowSessionTabId(resumeSessionId)
         : userFlowTabs.activeTabId;
-      const requiredSlots = resumeSessionId ? 1 : 2;
-
       if (
         targetTabId &&
-        getUserFlowTabSessionCount(targetTabId) + requiredSlots >
+        getUserFlowTabSessionCount(targetTabId) + 1 >
           MAX_USER_FLOW_SESSIONS_PER_TAB
       ) {
         showUserFlowTabLimit(targetTabId);
@@ -2373,15 +2296,6 @@
         },
       );
     });
-  }
-
-  function animateStoppedRecordingBackup(previousPositions, sessionId) {
-    if (!sessionId) {
-      return;
-    }
-
-    animateUserFlowSessionMove(previousPositions, sessionId);
-    animateUserFlowSessionAddition(sessionId);
   }
 
   function showUserFlowMoveToast() {

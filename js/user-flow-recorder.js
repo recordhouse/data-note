@@ -46,8 +46,7 @@
     replayCompletedEventCount: 0,
     resumableRecordingSessionId: "",
     resumableRecordingElapsedMs: 0,
-    stoppedRecordingSourceSessionId: "",
-    stoppedRecordingBackupSessionId: "",
+    continuedRecordingSourceSessionId: "",
     responseError: "",
     replayProgressTimer: 0,
     lastError: "",
@@ -242,16 +241,6 @@
     } else if (!state.resumableRecordingSessionId) {
       state.resumableRecordingElapsedMs = 0;
     }
-
-    if (
-      (state.stoppedRecordingSourceSessionId &&
-        !sessionIds.has(state.stoppedRecordingSourceSessionId)) ||
-      (state.stoppedRecordingBackupSessionId &&
-        !sessionIds.has(state.stoppedRecordingBackupSessionId))
-    ) {
-      state.stoppedRecordingSourceSessionId = "";
-      state.stoppedRecordingBackupSessionId = "";
-    }
   }
 
   function mergeRecordingSessions(storedSessions) {
@@ -379,8 +368,9 @@
         state.sessions.find(
           (session) => session.id === state.resumableRecordingSessionId,
         )?.events.length || 0,
-      stoppedRecordingSourceSessionId: state.stoppedRecordingSourceSessionId,
-      stoppedRecordingBackupSessionId: state.stoppedRecordingBackupSessionId,
+      continuedRecordingSourceSessionId: state.isRecording
+        ? state.continuedRecordingSourceSessionId
+        : "",
       responseError: state.responseError,
       pendingRequestCount: getPendingRequestCount(),
       blockingRequestCount: getBlockingRequestCount(),
@@ -959,8 +949,6 @@
       sessions: state.sessions,
       resumableRecordingSessionId: state.resumableRecordingSessionId,
       resumableRecordingElapsedMs: state.resumableRecordingElapsedMs,
-      stoppedRecordingSourceSessionId: state.stoppedRecordingSourceSessionId,
-      stoppedRecordingBackupSessionId: state.stoppedRecordingBackupSessionId,
     };
     const previousDirtySessionIds = new Set(dirtySessionIds);
     const previousDeletedSessionIds = new Set(deletedSessionIds);
@@ -971,8 +959,6 @@
     state.recordedAt = importedSessions[0].recordedAt;
     state.resumableRecordingSessionId = "";
     state.resumableRecordingElapsedMs = 0;
-    state.stoppedRecordingSourceSessionId = "";
-    state.stoppedRecordingBackupSessionId = "";
     importedSessions.forEach((session) => dirtySessionIds.add(session.id));
 
     if (!persistRecording()) {
@@ -984,10 +970,6 @@
         previousState.resumableRecordingSessionId;
       state.resumableRecordingElapsedMs =
         previousState.resumableRecordingElapsedMs;
-      state.stoppedRecordingSourceSessionId =
-        previousState.stoppedRecordingSourceSessionId;
-      state.stoppedRecordingBackupSessionId =
-        previousState.stoppedRecordingBackupSessionId;
       dirtySessionIds.clear();
       previousDirtySessionIds.forEach((sessionId) => dirtySessionIds.add(sessionId));
       deletedSessionIds.clear();
@@ -1014,9 +996,9 @@
       return false;
     }
 
-    const session = state.sessions.find((item) => item.id === sessionId);
+    const sourceSession = state.sessions.find((item) => item.id === sessionId);
 
-    if (!sessionId || !session) {
+    if (!sessionId || !sourceSession) {
       state.resumableRecordingSessionId = "";
       state.resumableRecordingElapsedMs = 0;
       state.lastError = "이어서 저장할 로그를 찾지 못했습니다.";
@@ -1025,14 +1007,34 @@
     }
 
     if (state.sessions.length >= MAX_SESSIONS) {
-      state.lastError = `이어서 저장하려면 중지 시점 복사본을 저장할 공간이 필요합니다. 기존 로그를 삭제한 뒤 다시 시도해주세요.`;
+      state.lastError =
+        "이어서 저장할 새 로그를 만들 공간이 필요합니다. 기존 로그를 삭제하거나 내보내 주세요.";
       notifyClients({ immediate: true });
       return false;
     }
 
     const resumedAt = Date.now();
-    session.recordedAt = resumedAt;
-    session.titlePrefix = getCurrentSessionTitlePrefix();
+    const session = {
+      ...sourceSession,
+      id: createUniqueSessionId(resumedAt),
+      name: "",
+      importSourceZipName: "",
+      titlePrefix: getCurrentSessionTitlePrefix(),
+      recordedAt: resumedAt,
+      events: JSON.parse(JSON.stringify(sourceSession.events)),
+    };
+    const previousState = {
+      currentSessionId: state.currentSessionId,
+      events: state.events,
+      recordedAt: state.recordedAt,
+      sessions: state.sessions,
+      resumableRecordingSessionId: state.resumableRecordingSessionId,
+      resumableRecordingElapsedMs: state.resumableRecordingElapsedMs,
+      continuedRecordingSourceSessionId: state.continuedRecordingSourceSessionId,
+    };
+    const previousDirtySessionIds = new Set(dirtySessionIds);
+
+    state.sessions = [session, ...state.sessions];
     state.currentSessionId = session.id;
     state.events = session.events;
     state.recordedAt = resumedAt;
@@ -1045,10 +1047,30 @@
       );
     state.responseError = "";
     state.lastError = "";
-    state.stoppedRecordingSourceSessionId = "";
-    state.stoppedRecordingBackupSessionId = "";
+    state.resumableRecordingSessionId = session.id;
+    state.continuedRecordingSourceSessionId = sourceSession.id;
     resetScrollTracking();
     dirtySessionIds.add(session.id);
+
+    if (!persistRecording()) {
+      state.sessions = previousState.sessions;
+      state.currentSessionId = previousState.currentSessionId;
+      state.events = previousState.events;
+      state.recordedAt = previousState.recordedAt;
+      state.resumableRecordingSessionId =
+        previousState.resumableRecordingSessionId;
+      state.resumableRecordingElapsedMs =
+        previousState.resumableRecordingElapsedMs;
+      state.continuedRecordingSourceSessionId =
+        previousState.continuedRecordingSourceSessionId;
+      state.isRecording = false;
+      dirtySessionIds.clear();
+      previousDirtySessionIds.forEach((dirtySessionId) =>
+        dirtySessionIds.add(dirtySessionId),
+      );
+      notifyClients({ immediate: true });
+      return false;
+    }
 
     showScreenMask("recording");
     showRuntimeStatus("recording");
@@ -1064,8 +1086,9 @@
       return false;
     }
 
-    if (state.sessions.length + 2 > MAX_SESSIONS) {
-      state.lastError = `새 로그와 중지 시점 복사본을 저장할 공간이 필요합니다. 기존 로그를 삭제하거나 내보내 주세요.`;
+    if (state.sessions.length >= MAX_SESSIONS) {
+      state.lastError =
+        "새 로그를 저장할 공간이 필요합니다. 기존 로그를 삭제하거나 내보내 주세요.";
       notifyClients({ immediate: true });
       return false;
     }
@@ -1085,8 +1108,6 @@
       sessions: state.sessions,
       resumableRecordingSessionId: state.resumableRecordingSessionId,
       resumableRecordingElapsedMs: state.resumableRecordingElapsedMs,
-      stoppedRecordingSourceSessionId: state.stoppedRecordingSourceSessionId,
-      stoppedRecordingBackupSessionId: state.stoppedRecordingBackupSessionId,
     };
 
     state.sessions = [session, ...state.sessions];
@@ -1099,8 +1120,7 @@
     state.lastError = "";
     state.resumableRecordingSessionId = session.id;
     state.resumableRecordingElapsedMs = 0;
-    state.stoppedRecordingSourceSessionId = "";
-    state.stoppedRecordingBackupSessionId = "";
+    state.continuedRecordingSourceSessionId = "";
     resetScrollTracking();
     dirtySessionIds.add(session.id);
 
@@ -1114,10 +1134,6 @@
         previousState.resumableRecordingSessionId;
       state.resumableRecordingElapsedMs =
         previousState.resumableRecordingElapsedMs;
-      state.stoppedRecordingSourceSessionId =
-        previousState.stoppedRecordingSourceSessionId;
-      state.stoppedRecordingBackupSessionId =
-        previousState.stoppedRecordingBackupSessionId;
       state.isRecording = false;
       notifyClients({ immediate: true });
       return false;
@@ -1137,14 +1153,6 @@
     const sourceSession = state.sessions.find(
       (session) => session.id === state.currentSessionId,
     );
-    const previousSessions = state.sessions;
-    const previousStoppedSourceSessionId =
-      state.stoppedRecordingSourceSessionId;
-    const previousStoppedBackupSessionId =
-      state.stoppedRecordingBackupSessionId;
-    const previousDirtySessionIds = new Set(dirtySessionIds);
-    const previousSourceTitlePrefix = sourceSession?.titlePrefix || "";
-    const stoppedAt = Date.now();
     const stoppedTitlePrefix = getCurrentSessionTitlePrefix();
 
     if (sourceSession) {
@@ -1158,49 +1166,16 @@
           Math.max(0, Math.round(performance.now() - state.startAt)),
         )
       : 0;
-    const backupSession =
-      sourceSession && state.sessions.length < MAX_SESSIONS
-        ? {
-            ...sourceSession,
-            id: createUniqueSessionId(stoppedAt),
-            importSourceZipName: "",
-            recordedAt: stoppedAt,
-            events: JSON.parse(JSON.stringify(sourceSession.events)),
-          }
-        : null;
-
     state.isRecording = false;
     state.resumableRecordingSessionId = sourceSession?.id || "";
     state.resumableRecordingElapsedMs = stoppedRecordingElapsedMs;
-    state.stoppedRecordingSourceSessionId = sourceSession?.id || "";
-    state.stoppedRecordingBackupSessionId = backupSession?.id || "";
-
-    if (backupSession) {
-      state.sessions = [...state.sessions, backupSession];
-      dirtySessionIds.add(backupSession.id);
-    }
+    state.continuedRecordingSourceSessionId = "";
 
     hideScreenMask();
     showRuntimeStatus("recording", "stopped");
     resetScrollTracking({ preserveLastSample: true });
 
-    if (!persistRecording()) {
-      if (sourceSession) {
-        sourceSession.titlePrefix = previousSourceTitlePrefix;
-      }
-
-      state.sessions = previousSessions;
-      state.stoppedRecordingSourceSessionId = previousStoppedSourceSessionId;
-      state.stoppedRecordingBackupSessionId = previousStoppedBackupSessionId;
-      dirtySessionIds.clear();
-      previousDirtySessionIds.forEach((sessionId) =>
-        dirtySessionIds.add(sessionId),
-      );
-      setRecordingSessions(state.sessions);
-    } else if (sourceSession && !backupSession) {
-      state.lastError = `중지 시점 복사본은 최대 ${MAX_SESSIONS.toLocaleString("ko-KR")}개 제한으로 저장하지 못했습니다.`;
-    }
-
+    persistRecording();
     notifyClients({ immediate: true });
   }
 
@@ -1364,8 +1339,7 @@
     state.lastError = "";
     state.resumableRecordingSessionId = "";
     state.resumableRecordingElapsedMs = 0;
-    state.stoppedRecordingSourceSessionId = "";
-    state.stoppedRecordingBackupSessionId = "";
+    state.continuedRecordingSourceSessionId = "";
     dirtySessionIds.clear();
     deletedSessionIds.clear();
     pendingRecordingSync = false;
@@ -1650,10 +1624,6 @@
       state.resumableRecordingSessionId;
     const previousResumableRecordingElapsedMs =
       state.resumableRecordingElapsedMs;
-    const previousStoppedRecordingSourceSessionId =
-      state.stoppedRecordingSourceSessionId;
-    const previousStoppedRecordingBackupSessionId =
-      state.stoppedRecordingBackupSessionId;
     const previousDirtySessionIds = new Set(dirtySessionIds);
     const previousDeletedSessionIds = new Set(deletedSessionIds);
 
@@ -1675,14 +1645,6 @@
       state.resumableRecordingElapsedMs = 0;
     }
 
-    if (
-      requestedIds.has(state.stoppedRecordingSourceSessionId) ||
-      requestedIds.has(state.stoppedRecordingBackupSessionId)
-    ) {
-      state.stoppedRecordingSourceSessionId = "";
-      state.stoppedRecordingBackupSessionId = "";
-    }
-
     if (!persistRecording()) {
       state.sessions = previousSessions;
       state.currentSessionId = previousCurrentSessionId;
@@ -1692,10 +1654,6 @@
         previousResumableRecordingSessionId;
       state.resumableRecordingElapsedMs =
         previousResumableRecordingElapsedMs;
-      state.stoppedRecordingSourceSessionId =
-        previousStoppedRecordingSourceSessionId;
-      state.stoppedRecordingBackupSessionId =
-        previousStoppedRecordingBackupSessionId;
       dirtySessionIds.clear();
       previousDirtySessionIds.forEach((dirtySessionId) =>
         dirtySessionIds.add(dirtySessionId),
