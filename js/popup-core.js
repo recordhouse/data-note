@@ -6,7 +6,7 @@
   }
 
   // 변경사항을 배포할 때 마지막 버전 숫자를 올려주세요.
-  const DATA_NOTE_VERSION = "1.0.0+0011";
+  const DATA_NOTE_VERSION = "1.0.0+0012";
   const MESSAGE_READY = "response-mapping-popup-ready";
   const MESSAGE_RENDER = "response-mapping-popup-render";
   const MESSAGE_RENDERED = "response-mapping-popup-rendered";
@@ -29,6 +29,16 @@
 
   if (isPopupRuntime) {
     document.title = `Data Note · v${DATA_NOTE_VERSION}`;
+
+    const popupTabs = document.querySelector(".popup-tabs");
+
+    if (popupTabs) {
+      const versionLabel = document.createElement("span");
+      versionLabel.className = "popup-version";
+      versionLabel.textContent = `v${DATA_NOTE_VERSION}`;
+      versionLabel.title = `Data Note 버전 ${DATA_NOTE_VERSION}`;
+      popupTabs.append(versionLabel);
+    }
   }
 
   const featureLoads = new Map();
