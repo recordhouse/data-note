@@ -14,18 +14,9 @@ function extract(firstFunction, nextFunction) {
   return source.slice(start, end);
 }
 
-function createSequence({
-  sendSucceeds = true,
-  eventCount = 1,
-  openSucceeds = true,
-  autoConnect = true,
-} = {}) {
+function createSequence({ sendSucceeds = true, eventCount = 1 } = {}) {
   const timers = new Map();
   const commands = [];
-  const commandTargets = [];
-  const windows = [];
-  const statuses = [];
-  let activeParent = { id: "original", closed: false };
   let nextTimer = 0;
   const context = vm.createContext({
     window: {
@@ -46,7 +37,6 @@ function createSequence({
     userFlowTestReplayAdvanceTimer: 0,
     userFlowTestReplayCurrentSessionId: "",
     userFlowTestReplayCompletedSessionIds: new Set(),
-    userFlowTestReplayWindows: new Map(),
     userFlowTestReplayIndex: -1,
     userFlowTestReplayQueue: [],
     userFlowTestReplayStarted: false,
@@ -55,55 +45,18 @@ function createSequence({
     replayNavigationTimer: 0,
     replayNavigationParentReady: false,
     replayNavigationSessionId: "",
-    getActiveParentWindow: () => activeParent,
-    isParentWindowOpen: (target) => Boolean(target && !target.closed),
-    openParentForReplay(sessionId) {
-      if (!openSucceeds) {
-        statuses.push("부모 화면이 차단되었습니다. 이 사이트의 팝업을 허용해주세요.");
-        return false;
-      }
-      const tab = {
-        sessionId,
-        closed: false,
-        focusCount: 0,
-        closeCount: 0,
-        focus() { this.focusCount += 1; },
-        close() { this.closeCount += 1; this.closed = true; },
-      };
-      windows.push(tab);
-      activeParent = tab;
-      return tab;
-    },
+    getActiveParentWindow: () => ({}),
+    openParentForReplay: () => false,
     willReplayNavigate: () => false,
     sendUserFlowCommand(command, payload) {
       commands.push({ command, ...toPlain(payload || {}) });
-      commandTargets.push(activeParent);
       return sendSucceeds;
     },
     renderUserFlowState() {},
     rerenderUserFlowOrganization() {},
-    showUserFlowImportStatus: (message) => statuses.push(message),
-    escapeHtml: (value) => String(value).replaceAll('"', "&quot;"),
+    showUserFlowImportStatus() {},
   });
   vm.runInContext(extract("isUserFlowTestReplayRunning", "handleUserFlowControl"), context);
-  vm.runInContext(extract("renderUserFlowTestReplayResult", "renderUserFlowTestSessions"), context);
-  function ready(state = {}) {
-    context.replayNavigationParentReady = true;
-    context.readyState = { ...context.currentUserFlowState, ...state };
-    vm.runInContext("updateReplayNavigationState(readyState)", context);
-  }
-  function runIdle() {
-    const entry = [...timers].find(([, timer]) => timer.ms === 500);
-    assert.ok(entry);
-    timers.delete(entry[0]);
-    entry[1].callback();
-  }
-  function connectIfNeeded() {
-    if (autoConnect && context.replayNavigationSessionId) {
-      ready();
-      runIdle();
-    }
-  }
   function update(state) {
     context.nextState = state;
     vm.runInContext("updateUserFlowTestReplayState(currentUserFlowState, nextState)", context);
@@ -112,27 +65,10 @@ function createSequence({
   return {
     context,
     commands,
-    commandTargets,
-    windows,
-    statuses,
     timers,
-    ready,
-    runIdle,
-    getActiveParent: () => activeParent,
-    resultMarkup(id) {
-      context.resultId = id;
-      return vm.runInContext("renderUserFlowTestReplayResult(resultId)", context);
-    },
-    viewResult(id) {
-      context.resultEvent = {
-        target: { closest: () => ({ dataset: { userFlowTestResultView: id } }) },
-      };
-      vm.runInContext("handleUserFlowTestResultView(resultEvent)", context);
-    },
     start: (id = "first") => {
       context.startId = id;
       vm.runInContext("startUserFlowTestReplay(startId)", context);
-      connectIfNeeded();
     },
     update,
     runAdvance() {
@@ -140,7 +76,6 @@ function createSequence({
       assert.ok(entry);
       timers.delete(entry[0]);
       entry[1].callback();
-      connectIfNeeded();
     },
   };
 }
@@ -165,16 +100,7 @@ test("completed sessions advance through the test list in order", () => {
 });
 
 test("completed test sessions display the replay complete label", () => {
-  const fixture = createSequence();
-  fixture.start();
-  assert.equal(fixture.resultMarkup("first"), "");
-  fixture.update({ isReplaying: true, replaySessionId: "first" });
-  fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "first" });
-  const markup = fixture.resultMarkup("first");
-  assert.match(markup, /<strong>재생 완료<\/strong>/);
-  assert.match(markup, /data-user-flow-test-result-view="first"/);
-  assert.match(markup, /결과 화면 보기/);
-  assert.equal(fixture.resultMarkup("second"), "");
+  assert.match(source, /isTestReplayCompleted\s*\?\s*'<p class="user-flow-test-replay-complete"[^>]*><strong>재생 완료<\/strong><\/p>'\s*:\s*""/);
 });
 
 test("an unrecoverable replay advances to the next list without marking success", () => {
@@ -197,6 +123,40 @@ test("response errors have no separate skip logic while ordinary replay continue
   fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "first" });
   fixture.runAdvance();
   assert.equal(fixture.commands[1].sessionId, "second");
+});
+
+test("top status ignores response errors and retains replay, waiting, and fatal error messages", () => {
+  const renderStart = source.indexOf("  function renderUserFlowState(");
+  const statusStart = source.indexOf("    const hasUserFlowTabs =", renderStart);
+  const statusEnd = source.indexOf("    const canContinueRecording =", statusStart);
+  assert.ok(renderStart >= 0 && statusStart > renderStart && statusEnd > statusStart);
+  assert.doesNotMatch(source, /flowState\.responseError/);
+
+  const cases = [
+    [{ isReplaying: true }, "", "저장된 로그를 재생하고 있습니다", "replaying"],
+    [{ isReplaying: true, isWaitingForRequests: true }, "", "통신이 완료될 때까지 재생을 기다리고 있습니다", "replaying"],
+    [{ pendingRequestCount: 1 }, "first", "통신 중입니다", "communicating"],
+    [{}, "first", "로그 시작 페이지로 이동 중입니다", "navigating"],
+    [{ isRecording: true }, "", "로그를 저장하고 있습니다", "recording"],
+    [{ canReplay: true }, "", "로그 재생을 준비했습니다", "ready"],
+    [{ error: "재생 대상을 찾지 못했습니다." }, "", "재생 대상을 찾지 못했습니다.", "error"],
+  ];
+
+  for (const [flowState, navigationSessionId, expectedText, expectedState] of cases) {
+    let displayedStatus;
+    const context = vm.createContext({
+      flowState: { ...flowState, responseError: "응답 오류: 404 · GET /background" },
+      userFlowTabs: { tabs: [{ id: "default" }] },
+      replayNavigationSessionId: navigationSessionId,
+      USER_FLOW_ANIMATED_STATUS_STATES: new Set(["communicating", "navigating", "recording", "replaying"]),
+      status: {},
+      setUserFlowStatus(_element, text, state) {
+        displayedStatus = { text, state };
+      },
+    });
+    vm.runInContext(source.slice(statusStart, statusEnd), context);
+    assert.deepEqual(displayedStatus, { text: expectedText, state: expectedState });
+  }
 });
 
 test("failed replay commands move to the next list", () => {
@@ -231,16 +191,17 @@ test("manual cancellation prevents a scheduled next replay", () => {
 });
 
 test("page connection timeout advances to the next test session", () => {
-  const fixture = createSequence({ autoConnect: false });
+  const fixture = createSequence();
+  fixture.context.willReplayNavigate = () => true;
   fixture.start();
   const entry = [...fixture.timers].find(([, timer]) => timer.ms === 60000);
   assert.ok(entry);
   fixture.timers.delete(entry[0]);
   entry[1].callback();
-  assert.deepEqual(fixture.commands, [{ command: "get-state" }]);
+  assert.equal(fixture.commands.length, 2);
+  assert.deepEqual(fixture.commands[1], { command: "get-state" });
   fixture.runAdvance();
-  assert.equal(fixture.windows[1].sessionId, "second");
-  assert.equal(fixture.commands.length, 1);
+  assert.equal(fixture.commands[2].sessionId, "second");
 });
 
 test("manual stop is not treated as a fatal failure and stops the sequence", () => {
@@ -268,178 +229,8 @@ test("list and test replay buttons both use the same replay function", () => {
   const normalHandler = extract("handleUserFlowControl", "isUserFlowOrganizationBlocked");
   const sequenceHandler = extract("playCurrentUserFlowTestReplay", "scheduleNextUserFlowTestReplay");
   assert.match(normalHandler, /requestUserFlowReplay\(payload.sessionId\)/);
-  assert.match(sequenceHandler, /requestUserFlowReplay\(sessionId, \{ openInNewTab: true \}\)/);
+  assert.match(sequenceHandler, /requestUserFlowReplay\(sessionId\)/);
   assert.doesNotMatch(source, /setUserFlowTestReplayError|userFlowTestReplayErrors|user-flow-test-replay-error/);
   const css = fs.readFileSync(path.join(__dirname, "../css/popup.css"), "utf8");
   assert.doesNotMatch(css, /user-flow-test-replay-error/);
-});
-
-test("each test list gets a separate tab and completed tabs stay open", () => {
-  const fixture = createSequence();
-  fixture.start();
-  const firstTab = fixture.windows[0];
-  assert.equal(fixture.commandTargets[0], firstTab);
-  fixture.update({ isReplaying: true, replaySessionId: "first" });
-  fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "first" });
-  fixture.runAdvance();
-  const secondTab = fixture.windows[1];
-  assert.notEqual(firstTab, secondTab);
-  assert.equal(fixture.commandTargets[1], secondTab);
-  fixture.update({ isReplaying: true, replaySessionId: "second" });
-  fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "second" });
-  fixture.runAdvance();
-  fixture.update({ isReplaying: true, replaySessionId: "third" });
-  fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "third" });
-  fixture.runAdvance();
-  assert.deepEqual(fixture.windows.map((tab) => tab.sessionId), ["first", "second", "third"]);
-  assert.ok(fixture.windows.every((tab) => !tab.closed && tab.closeCount === 0));
-  assert.equal(fixture.context.userFlowTestReplayWindows.get("first"), firstTab);
-  assert.equal(fixture.context.userFlowTestReplayWindows.size, 3);
-});
-
-test("viewing a result focuses its tab without changing the current replay connection", () => {
-  const fixture = createSequence();
-  fixture.start();
-  fixture.update({ isReplaying: true, replaySessionId: "first" });
-  fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "first" });
-  fixture.runAdvance();
-  fixture.update({ isReplaying: true, replaySessionId: "second" });
-  fixture.viewResult("first");
-  assert.equal(fixture.windows[0].focusCount, 1);
-  assert.equal(fixture.getActiveParent(), fixture.windows[1]);
-  assert.equal(fixture.context.userFlowTestReplayCurrentSessionId, "second");
-  assert.equal(fixture.commands.length, 2);
-  fixture.windows[0].closed = true;
-  fixture.viewResult("first");
-  assert.equal(fixture.windows[0].focusCount, 1);
-  assert.match(fixture.statuses[0], /결과 화면 탭이 닫혀/);
-  assert.equal(fixture.windows.length, 2);
-});
-
-test("new test tabs wait for connection and outstanding requests before replay", () => {
-  const fixture = createSequence({ autoConnect: false });
-  fixture.start();
-  assert.equal(fixture.windows.length, 1);
-  assert.equal(fixture.commands.length, 0);
-  fixture.ready({ pendingRequestCount: 1, isWaitingForRequests: true });
-  assert.ok(![...fixture.timers.values()].some((timer) => timer.ms === 500));
-  fixture.ready({ pendingRequestCount: 0, isWaitingForRequests: false });
-  fixture.runIdle();
-  assert.deepEqual(fixture.commands, [{ command: "toggle-replay-session", sessionId: "first" }]);
-  assert.equal(fixture.windows.length, 1);
-  fixture.update({ isReplaying: true, replaySessionId: "first" });
-  fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "first" });
-  fixture.runAdvance();
-  fixture.ready({ pendingRequestCount: 2 });
-  assert.equal(fixture.commands.length, 1);
-  fixture.ready({ pendingRequestCount: 0, isWaitingForRequests: false });
-  fixture.runIdle();
-  assert.equal(fixture.commands[1].sessionId, "second");
-  assert.equal(fixture.windows.length, 2);
-});
-
-test("a blocked tab stops the test queue and preserves earlier result tabs", () => {
-  const fixture = createSequence();
-  fixture.start();
-  fixture.update({ isReplaying: true, replaySessionId: "first" });
-  fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "first" });
-  fixture.context.openParentForReplay = () => {
-    fixture.statuses.push("팝업을 허용해주세요.");
-    return false;
-  };
-  fixture.runAdvance();
-  assert.equal(fixture.context.userFlowTestReplayCurrentSessionId, "");
-  assert.equal(fixture.timers.size, 0);
-  assert.equal(fixture.commands.length, 1);
-  assert.equal(fixture.windows.length, 1);
-  assert.equal(fixture.windows[0].closed, false);
-  assert.match(fixture.resultMarkup("first"), /재생 완료/);
-  assert.match(fixture.statuses[0], /팝업을 허용/);
-});
-
-test("a blocked first tab does not run tests in the existing parent", () => {
-  const fixture = createSequence({ openSucceeds: false });
-  fixture.start();
-  assert.equal(fixture.commands.length, 0);
-  assert.equal(fixture.windows.length, 0);
-  assert.equal(fixture.timers.size, 0);
-  assert.equal(fixture.context.userFlowTestReplayCurrentSessionId, "");
-  assert.match(fixture.statuses[0], /팝업을 허용/);
-  assert.match(fixture.statuses.at(-1), /로그 테스트를 중지/);
-});
-
-test("ordinary log replay continues using the original tab", () => {
-  const fixture = createSequence();
-  const originalTab = fixture.getActiveParent();
-  vm.runInContext('requestUserFlowReplay("first")', fixture.context);
-  assert.deepEqual(fixture.commands, [{ command: "toggle-replay-session", sessionId: "first" }]);
-  assert.equal(fixture.commandTargets[0], originalTab);
-  assert.equal(fixture.windows.length, 0);
-  assert.equal(fixture.context.userFlowTestReplayWindows.size, 0);
-});
-
-function createTabOpener({ blocked = false, startPage = "/recorded?state=test" } = {}) {
-  const originalTab = { closed: false, closeCount: 0 };
-  const tab = {
-    closed: false,
-    focusCount: 0,
-    location: { replace: (url) => { tab.url = url; } },
-    focus() { this.focusCount += 1; },
-    close() { this.closed = true; },
-  };
-  const opens = [];
-  const connections = [];
-  const reconnects = [];
-  const statuses = [];
-  const context = vm.createContext({
-    URL,
-    window: {
-      location: { href: "https://example.test/popup.html", origin: "https://example.test" },
-      open(url, target) {
-        opens.push({ url, target });
-        return blocked ? null : tab;
-      },
-      PopupCore: { connectParent: (target) => connections.push(target) },
-    },
-    activeParentWindow: originalTab,
-    currentUserFlowState: { sessions: [{ id: "first", eventCount: 1, startPage }] },
-    startParentReconnect: (target) => reconnects.push(target),
-    stopParentReconnect() {},
-    showUserFlowImportStatus: (message) => statuses.push(message),
-  });
-  vm.runInContext(extract("openParentForReplay", "willReplayNavigate"), context);
-  return {
-    tab, originalTab, opens, connections, reconnects, statuses, context,
-    open: () => vm.runInContext('openParentForReplay("first")', context),
-  };
-}
-
-test("the real opener returns the new tab and leaves the existing browser open", () => {
-  const fixture = createTabOpener();
-  assert.equal(fixture.open(), fixture.tab);
-  assert.deepEqual(fixture.opens, [{ url: "about:blank", target: "_blank" }]);
-  assert.equal(fixture.tab.url, "https://example.test/recorded?state=test");
-  assert.equal(fixture.tab.focusCount, 1);
-  assert.equal(fixture.context.activeParentWindow, fixture.tab);
-  assert.deepEqual(fixture.connections, [fixture.tab]);
-  assert.deepEqual(fixture.reconnects, [fixture.tab]);
-  assert.equal(fixture.originalTab.closed, false);
-  assert.equal(fixture.originalTab.closeCount, 0);
-});
-
-test("the real opener keeps the old connection when a new tab is blocked", () => {
-  const fixture = createTabOpener({ blocked: true });
-  assert.equal(fixture.open(), false);
-  assert.equal(fixture.context.activeParentWindow, fixture.originalTab);
-  assert.equal(fixture.connections.length, 0);
-  assert.equal(fixture.reconnects.length, 0);
-  assert.match(fixture.statuses[0], /팝업을 허용/);
-});
-
-test("the real opener retains the existing same-origin restriction", () => {
-  const fixture = createTabOpener({ startPage: "https://different.test/recorded" });
-  assert.equal(fixture.open(), false);
-  assert.equal(fixture.opens.length, 0);
-  assert.equal(fixture.context.activeParentWindow, fixture.originalTab);
-  assert.match(fixture.statuses[0], /다른 사이트/);
 });
