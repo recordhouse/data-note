@@ -77,6 +77,7 @@
   let draggedUserFlowSessionId = "";
   let userFlowMoveToastTimer = 0;
   let userFlowMoveToastClearTimer = 0;
+  let replayNavigationAutoStart = false;
   let replayNavigationIdleTimer = 0;
   let replayNavigationParentReady = false;
   let replayNavigationSessionId = "";
@@ -1250,6 +1251,8 @@
           (!session.eventCount && !isReplayingSession) ||
           (flowState.isReplaying && !isReplayingSession);
         const replayDisabled = disabled || Boolean(replayNavigationSessionId);
+        const newWindowReplayDisabled =
+          replayDisabled || flowState.isReplaying || isUserFlowTestReplayRunning();
         const changeDisabled = flowState.isRecording || flowState.isReplaying;
         const sessionMeta = getUserFlowSessionMeta(session, flowState, isReplayingSession);
         if (isEditing) {
@@ -1316,6 +1319,14 @@
                 data-navigating="${String(isNavigatingSession)}"
                 ${replayDisabled ? "disabled" : ""}
               >${isNavigatingSession ? "이동 중" : isReplayingSession ? "재생 중지" : "재생"}</button>
+              <button
+                class="user-flow-replay"
+                type="button"
+                data-user-flow-command="replay-session-new-window"
+                data-session-id="${escapeHtml(session.id)}"
+                title="저장된 화면 크기로 새 창에서 재생합니다. 모바일 모드는 자동 적용되지 않습니다."
+                ${newWindowReplayDisabled ? "disabled" : ""}
+              >새창재생</button>
               <button
                 class="user-flow-name-action"
                 type="button"
@@ -1392,7 +1403,7 @@
 
     if (!parentWindow) {
       if (!silent) {
-        showUserFlowImportStatus("부모 화면에 연결할 수 없습니다.");
+        showUserFlowImportStatus("사이트에 연결할 수 없습니다.");
       }
 
       return false;
@@ -1414,7 +1425,7 @@
       }
 
       if (!silent) {
-        showUserFlowImportStatus("부모 화면에 연결할 수 없습니다.");
+        showUserFlowImportStatus("사이트에 연결할 수 없습니다.");
       }
 
       return false;
@@ -1458,7 +1469,22 @@
     );
   }
 
-  function openParentForReplay(sessionId) {
+  function getUserFlowReplayWindowFeatures(viewport) {
+    if (
+      !Number.isFinite(viewport?.width) ||
+      !Number.isFinite(viewport?.height) ||
+      viewport.width < 100 ||
+      viewport.height < 100 ||
+      viewport.width > 16384 ||
+      viewport.height > 16384
+    ) {
+      return "popup=yes";
+    }
+
+    return `popup=yes,width=${Math.round(viewport.width)},height=${Math.round(viewport.height)}`;
+  }
+
+  function openParentForReplay(sessionId, { openInNewWindow = false } = {}) {
     const session = (currentUserFlowState.sessions || []).find(
       (item) => item.id === sessionId,
     );
@@ -1479,11 +1505,17 @@
         return false;
       }
 
-      parentWindow = window.open("about:blank", "_blank");
+      parentWindow = openInNewWindow
+        ? window.open(
+            "about:blank",
+            "_blank",
+            getUserFlowReplayWindowFeatures(session.viewport),
+          )
+        : window.open("about:blank", "_blank");
 
       if (!parentWindow) {
         showUserFlowImportStatus(
-          `새 탭이 차단되었습니다. 현재 팝업 주소의 사이트(${window.location.origin})에서 팝업 및 리디렉션을 허용해주세요.`,
+          `${openInNewWindow ? "새 창" : "새 탭"}이 차단되었습니다. 현재 팝업 주소의 사이트(${window.location.origin})에서 팝업 및 리디렉션을 허용해주세요.`,
         );
         return false;
       }
@@ -1506,7 +1538,7 @@
       }
 
       stopParentReconnect();
-      showUserFlowImportStatus("재생할 부모 화면을 열지 못했습니다.");
+      showUserFlowImportStatus("재생할 사이트를 열지 못했습니다.");
       return false;
     }
   }
@@ -1602,16 +1634,21 @@
     }
   }
 
-  function requestUserFlowReplay(sessionId, { openInNewTab = false } = {}) {
-    if (openInNewTab || !getActiveParentWindow()) {
-      const replayWindow = openParentForReplay(sessionId);
+  function requestUserFlowReplay(
+    sessionId,
+    { openInNewTab = false, openInNewWindow = false } = {},
+  ) {
+    if (openInNewTab || openInNewWindow || !getActiveParentWindow()) {
+      const replayWindow = openInNewWindow
+        ? openParentForReplay(sessionId, { openInNewWindow: true })
+        : openParentForReplay(sessionId);
 
       if (replayWindow) {
         if (openInNewTab) {
           userFlowTestReplayWindows.set(sessionId, replayWindow);
         }
 
-        startReplayNavigationState(sessionId);
+        startReplayNavigationState(sessionId, { autoStartReplay: openInNewWindow });
         return true;
       }
 
@@ -1752,6 +1789,7 @@
     replayNavigationIdleTimer = 0;
     replayNavigationTimer = 0;
     replayNavigationParentReady = false;
+    replayNavigationAutoStart = false;
 
     if (!replayNavigationSessionId) {
       return;
@@ -1764,15 +1802,17 @@
     }
   }
 
-  function startReplayNavigationState(sessionId) {
+  function startReplayNavigationState(sessionId, { autoStartReplay = false } = {}) {
     window.clearTimeout(replayNavigationIdleTimer);
     window.clearTimeout(replayNavigationTimer);
     replayNavigationIdleTimer = 0;
     replayNavigationParentReady = false;
     replayNavigationSessionId = sessionId;
+    replayNavigationAutoStart = autoStartReplay;
     replayNavigationTimer = window.setTimeout(() => {
       const isTestReplayNavigation =
         userFlowTestReplayCurrentSessionId === sessionId;
+      const wasAutoStartReplay = replayNavigationAutoStart;
       clearReplayNavigationState({ rerender: false });
 
       if (isTestReplayNavigation) {
@@ -1781,6 +1821,10 @@
         rerenderUserFlowTestReplay();
       } else {
         rerenderUserFlowOrganization();
+
+        if (wasAutoStartReplay) {
+          showUserFlowImportStatus("새 창의 사이트에 연결하지 못해 재생을 시작하지 않았습니다.");
+        }
       }
 
       sendUserFlowCommand("get-state");
@@ -1805,6 +1849,7 @@
     }
 
     const expectedSessionId = replayNavigationSessionId;
+    const expectedParentWindow = getActiveParentWindow();
     replayNavigationIdleTimer = window.setTimeout(() => {
       if (
         replayNavigationSessionId === expectedSessionId &&
@@ -1812,7 +1857,18 @@
       ) {
         const shouldStartTestReplay =
           userFlowTestReplayCurrentSessionId === expectedSessionId;
+        const shouldAutoStartReplay = replayNavigationAutoStart;
         clearReplayNavigationState({ rerender: false });
+
+        if (
+          shouldAutoStartReplay &&
+          (!isParentWindowOpen(expectedParentWindow) ||
+            getActiveParentWindow() !== expectedParentWindow)
+        ) {
+          rerenderUserFlowOrganization();
+          showUserFlowImportStatus("새 창이 닫혔거나 연결이 변경되어 재생을 시작하지 않았습니다.");
+          return;
+        }
 
         if (shouldStartTestReplay) {
           rerenderUserFlowTestReplay();
@@ -1824,6 +1880,10 @@
           }
         } else {
           rerenderUserFlowOrganization();
+
+          if (shouldAutoStartReplay && !requestUserFlowReplay(expectedSessionId)) {
+            showUserFlowImportStatus("새 창에서 로그 재생을 시작하지 못했습니다.");
+          }
         }
       }
     }, REPLAY_NAVIGATION_IDLE_MS);
@@ -1895,6 +1955,32 @@
     const payload = {
       sessionId: button.dataset.sessionId || "",
     };
+
+    if (command === "replay-session-new-window") {
+      if (
+        !payload.sessionId ||
+        currentUserFlowState.isRecording ||
+        currentUserFlowState.isReplaying ||
+        replayNavigationSessionId ||
+        isUserFlowTestReplayRunning()
+      ) {
+        return;
+      }
+
+      cancelUserFlowTestReplay({ rerender: false });
+      requestUserFlowReplay(payload.sessionId, { openInNewWindow: true });
+      return;
+    }
+
+    if (
+      replayNavigationAutoStart &&
+      (command === "toggle-record" ||
+        command === "clear" ||
+        (command === "delete-session" && payload.sessionId === replayNavigationSessionId))
+    ) {
+      clearReplayNavigationState({ rerender: false });
+    }
+
     const isTestReplayButton = Boolean(
       button.closest("#userFlowTestSessionList"),
     );

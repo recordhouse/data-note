@@ -60,6 +60,7 @@ function createSequence({
     userFlowTestReplayQueue: [],
     userFlowTestReplayStarted: false,
     renderedUserFlowTestSignature: "",
+    replayNavigationAutoStart: false,
     replayNavigationIdleTimer: 0,
     replayNavigationTimer: 0,
     replayNavigationParentReady: false,
@@ -69,7 +70,7 @@ function createSequence({
     openParentForReplay(sessionId, options) {
       openOptions.push(options);
       if (!openSucceeds) {
-        statuses.push("부모 화면이 차단되었습니다. 이 사이트의 팝업을 허용해주세요.");
+        statuses.push("사이트 화면이 차단되었습니다. 이 사이트의 팝업을 허용해주세요.");
         return false;
       }
       const tab = {
@@ -98,6 +99,7 @@ function createSequence({
     escapeHtml: (value) => String(value).replaceAll('"', "&quot;"),
   });
   vm.runInContext(extract("isUserFlowTestReplayRunning", "handleUserFlowControl"), context);
+  vm.runInContext(extract("handleUserFlowControl", "isUserFlowOrganizationBlocked"), context);
   vm.runInContext(extract("renderUserFlowTestReplayResult", "renderUserFlowTestSessions"), context);
   function ready(state = {}) {
     context.replayNavigationParentReady = true;
@@ -134,6 +136,17 @@ function createSequence({
     ready,
     runIdle,
     getActiveParent: () => activeParent,
+    clickNewWindow(id = "first", disabled = false) {
+      context.controlEvent = {
+        target: {
+          closest: () => ({
+            disabled,
+            dataset: { userFlowCommand: "replay-session-new-window", sessionId: id },
+          }),
+        },
+      };
+      vm.runInContext("handleUserFlowControl(controlEvent)", context);
+    },
     resultMarkup(id) {
       context.resultId = id;
       return vm.runInContext("renderUserFlowTestReplayResult(resultId)", context);
@@ -546,10 +559,13 @@ function createTabOpener({
     stopParentReconnect() {},
     showUserFlowImportStatus: (message) => statuses.push(message),
   });
-  vm.runInContext(extract("openParentForReplay", "willReplayNavigate"), context);
+  vm.runInContext(extract("getUserFlowReplayWindowFeatures", "willReplayNavigate"), context);
   return {
     tab, originalTab, opens, connections, reconnects, statuses, context,
-    open: () => vm.runInContext('openParentForReplay("first")', context),
+    open(options) {
+      context.openerOptions = options;
+      return vm.runInContext('openParentForReplay("first", openerOptions)', context);
+    },
   };
 }
 
@@ -706,4 +722,169 @@ test("mobile flags without a usable recorded UA leave the native UA alone", () =
     assert.equal(fixture.commandUserAgents[0], DESKTOP_UA);
     assert.equal(fixture.warnings.length, 0);
   }
+});
+
+test("new-window playback is rendered beside ordinary replay only in the log list", () => {
+  const renderer = extract("renderUserFlowState", "isParentWindowOpen");
+  assert.match(renderer, /data-user-flow-command="toggle-replay-session"[\s\S]*?data-user-flow-command="replay-session-new-window"[\s\S]*?>새창재생<\/button>/);
+  assert.doesNotMatch(extract("renderUserFlowTestSessions", "renderUserFlowNotice"), /replay-session-new-window/);
+  assert.match(renderer, /newWindowReplayDisabled =\s*replayDisabled \|\| flowState\.isReplaying \|\| isUserFlowTestReplayRunning\(\)/);
+});
+
+test("the new-window button opens once and waits for connection and network idle before replay", () => {
+  const fixture = createSequence({ environment: { isMobile: true, userAgent: MOBILE_UA } });
+  const originalTab = fixture.getActiveParent();
+  fixture.clickNewWindow();
+  assert.deepEqual(toPlain(fixture.openOptions), [{ openInNewWindow: true }]);
+  assert.equal(fixture.windows.length, 1);
+  assert.equal(originalTab.closed, false);
+  assert.equal(fixture.context.replayNavigationAutoStart, true);
+  assert.equal(fixture.commands.length, 0);
+  assert.equal(fixture.context.userFlowTestReplayWindows.size, 0);
+  assert.equal(fixture.context.userFlowTestReplayCurrentSessionId, "");
+
+  fixture.ready({ pendingRequestCount: 2, isWaitingForRequests: true });
+  assert.ok(![...fixture.timers.values()].some((timer) => timer.ms === 500));
+  assert.equal(fixture.commands.length, 0);
+  fixture.ready({ pendingRequestCount: 0, isWaitingForRequests: false });
+  fixture.runIdle();
+  assert.deepEqual(fixture.commands, [{ command: "toggle-replay-session", sessionId: "first" }]);
+  assert.equal(fixture.commandTargets[0], fixture.windows[0]);
+  assert.equal(fixture.commandUserAgents[0], DESKTOP_UA);
+  assert.equal(fixture.context.replayNavigationSessionId, "");
+  assert.equal(fixture.context.replayNavigationAutoStart, false);
+  fixture.ready();
+  assert.equal(fixture.commands.length, 1);
+  assert.equal(fixture.windows[0].closed, false);
+});
+
+test("new-window playback is ignored while recording, replaying, navigating, or testing", () => {
+  for (const state of ["recording", "replaying", "navigating", "testing", "disabled"]) {
+    const fixture = createSequence();
+    if (state === "recording") fixture.context.currentUserFlowState.isRecording = true;
+    if (state === "replaying") fixture.context.currentUserFlowState.isReplaying = true;
+    if (state === "navigating") fixture.context.replayNavigationSessionId = "second";
+    if (state === "testing") fixture.context.userFlowTestReplayCurrentSessionId = "second";
+    fixture.clickNewWindow("first", state === "disabled");
+    assert.equal(fixture.windows.length, 0, state);
+    assert.equal(fixture.commands.length, 0, state);
+  }
+});
+
+test("a blocked new window never falls back to replaying in the original site", () => {
+  const fixture = createSequence({ openSucceeds: false });
+  const originalTab = fixture.getActiveParent();
+  fixture.clickNewWindow();
+  assert.equal(fixture.getActiveParent(), originalTab);
+  assert.equal(fixture.commands.length, 0);
+  assert.equal(fixture.windows.length, 0);
+  assert.equal(fixture.context.replayNavigationSessionId, "");
+  assert.equal(fixture.context.replayNavigationAutoStart, false);
+});
+
+test("a new-window connection timeout reports no replay and does not start a test queue", () => {
+  const fixture = createSequence();
+  fixture.clickNewWindow();
+  const entry = [...fixture.timers].find(([, timer]) => timer.ms === 60000);
+  assert.ok(entry);
+  fixture.timers.delete(entry[0]);
+  entry[1].callback();
+  assert.deepEqual(fixture.commands, [{ command: "get-state" }]);
+  assert.match(fixture.statuses.at(-1), /새 창.*재생을 시작하지 않았습니다/);
+  assert.equal(fixture.context.replayNavigationAutoStart, false);
+  assert.equal(fixture.context.userFlowTestReplayFailedSessionIds.size, 0);
+  assert.equal(fixture.windows[0].closed, false);
+});
+
+test("clearing pending navigation prevents a delayed new-window replay", () => {
+  const fixture = createSequence();
+  fixture.clickNewWindow();
+  fixture.ready();
+  const callback = [...fixture.timers.values()].find((timer) => timer.ms === 500).callback;
+  vm.runInContext("clearReplayNavigationState()", fixture.context);
+  callback();
+  assert.equal(fixture.commands.length, 0);
+  assert.equal(fixture.context.replayNavigationAutoStart, false);
+  assert.equal(fixture.timers.size, 0);
+});
+
+test("failed new-window replay commands report failure without advancing another list", () => {
+  const fixture = createSequence({ sendSucceeds: false });
+  fixture.clickNewWindow();
+  fixture.ready();
+  fixture.runIdle();
+  assert.match(fixture.statuses.at(-1), /새 창에서 로그 재생을 시작하지 못했습니다/);
+  assert.equal(fixture.commands.length, 1);
+  assert.equal(fixture.context.userFlowTestReplayFailedSessionIds.size, 0);
+  assert.ok(![...fixture.timers.values()].some((timer) => timer.ms === 350));
+});
+
+test("mobile and desktop new-window playback requests the recorded content dimensions", () => {
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 720 }]) {
+    const fixture = createTabOpener({ viewport });
+    assert.equal(fixture.open({ openInNewWindow: true }), fixture.tab);
+    assert.deepEqual(fixture.opens, [{
+      url: "about:blank", target: "_blank",
+      features: `popup=yes,width=${viewport.width},height=${viewport.height}`,
+    }]);
+    assert.equal(fixture.tab.url, "https://example.test/recorded?state=test");
+    assert.equal(fixture.originalTab.closed, false);
+  }
+});
+
+test("new-window viewport dimensions are rounded and invalid metadata cannot inject features", () => {
+  const rounded = createTabOpener({ viewport: { width: 390.4, height: 844.6 } });
+  rounded.open({ openInNewWindow: true });
+  assert.equal(rounded.opens[0].features, "popup=yes,width=390,height=845");
+  for (const viewport of [
+    undefined, null, {}, { width: 390 }, { width: 0, height: 844 },
+    { width: 390, height: -844 }, { width: "390", height: 844 },
+    { width: "390,noopener=yes", height: 844 }, { width: NaN, height: 844 },
+    { width: 390, height: Infinity }, { width: 16385, height: 844 },
+  ]) {
+    const fixture = createTabOpener({ viewport });
+    assert.equal(fixture.open({ openInNewWindow: true }), fixture.tab);
+    assert.equal(fixture.opens[0].features, "popup=yes");
+  }
+});
+
+test("blocked new windows retain the original connection and identify new-window blocking", () => {
+  const fixture = createTabOpener({ blocked: true, viewport: { width: 390, height: 844 } });
+  assert.equal(fixture.open({ openInNewWindow: true }), false);
+  assert.equal(fixture.context.activeParentWindow, fixture.originalTab);
+  assert.equal(fixture.connections.length, 0);
+  assert.equal(fixture.reconnects.length, 0);
+  assert.match(fixture.statuses[0], /새 창이 차단되었습니다/);
+});
+
+test("new-window replay retains the same-origin restriction", () => {
+  const fixture = createTabOpener({ startPage: "https://different.test/recorded" });
+  assert.equal(fixture.open({ openInNewWindow: true }), false);
+  assert.equal(fixture.opens.length, 0);
+  assert.equal(fixture.context.activeParentWindow, fixture.originalTab);
+});
+
+test("closing the new window in the idle gap cannot replay in another connected site", () => {
+  const fixture = createSequence();
+  const originalTab = fixture.getActiveParent();
+  fixture.clickNewWindow();
+  fixture.ready();
+  fixture.windows[0].closed = true;
+  fixture.context.getActiveParentWindow = () => originalTab;
+  fixture.runIdle();
+  assert.equal(fixture.commands.length, 0);
+  assert.equal(fixture.context.replayNavigationAutoStart, false);
+  assert.match(fixture.statuses.at(-1), /새 창이 닫혔거나 연결이 변경되어/);
+});
+
+test("ordinary log navigation still requires explicit replay after page readiness", () => {
+  const fixture = createSequence();
+  fixture.context.willReplayNavigate = () => true;
+  vm.runInContext('requestUserFlowReplay("first")', fixture.context);
+  assert.equal(fixture.context.replayNavigationAutoStart, false);
+  assert.equal(fixture.commands.length, 1);
+  fixture.ready();
+  fixture.runIdle();
+  assert.equal(fixture.commands.length, 1);
+  assert.equal(fixture.windows.length, 0);
 });

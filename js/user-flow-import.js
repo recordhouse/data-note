@@ -605,7 +605,7 @@
             skipZipNameDuplicateCheck,
           })
         ) {
-          throw new Error("부모 화면에 연결할 수 없습니다.");
+          throw new Error("사이트에 연결할 수 없습니다.");
         }
       } catch (error) {
         setTabs(previousTabs);
