@@ -253,3 +253,36 @@ test("failed test rows retain the shared result layout and result-view button", 
   assert.match(markup, /data-user-flow-test-result-view="first"/);
   assert.doesNotMatch(markup, /재생 완료/);
 });
+
+test("list tab edit buttons use gear and check SVG icons without changing their controls", () => {
+  const tabList = { innerHTML: "" };
+  const context = vm.createContext({
+    document: { querySelector: () => tabList },
+    currentUserFlowState: {},
+    editingUserFlowTabId: "",
+    userFlowTabs: { activeTabId: "default", tabs: [{ id: "default", name: "Tab 01" }] },
+    getUserFlowTabElementId: (id) => `tab-${id}`,
+    escapeHtml: String,
+  });
+  vm.runInContext(extract("renderUserFlowTabs", "escapeHtml"), context);
+  vm.runInContext("renderUserFlowTabs([])", context);
+  assert.match(tabList.innerHTML, /data-user-flow-tab-edit="default"/);
+  assert.match(tabList.innerHTML, /<svg\s+class="user-flow-list-tab-icon"/);
+  assert.match(tabList.innerHTML, /data-icon="rename"/);
+  assert.match(tabList.innerHTML, /M15 12a3 3 0 1 1-6 0/);
+  assert.doesNotMatch(tabList.innerHTML, /M3 7V5h10v2/);
+  assert.match(tabList.innerHTML, /aria-hidden="true"/);
+  assert.match(tabList.innerHTML, /aria-label="Tab 01 탭 이름 수정"/);
+  assert.doesNotMatch(tabList.innerHTML, /✎/);
+  assert.doesNotMatch(tabList.innerHTML, />수정<\/button>/);
+  context.editingUserFlowTabId = "default";
+  vm.runInContext("renderUserFlowTabs([])", context);
+  assert.match(tabList.innerHTML, /data-icon="save"/);
+  assert.match(tabList.innerHTML, /<path d="M5 12l4 4L19 6"/);
+  assert.match(tabList.innerHTML, /aria-label="Tab 01 탭 저장"/);
+  assert.doesNotMatch(tabList.innerHTML, />저장<\/button>/);
+  context.currentUserFlowState = { isRecording: true };
+  vm.runInContext("renderUserFlowTabs([])", context);
+  assert.match(tabList.innerHTML, /data-user-flow-tab-edit="default"\s*disabled\s*>/);
+  assert.match(tabList.innerHTML, /data-icon="save"/);
+});

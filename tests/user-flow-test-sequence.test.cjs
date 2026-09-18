@@ -6,6 +6,8 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "../js/user-flow-popup.js"), "utf8");
 const toPlain = (value) => JSON.parse(JSON.stringify(value));
+const DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/150.0.0.0 Safari/537.36";
+const MOBILE_UA = "Mozilla/5.0 (Linux; Android 13) Chrome/150.0.0.0 Mobile Safari/537.36";
 
 function extract(firstFunction, nextFunction) {
   const start = source.indexOf(`  function ${firstFunction}(`);
@@ -19,6 +21,7 @@ function createSequence({
   eventCount = 1,
   openSucceeds = true,
   autoConnect = true,
+  environment,
 } = {}) {
   const timers = new Map();
   const commands = [];
@@ -26,9 +29,12 @@ function createSequence({
   const windows = [];
   const openOptions = [];
   const statuses = [];
-  let activeParent = { id: "original", closed: false };
+  const warnings = [];
+  const commandUserAgents = [];
+  let activeParent = { id: "original", closed: false, navigator: { userAgent: DESKTOP_UA } };
   let nextTimer = 0;
   const context = vm.createContext({
+    console: { warn: (...args) => warnings.push(args) },
     window: {
       location: { origin: "https://example.test" },
       setTimeout(callback, ms) {
@@ -42,7 +48,7 @@ function createSequence({
     REPLAY_NAVIGATION_IDLE_MS: 500,
     currentUserFlowState: {
       isReplaying: false,
-      sessions: ["first", "second", "third"].map((id) => ({ id, eventCount })),
+      sessions: ["first", "second", "third"].map((id) => ({ id, eventCount, environment })),
     },
     userFlowTabs: { testSessionIds: ["first", "second", "third"] },
     userFlowTestReplayAdvanceTimer: 0,
@@ -68,6 +74,7 @@ function createSequence({
       }
       const tab = {
         sessionId,
+        navigator: { userAgent: DESKTOP_UA, userAgentData: { mobile: false } },
         closed: false,
         focusCount: 0,
         closeCount: 0,
@@ -82,6 +89,7 @@ function createSequence({
     sendUserFlowCommand(command, payload) {
       commands.push({ command, ...toPlain(payload || {}) });
       commandTargets.push(activeParent);
+      commandUserAgents.push(activeParent.navigator?.userAgent);
       return sendSucceeds;
     },
     renderUserFlowState() {},
@@ -90,6 +98,7 @@ function createSequence({
     escapeHtml: (value) => String(value).replaceAll('"', "&quot;"),
   });
   vm.runInContext(extract("isUserFlowTestReplayRunning", "handleUserFlowControl"), context);
+  vm.runInContext(extract("applyUserFlowTestReplayUserAgent", "openParentForReplay"), context);
   vm.runInContext(extract("renderUserFlowTestReplayResult", "renderUserFlowTestSessions"), context);
   function ready(state = {}) {
     context.replayNavigationParentReady = true;
@@ -119,6 +128,8 @@ function createSequence({
     commandTargets,
     windows,
     openOptions,
+    warnings,
+    commandUserAgents,
     statuses,
     timers,
     ready,
@@ -506,7 +517,7 @@ function createTabOpener({
   blocked = false,
   startPage = "/recorded?state=test",
   viewport,
-  useRecordedViewport = false,
+  environment,
 } = {}) {
   const originalTab = { closed: false, closeCount: 0 };
   const tab = {
@@ -531,16 +542,15 @@ function createTabOpener({
       PopupCore: { connectParent: (target) => connections.push(target) },
     },
     activeParentWindow: originalTab,
-    currentUserFlowState: { sessions: [{ id: "first", eventCount: 1, startPage, viewport }] },
-    useRecordedViewport,
+    currentUserFlowState: { sessions: [{ id: "first", eventCount: 1, startPage, viewport, environment }] },
     startParentReconnect: (target) => reconnects.push(target),
     stopParentReconnect() {},
     showUserFlowImportStatus: (message) => statuses.push(message),
   });
-  vm.runInContext(extract("getUserFlowReplayWindowFeatures", "willReplayNavigate"), context);
+  vm.runInContext(extract("openParentForReplay", "willReplayNavigate"), context);
   return {
     tab, originalTab, opens, connections, reconnects, statuses, context,
-    open: () => vm.runInContext('openParentForReplay("first", { useRecordedViewport })', context),
+    open: () => vm.runInContext('openParentForReplay("first")', context),
   };
 }
 
@@ -575,26 +585,23 @@ test("the real opener retains the existing same-origin restriction", () => {
   assert.match(fixture.statuses[0], /다른 사이트/);
 });
 
-test("test replay requests recorded viewport sizing for every new result window", () => {
+test("test replay no longer requests viewport sizing for new result tabs", () => {
   const fixture = createSequence();
   fixture.start();
   fixture.update({ isReplaying: true, replaySessionId: "first" });
   fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "first" });
   fixture.runAdvance();
-  assert.deepEqual(toPlain(fixture.openOptions), [
-    { useRecordedViewport: true },
-    { useRecordedViewport: true },
-  ]);
+  assert.equal(fixture.openOptions.length, 2);
+  assert.ok(fixture.openOptions.every((options) => options === undefined));
 });
 
-test("recorded mobile and desktop viewports open sized popup windows", () => {
+test("recorded mobile and desktop viewports both open ordinary new tabs", () => {
   for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 720 }]) {
-    const fixture = createTabOpener({ viewport, useRecordedViewport: true });
+    const fixture = createTabOpener({ viewport });
     assert.equal(fixture.open(), fixture.tab);
     assert.deepEqual(fixture.opens, [{
       url: "about:blank",
       target: "_blank",
-      features: `popup=yes,width=${viewport.width},height=${viewport.height}`,
     }]);
     assert.equal(fixture.tab.url, "https://example.test/recorded?state=test");
     assert.deepEqual(fixture.connections, [fixture.tab]);
@@ -609,7 +616,7 @@ test("missing or invalid viewport metadata retains ordinary new-tab behavior", (
     { width: "390,noopener=yes", height: 844 }, { width: NaN, height: 844 },
     { width: 390, height: Infinity }, { width: 16385, height: 844 },
   ]) {
-    const fixture = createTabOpener({ viewport, useRecordedViewport: true });
+    const fixture = createTabOpener({ viewport });
     assert.equal(fixture.open(), fixture.tab);
     assert.deepEqual(fixture.opens, [{ url: "about:blank", target: "_blank" }]);
   }
@@ -622,5 +629,77 @@ test("ordinary log replay does not force a sized popup when reopening the parent
   const sequence = createSequence();
   sequence.context.getActiveParentWindow = () => null;
   vm.runInContext('requestUserFlowReplay("first")', sequence.context);
-  assert.deepEqual(toPlain(sequence.openOptions), [{ useRecordedViewport: false }]);
+  assert.deepEqual(sequence.openOptions, [undefined]);
+});
+
+test("mobile UA is applied after page readiness and network idle, before the replay command", () => {
+  const fixture = createSequence({
+    autoConnect: false,
+    environment: { isMobile: true, userAgent: MOBILE_UA },
+  });
+  fixture.start();
+  assert.equal(fixture.windows[0].navigator.userAgent, DESKTOP_UA);
+  fixture.ready({ pendingRequestCount: 1, isWaitingForRequests: true });
+  assert.equal(fixture.windows[0].navigator.userAgent, DESKTOP_UA);
+  assert.equal(fixture.commands.length, 0);
+  fixture.ready({ pendingRequestCount: 0, isWaitingForRequests: false });
+  fixture.runIdle();
+  assert.equal(fixture.windows[0].navigator.userAgent, MOBILE_UA);
+  assert.equal(fixture.commandUserAgents[0], MOBILE_UA);
+  // UA-only override must not claim to emulate Client Hints or touch capabilities.
+  assert.equal(fixture.windows[0].navigator.userAgentData.mobile, false);
+});
+
+test("mobile UA remains on its result tab while PC and legacy tests keep their native UA", () => {
+  const fixture = createSequence();
+  fixture.context.currentUserFlowState.sessions[0].environment = { isMobile: true, userAgent: MOBILE_UA };
+  fixture.context.currentUserFlowState.sessions[1].environment = { isMobile: false, userAgent: DESKTOP_UA };
+  fixture.start();
+  for (const sessionId of ["first", "second", "third"]) {
+    fixture.update({ isReplaying: true, replaySessionId: sessionId });
+    fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: sessionId });
+    fixture.runAdvance();
+  }
+  assert.deepEqual(fixture.commandUserAgents, [MOBILE_UA, DESKTOP_UA, DESKTOP_UA]);
+  fixture.viewResult("first");
+  assert.equal(fixture.windows[0].navigator.userAgent, MOBILE_UA);
+  assert.equal(fixture.windows[0].closed, false);
+  assert.equal(fixture.windows[0].focusCount, 1);
+});
+
+test("UA can be reapplied after a page replaces its Navigator object", () => {
+  const fixture = createSequence({ environment: { isMobile: true, userAgent: MOBILE_UA } });
+  fixture.start();
+  fixture.windows[0].navigator = { userAgent: DESKTOP_UA };
+  vm.runInContext('startReplayNavigationState("first")', fixture.context);
+  fixture.ready();
+  fixture.runIdle();
+  assert.equal(fixture.commandUserAgents.at(-1), MOBILE_UA);
+});
+
+test("unsupported UA override warns without stopping ordinary test replay", () => {
+  const fixture = createSequence({
+    autoConnect: false,
+    environment: { isMobile: true, userAgent: MOBILE_UA },
+  });
+  fixture.start();
+  Object.defineProperty(fixture.windows[0].navigator, "userAgent", {
+    configurable: false,
+    value: DESKTOP_UA,
+  });
+  fixture.ready();
+  fixture.runIdle();
+  assert.equal(fixture.commandUserAgents[0], DESKTOP_UA);
+  assert.equal(fixture.commands[0].sessionId, "first");
+  assert.equal(fixture.warnings.length, 1);
+  assert.equal(fixture.context.userFlowTestReplayFailedSessionIds.size, 0);
+});
+
+test("mobile flags without a usable recorded UA leave the native UA alone", () => {
+  for (const environment of [null, {}, { isMobile: true }, { isMobile: true, userAgent: " " }]) {
+    const fixture = createSequence({ environment });
+    fixture.start();
+    assert.equal(fixture.commandUserAgents[0], DESKTOP_UA);
+    assert.equal(fixture.warnings.length, 0);
+  }
 });

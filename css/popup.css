@@ -867,7 +867,18 @@ body.is-user-flow-file-dragging .wrap {
 }
 
 .user-flow-list-tab-edit {
-  font-size: 14px;
+  opacity: 0.8;
+}
+
+.user-flow-list-tab-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
 }
 
 .user-flow-list-tab-edit:last-child {

@@ -610,7 +610,17 @@
               aria-label="${escapeHtml(tab.name)} 탭 ${isEditing ? "저장" : "이름 수정"}"
               data-user-flow-tab-edit="${escapeHtml(tab.id)}"
               ${organizationDisabled ? "disabled" : ""}
-            >${isEditing ? "✓" : "✎"}</button>
+            >
+              <svg
+                class="user-flow-list-tab-icon"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+                data-icon="${isEditing ? "save" : "rename"}"
+              >
+                <path d="${isEditing ? "M5 12l4 4L19 6" : "M9.5 3h5l.5 2 1.5 1 2-.5 2 3.5-1.5 1.5v3l1.5 1.5-2 3.5-2-.5-1.5 1-.5 2h-5l-.5-2-1.5-1-2 .5-2-3.5L5 13.5v-3L3.5 9l2-3.5 2 .5L9 5zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0"}" />
+              </svg>
+            </button>
             ${
               !isEditing
                 ? `<button
@@ -777,6 +787,7 @@
         recordedAt: session.recordedAt,
         startPage: session.startPage || "",
         viewport: session.viewport || null,
+        environment: session.environment || null,
       })),
     });
   }
@@ -1447,24 +1458,46 @@
     );
   }
 
-  function getUserFlowReplayWindowFeatures(session) {
-    const viewport = session?.viewport;
+  function applyUserFlowTestReplayUserAgent(sessionId) {
+    const session = (currentUserFlowState.sessions || []).find(
+      (item) => item.id === sessionId,
+    );
+    const environment = session?.environment;
 
     if (
-      !Number.isFinite(viewport?.width) ||
-      !Number.isFinite(viewport?.height) ||
-      viewport.width < 100 ||
-      viewport.height < 100 ||
-      viewport.width > 16384 ||
-      viewport.height > 16384
+      environment?.isMobile !== true ||
+      typeof environment.userAgent !== "string" ||
+      !environment.userAgent.trim()
     ) {
-      return "";
+      return true;
     }
 
-    return `popup=yes,width=${Math.round(viewport.width)},height=${Math.round(viewport.height)}`;
+    try {
+      const navigator = getActiveParentWindow()?.navigator;
+      const userAgent = environment.userAgent.trim().slice(0, 2048);
+
+      if (!navigator) {
+        return false;
+      }
+
+      if (navigator.userAgent !== userAgent) {
+        // Experimental: affects JavaScript reads only, not HTTP UA or device mode.
+        // Blank-tab overrides are lost on navigation, so apply after page readiness.
+        Object.defineProperty(navigator, "userAgent", {
+          configurable: true,
+          enumerable: true,
+          get: () => userAgent,
+        });
+      }
+
+      return navigator.userAgent === userAgent;
+    } catch (error) {
+      console.warn("Data Note: 모바일 UA를 적용하지 못했습니다. 기본 환경으로 재생합니다.", error);
+      return false;
+    }
   }
 
-  function openParentForReplay(sessionId, { useRecordedViewport = false } = {}) {
+  function openParentForReplay(sessionId) {
     const session = (currentUserFlowState.sessions || []).find(
       (item) => item.id === sessionId,
     );
@@ -1485,12 +1518,7 @@
         return false;
       }
 
-      const windowFeatures = useRecordedViewport
-        ? getUserFlowReplayWindowFeatures(session)
-        : "";
-      parentWindow = windowFeatures
-        ? window.open("about:blank", "_blank", windowFeatures)
-        : window.open("about:blank", "_blank");
+      parentWindow = window.open("about:blank", "_blank");
 
       if (!parentWindow) {
         showUserFlowImportStatus(
@@ -1615,9 +1643,7 @@
 
   function requestUserFlowReplay(sessionId, { openInNewTab = false } = {}) {
     if (openInNewTab || !getActiveParentWindow()) {
-      const replayWindow = openParentForReplay(sessionId, {
-        useRecordedViewport: openInNewTab,
-      });
+      const replayWindow = openParentForReplay(sessionId);
 
       if (replayWindow) {
         if (openInNewTab) {
@@ -1828,6 +1854,7 @@
         clearReplayNavigationState({ rerender: false });
 
         if (shouldStartTestReplay) {
+          applyUserFlowTestReplayUserAgent(expectedSessionId);
           rerenderUserFlowTestReplay();
 
           if (!requestUserFlowReplay(expectedSessionId)) {

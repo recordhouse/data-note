@@ -6,6 +6,8 @@ const vm = require("node:vm");
 
 const storageKey = "response-mapping-user-flow-recording:v1";
 const toPlain = (value) => JSON.parse(JSON.stringify(value));
+const DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/150.0.0.0 Safari/537.36";
+const MOBILE_UA = "Mozilla/5.0 (Linux; Android 13) Chrome/150.0.0.0 Mobile Safari/537.36";
 
 function createRecorder(t, sessions = []) {
   const timers = new Set();
@@ -29,8 +31,10 @@ function createRecorder(t, sessions = []) {
   }
   const window = {
     location: new URL("https://example.test/test?state=initial"),
+    navigator: { userAgent: DESKTOP_UA, userAgentData: { mobile: false } },
     localStorage: {
       getItem: (key) => storage.get(key) || null,
+      removeItem: (key) => storage.delete(key),
       setItem(key, value) {
         if (failWrites) throw new Error("Storage unavailable");
         storage.set(key, value);
@@ -269,28 +273,32 @@ test("continued recording without a known source viewport captures the current s
   assert.equal(fixture.storedSessions().find((session) => session.id === originalId).viewport, null);
 });
 
-test("JSON export and import preserve viewport metadata", async (t) => {
+test("JSON export and import preserve viewport and mobile environment metadata", async (t) => {
   const fixture = createRecorder(t);
   fixture.window.innerWidth = 390;
   fixture.window.innerHeight = 844;
+  fixture.window.navigator = { userAgent: MOBILE_UA, userAgentData: { mobile: true } };
   fixture.recorder.start();
   fixture.record();
   fixture.recorder.stop();
   const sessionId = fixture.recorder.getState().sessions[0].id;
   assert.equal(fixture.recorder.exportRecording(sessionId), true);
   const exported = JSON.parse(await fixture.downloads[0].blob.text());
-  assert.equal(exported.version, 5);
+  assert.equal(exported.version, 6);
   assert.deepEqual(exported.session.viewport, { width: 390, height: 844 });
   const imported = createRecorder(t);
   assert.equal(imported.recorder.importRecordings(exported), true);
   assert.deepEqual(imported.storedSessions()[0].viewport, exported.session.viewport);
   assert.deepEqual(toPlain(imported.recorder.getState().sessions[0].viewport), exported.session.viewport);
+  assert.deepEqual(exported.session.environment, { isMobile: true, userAgent: MOBILE_UA });
+  assert.deepEqual(imported.storedSessions()[0].environment, exported.session.environment);
 });
 
-test("ZIP session entries retain viewport metadata for re-import", (t) => {
+test("ZIP session entries retain viewport and mobile environment metadata for re-import", (t) => {
   const fixture = createRecorder(t);
   fixture.window.innerWidth = 390;
   fixture.window.innerHeight = 844;
+  fixture.window.navigator = { userAgent: MOBILE_UA, userAgentData: { mobile: true } };
   fixture.recorder.start();
   fixture.record();
   fixture.recorder.stop();
@@ -302,6 +310,62 @@ test("ZIP session entries retain viewport metadata for re-import", (t) => {
   const imported = createRecorder(t);
   assert.equal(imported.recorder.importRecordings(exported), true);
   assert.deepEqual(imported.storedSessions()[0].viewport, exported.session.viewport);
+  assert.deepEqual(exported.session.environment, { isMobile: true, userAgent: MOBILE_UA });
+  assert.deepEqual(imported.storedSessions()[0].environment, exported.session.environment);
+});
+
+test("recording captures browser mobile hints independently of viewport width", (t) => {
+  const fixture = createRecorder(t);
+  fixture.window.innerWidth = 390;
+  fixture.window.innerHeight = 844;
+  fixture.recorder.start();
+  fixture.record();
+  fixture.recorder.stop();
+  assert.deepEqual(fixture.storedSessions()[0].environment, { isMobile: false, userAgent: DESKTOP_UA });
+  fixture.window.navigator = { userAgent: MOBILE_UA, userAgentData: { mobile: true } };
+  fixture.clock.wall += 1000;
+  // A fresh save, not continuation, must capture the current environment.
+  fixture.recorder.clear();
+  fixture.recorder.start();
+  fixture.record();
+  fixture.recorder.stop();
+  assert.deepEqual(fixture.storedSessions()[0].environment, { isMobile: true, userAgent: MOBILE_UA });
+  const reloaded = createRecorder(t, fixture.storedSessions());
+  assert.deepEqual(toPlain(reloaded.recorder.getState().sessions[0].environment), { isMobile: true, userAgent: MOBILE_UA });
+});
+
+test("recording falls back to UA detection when mobile client hints are unavailable", (t) => {
+  for (const [userAgent, isMobile] of [[MOBILE_UA, true], [DESKTOP_UA, false]]) {
+    const fixture = createRecorder(t);
+    fixture.window.navigator = { userAgent };
+    fixture.recorder.start();
+    fixture.record();
+    fixture.recorder.stop();
+    assert.deepEqual(fixture.storedSessions()[0].environment, { isMobile, userAgent });
+  }
+});
+
+test("legacy logs retain an unknown environment instead of guessing from the current browser", (t) => {
+  const fixture = createRecorder(t, [{ id: "legacy", recordedAt: 1, events: [] }]);
+  fixture.window.navigator = { userAgent: MOBILE_UA, userAgentData: { mobile: true } };
+  assert.equal(fixture.recorder.getState().sessions[0].environment, null);
+  fixture.recorder.renameSession("legacy", "renamed");
+  assert.equal(fixture.storedSessions()[0].environment, null);
+});
+
+test("continued recordings preserve the original environment even when the browser mode changes", (t) => {
+  const fixture = createRecorder(t);
+  fixture.window.navigator = { userAgent: MOBILE_UA, userAgentData: { mobile: true } };
+  fixture.recorder.start();
+  fixture.record();
+  fixture.recorder.stop();
+  fixture.window.navigator = { userAgent: DESKTOP_UA, userAgentData: { mobile: false } };
+  fixture.clock.wall += 1000;
+  assert.equal(fixture.recorder.resume(), true);
+  fixture.recorder.stop();
+  assert.ok(fixture.storedSessions().every((session) =>
+    session.environment.isMobile && session.environment.userAgent === MOBILE_UA,
+  ));
 });
 
 test("imported viewport sizes are normalized and malformed metadata does not reject valid logs", (t) => {

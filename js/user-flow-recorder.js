@@ -25,7 +25,7 @@
   const REQUEST_ABORT_POLL_MS = 50;
   const REQUEST_IDLE_MS = 500;
   const REQUEST_REPEAT_RESUME_LIMIT = 5;
-  const RECORDING_FORMAT_VERSION = 5;
+  const RECORDING_FORMAT_VERSION = 6;
   const ARCHIVE_MANIFEST_FILE_NAME = "user-flow-manifest.json";
   const MAX_NOTICE_LENGTH = 1000;
   const IMPORTABLE_EVENT_TYPES = new Set(["change", "click", "input", "scroll"]);
@@ -125,6 +125,29 @@
     });
   }
 
+  function normalizeSessionEnvironment(environment) {
+    if (!environment || typeof environment !== "object") {
+      return null;
+    }
+
+    const userAgent = typeof environment.userAgent === "string"
+      ? environment.userAgent.trim().slice(0, 2048)
+      : "";
+    const isMobile = typeof environment.isMobile === "boolean"
+      ? environment.isMobile
+      : userAgent ? /Mobi|iPhone|iPad|iPod|Tablet/i.test(userAgent) : null;
+
+    return isMobile === null && !userAgent ? null : { isMobile, userAgent };
+  }
+
+  function getCurrentRecordingEnvironment() {
+    const navigator = window.navigator;
+    return normalizeSessionEnvironment({
+      isMobile: navigator?.userAgentData?.mobile,
+      userAgent: navigator?.userAgent,
+    });
+  }
+
   function normalizeSessionTitlePrefix(value) {
     return String(value || "").trim().slice(0, MAX_SESSION_TITLE_PREFIX_LENGTH);
   }
@@ -213,6 +236,7 @@
               : "",
           recordedAt: session.recordedAt || null,
           viewport: normalizeSessionViewport(session.viewport),
+          environment: normalizeSessionEnvironment(session.environment),
           events: session.events,
         }));
     }
@@ -226,6 +250,7 @@
           titlePrefix: getCurrentSessionTitlePrefix(),
           recordedAt,
           viewport: normalizeSessionViewport(recording.viewport),
+          environment: normalizeSessionEnvironment(recording.environment),
           events: recording.events,
         },
       ];
@@ -423,6 +448,7 @@
         importSourceZipName: session.importSourceZipName || "",
         recordedAt: session.recordedAt,
         viewport: normalizeSessionViewport(session.viewport),
+        environment: normalizeSessionEnvironment(session.environment),
         eventCount: session.events.length,
         durationMs: getDurationMs(session.events),
       })),
@@ -943,6 +969,7 @@
         importSourceZipName,
         recordedAt,
         viewport: normalizeSessionViewport(candidate.viewport),
+        environment: normalizeSessionEnvironment(candidate.environment),
         events,
       });
     }
@@ -1058,6 +1085,8 @@
       // Earlier actions still need the viewport where the original log began.
       viewport:
         normalizeSessionViewport(sourceSession.viewport) || getCurrentRecordingViewport(),
+      environment:
+        normalizeSessionEnvironment(sourceSession.environment) || getCurrentRecordingEnvironment(),
       events: JSON.parse(JSON.stringify(sourceSession.events)),
     };
     const previousState = {
@@ -1137,6 +1166,7 @@
       titlePrefix: getCurrentSessionTitlePrefix(),
       recordedAt,
       viewport: getCurrentRecordingViewport(),
+      environment: getCurrentRecordingEnvironment(),
       events: [],
     };
     const previousState = {
@@ -1562,6 +1592,7 @@
             titlePrefix: session.titlePrefix || "",
             recordedAt: session.recordedAt,
             viewport: normalizeSessionViewport(session.viewport),
+            environment: normalizeSessionEnvironment(session.environment),
             events: session.events,
           },
         };
@@ -1607,6 +1638,7 @@
           titlePrefix: session.titlePrefix || "",
           recordedAt: session.recordedAt,
           viewport: normalizeSessionViewport(session.viewport),
+          environment: normalizeSessionEnvironment(session.environment),
           events: session.events,
         },
       };
