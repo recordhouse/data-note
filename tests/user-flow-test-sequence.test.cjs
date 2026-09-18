@@ -565,6 +565,7 @@ function createTabOpener({
   };
   const opens = [];
   const connections = [];
+  const connectionOptions = [];
   const reconnects = [];
   const statuses = [];
   const context = vm.createContext({
@@ -576,7 +577,12 @@ function createTabOpener({
         opens.push(features ? { url, target, features } : { url, target });
         return blocked ? null : tab;
       },
-      PopupCore: { connectParent: (target) => connections.push(target) },
+      PopupCore: {
+        connectParent(target, options) {
+          connections.push(target);
+          connectionOptions.push(toPlain(options));
+        },
+      },
     },
     activeParentWindow: originalTab,
     currentUserFlowState: { sessions: [{ id: "first", eventCount: 1, startPage, viewport, environment }] },
@@ -586,7 +592,7 @@ function createTabOpener({
   });
   vm.runInContext(extract("getUserFlowReplayWindowFeatures", "willReplayNavigate"), context);
   return {
-    tab, originalTab, opens, connections, reconnects, statuses, context,
+    tab, originalTab, opens, connections, connectionOptions, reconnects, statuses, context,
     open(options) {
       context.openerOptions = options;
       return vm.runInContext('openParentForReplay("first", openerOptions)', context);
@@ -866,7 +872,14 @@ test("mobile and desktop new-window playback requests the recorded content dimen
     }]);
     assert.equal(fixture.tab.url, "https://example.test/recorded?state=test");
     assert.equal(fixture.originalTab.closed, false);
+    assert.deepEqual(fixture.connectionOptions, [{ hideScrollbars: true }]);
   }
+});
+
+test("ordinary test result tabs do not request hidden page scrollbars", () => {
+  const fixture = createTabOpener();
+  fixture.open();
+  assert.deepEqual(fixture.connectionOptions, [{ hideScrollbars: false }]);
 });
 
 test("new-window viewport dimensions are rounded and invalid metadata cannot inject features", () => {

@@ -4,16 +4,18 @@ const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
 
-function createEvents(t) {
+function createEvents(t, { allowCoordinateClickFallback = true } = {}) {
   const timers = new Set();
   const recorded = [];
   const played = [];
   const scrolls = [];
   const queries = [];
+  const pointQueries = [];
   const nodes = new Map();
   const storage = new Map();
   let now = 100;
   let queryOverride = null;
+  let pointTarget = null;
 
   class FakeMouseEvent extends Event {
     constructor(type, options = {}) {
@@ -36,6 +38,7 @@ function createEvents(t) {
       this.scrollLeft = 0;
       this.scrollTop = 0;
       this.clickCount = 0;
+      this.isConnected = true;
     }
     closest() { return null; }
     getAttribute(name) { return this.attributes.get(name) || null; }
@@ -44,11 +47,14 @@ function createEvents(t) {
     }
     dispatchEvent(event) {
       this.dispatched.push(event);
+      if (event.type === "click") {
+        this.clickCount += 1;
+        played.push(this);
+        if (this.type === "checkbox") this.checked = !this.checked;
+      }
       return true;
     }
     click() {
-      this.clickCount += 1;
-      played.push(this);
       this.dispatchEvent(new FakeMouseEvent("click"));
     }
     scrollTo(options) {
@@ -67,6 +73,10 @@ function createEvents(t) {
     body, documentElement: html, scrollingElement: html,
     readyState: "complete",
     addEventListener() {},
+    elementFromPoint(x, y) {
+      pointQueries.push([x, y]);
+      return pointTarget;
+    },
     querySelector(selector) {
       queries.push(selector);
       if (selector === "body") return this.body;
@@ -117,6 +127,7 @@ function createEvents(t) {
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, "../js/user-flow-recorder-events.js"), "utf8"), context);
   const api = window.UserFlowRecorderEvents.create({
+    allowCoordinateClickFallback,
     recordEvent: (event) => recorded.push(event),
     isRecording: () => true,
   });
@@ -127,9 +138,11 @@ function createEvents(t) {
     }
   });
   return {
-    api, body, html, window, document, recorded, played, scrolls, queries,
+    api, body, html, window, document, recorded, played, scrolls, queries, pointQueries,
     get now() { return now; },
     queryWith: (callback) => { queryOverride = callback; },
+    pointAt: (target) => { pointTarget = target; },
+    input() { return new FakeInput("INPUT"); },
     button(id = "button") {
       const button = new FakeElement("BUTTON");
       button.id = id;
@@ -144,6 +157,18 @@ function createEvents(t) {
       }));
       vm.runInContext(fs.readFileSync(path.join(__dirname, "../js/user-flow-recorder.js"), "utf8"), context);
       return window.UserFlowRecorder;
+    },
+  };
+}
+
+function coordinateClick(overrides = {}) {
+  return {
+    type: "click", selector: "#missing", at: 0, page: "/test",
+    pointer: {
+      clientX: 100, clientY: 400,
+      viewportWidth: 1000, viewportHeight: 800, scrollX: 0, scrollY: 0,
+      xPercent: 90, yPercent: 90,
+      ...overrides,
     },
   };
 }
@@ -243,4 +268,176 @@ test("legacy root clicks do not terminate the remaining actions of a recording",
   assert.equal(recorder.getState().completedReplaySessionId, "first");
   assert.equal(recorder.getState().failedReplaySessionId, "");
   assert.equal(recorder.getState().error, "");
+});
+
+test("new clicks record viewport coordinates and scroll context alongside local percentages", (t) => {
+  const fixture = createEvents(t);
+  fixture.window.scrollX = 20;
+  fixture.window.scrollY = 300;
+  fixture.recordClick(fixture.button());
+  assert.deepEqual(JSON.parse(JSON.stringify(fixture.recorded[0].pointer)), {
+    clientX: 100, clientY: 400,
+    viewportWidth: 1000, viewportHeight: 800, scrollX: 20, scrollY: 300,
+    xPercent: 10, yPercent: 20, pointerType: "mouse",
+  });
+});
+
+test("missing selectors fall back after five seconds to the recorded point, not local percentages", async (t) => {
+  const fixture = createEvents(t);
+  const button = fixture.button("replacement");
+  fixture.pointAt(button);
+  const started = fixture.now;
+  await fixture.api.playEvent(coordinateClick());
+  assert.ok(fixture.now - started >= 5000);
+  assert.deepEqual(fixture.pointQueries, [[100, 400]]);
+  assert.equal(button.clickCount, 1);
+  assert.ok(button.dispatched.every((event) => event.clientX === 100 && event.clientY === 400));
+});
+
+test("selector matches take priority over coordinate targets, including delayed elements", async (t) => {
+  const fixture = createEvents(t);
+  const original = fixture.button("missing");
+  const replacement = fixture.button("replacement");
+  fixture.pointAt(replacement);
+  fixture.queryWith((selector, now) => selector === "#missing" && now >= 250 ? original : null);
+  await fixture.api.playEvent(coordinateClick());
+  assert.equal(original.clickCount, 1);
+  assert.equal(replacement.clickCount, 0);
+  assert.deepEqual(fixture.pointQueries, []);
+});
+
+test("coordinate fallback can be disabled without affecting selector replay", async (t) => {
+  const fixture = createEvents(t, { allowCoordinateClickFallback: false });
+  const button = fixture.button();
+  fixture.pointAt(button);
+  await assert.rejects(fixture.api.playEvent(coordinateClick()), /재생 대상 요소를 찾지 못했습니다/);
+  assert.equal(button.clickCount, 0);
+  assert.deepEqual(fixture.pointQueries, []);
+  await fixture.api.playEvent({ type: "click", selector: "#button" });
+  assert.equal(button.clickCount, 1);
+});
+
+test("legacy and malformed coordinates never click an arbitrary point", async (t) => {
+  const fixture = createEvents(t);
+  const button = fixture.button();
+  fixture.pointAt(button);
+  const pointers = [undefined, { xPercent: 10, yPercent: 20 }, ...[
+    { clientX: null }, { clientX: "100" }, { clientX: NaN },
+    { clientX: -1 }, { clientX: 1000 }, { clientY: 800 },
+    { viewportWidth: undefined }, { scrollY: null },
+  ].map((override) => coordinateClick(override).pointer)];
+  for (const pointer of pointers) {
+    await assert.rejects(fixture.api.playEvent({ ...coordinateClick(), pointer }), /재생 대상 요소를 찾지 못했습니다/);
+  }
+  assert.equal(button.clickCount, 0);
+  assert.deepEqual(fixture.pointQueries, []);
+});
+
+test("coordinate replay refuses viewport or scroll changes beyond two pixels", async (t) => {
+  const fixture = createEvents(t);
+  const button = fixture.button();
+  fixture.pointAt(button);
+  for (const pointer of [
+    { viewportWidth: 1003 }, { viewportHeight: 803 }, { scrollX: 3 }, { scrollY: 3 },
+  ]) {
+    await assert.rejects(fixture.api.playEvent(coordinateClick(pointer)), /재생 대상 요소를 찾지 못했습니다/);
+  }
+  assert.deepEqual(fixture.pointQueries, []);
+  await fixture.api.playEvent(coordinateClick({ viewportWidth: 1002, scrollY: 2 }));
+  assert.equal(button.clickCount, 1);
+});
+
+test("coordinate fallback rejects roots, iframes, recorder UI and disabled targets", async (t) => {
+  const fixture = createEvents(t);
+  const iframe = fixture.button("iframe");
+  iframe.tagName = "IFRAME";
+  const ignored = fixture.button("ignored");
+  ignored.closest = (selector) => selector === "[data-user-flow-ignore]" ? ignored : null;
+  const disabled = fixture.button("disabled");
+  disabled.closest = (selector) => selector.includes(":disabled") ? disabled : null;
+  for (const target of [null, fixture.body, fixture.html, iframe, ignored, disabled]) {
+    fixture.pointAt(target);
+    await assert.rejects(fixture.api.playEvent(coordinateClick()), /재생 대상 요소를 찾지 못했습니다/);
+  }
+  assert.deepEqual(fixture.played, []);
+});
+
+test("input, change and scroll events never use coordinate click fallback", async (t) => {
+  const fixture = createEvents(t);
+  fixture.pointAt(fixture.button());
+  for (const type of ["input", "change", "scroll"]) {
+    await assert.rejects(fixture.api.playEvent({ ...coordinateClick(), type }), /재생 대상 요소를 찾지 못했습니다/);
+  }
+  assert.deepEqual(fixture.pointQueries, []);
+  assert.deepEqual(fixture.played, []);
+});
+
+test("stopping a target wait prevents a later coordinate click", async (t) => {
+  const fixture = createEvents(t);
+  fixture.pointAt(fixture.button());
+  await fixture.api.playEvent(coordinateClick(), { shouldAbort: () => fixture.now >= 250 });
+  assert.equal(fixture.now, 250);
+  assert.deepEqual(fixture.pointQueries, []);
+  assert.deepEqual(fixture.played, []);
+});
+
+test("coordinate fallback retains checkbox replay state", async (t) => {
+  const fixture = createEvents(t);
+  const checkbox = fixture.input();
+  checkbox.type = "checkbox";
+  checkbox.checked = true;
+  fixture.pointAt(checkbox);
+  await fixture.api.playEvent({ ...coordinateClick(), replayChecked: true });
+  assert.equal(checkbox.clickCount, 1);
+  assert.equal(checkbox.checked, true);
+  assert.equal(checkbox.dispatched.find((event) => event.type === "click").clientX, 100);
+});
+
+test("the main recorder continues remaining actions after a coordinate fallback", async (t) => {
+  const fixture = createEvents(t);
+  const replacement = fixture.button("replacement");
+  const next = fixture.button("next");
+  fixture.pointAt(replacement);
+  const recorder = fixture.recorder([
+    coordinateClick(),
+    { type: "click", selector: "#next", at: 1, page: "/test" },
+  ]);
+  await recorder.replay("first");
+  assert.deepEqual(fixture.played, [replacement, next]);
+  assert.equal(recorder.getState().completedReplaySessionId, "first");
+  assert.equal(recorder.getState().failedReplaySessionId, "");
+  assert.equal(recorder.getState().error, "");
+});
+
+test("the main recorder reports a failure when neither selector nor coordinates resolve", async (t) => {
+  const fixture = createEvents(t);
+  const next = fixture.button("next");
+  const recorder = fixture.recorder([
+    coordinateClick(),
+    { type: "click", selector: "#next", at: 1, page: "/test" },
+  ]);
+  await recorder.replay("first");
+  assert.equal(next.clickCount, 0);
+  assert.equal(recorder.getState().completedReplaySessionId, "");
+  assert.equal(recorder.getState().failedReplaySessionId, "first");
+  assert.match(recorder.getState().error, /재생 대상 요소를 찾지 못했습니다/);
+});
+
+test("stopping the main recorder during target lookup cancels coordinate fallback and remaining actions", async (t) => {
+  const fixture = createEvents(t);
+  fixture.pointAt(fixture.button("replacement"));
+  const recorder = fixture.recorder([
+    coordinateClick(),
+    { type: "click", selector: "#next", at: 1, page: "/test" },
+  ]);
+  fixture.queryWith((selector, now) => {
+    if (now >= 250) recorder.stopReplay();
+    return null;
+  });
+  await recorder.replay("first");
+  assert.deepEqual(fixture.pointQueries, []);
+  assert.deepEqual(fixture.played, []);
+  assert.equal(recorder.getState().isReplaying, false);
+  assert.equal(recorder.getState().completedReplaySessionId, "");
+  assert.equal(recorder.getState().failedReplaySessionId, "");
 });

@@ -6,7 +6,7 @@
   }
 
   // 변경사항을 배포할 때 마지막 버전 숫자를 올려주세요.
-  const DATA_NOTE_VERSION = "1.0.0+0031";
+  const DATA_NOTE_VERSION = "1.0.0+0033";
   const MESSAGE_READY = "response-mapping-popup-ready";
   const MESSAGE_RENDER = "response-mapping-popup-render";
   const MESSAGE_RENDERED = "response-mapping-popup-rendered";
@@ -19,6 +19,15 @@
   const DEFAULT_POPUP_FEATURES = "popup=yes,width=650,height=800,left=0,top=0";
   const MAX_PENDING_RESPONSES = 50;
   const POPUP_RECONNECT_CHECK_MS = 400;
+  const REPLAY_WINDOW_SCROLLBAR_STYLE_ID = "data-note-replay-window-scrollbars";
+  const REPLAY_WINDOW_SCROLLBAR_CSS = `
+    html, body { scrollbar-width: none !important; }
+    html::-webkit-scrollbar, body::-webkit-scrollbar {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+    }
+  `;
 
   const coreScript = document.currentScript;
   const coreBaseUrl = coreScript?.src
@@ -46,6 +55,7 @@
   let connectedParentDocument = null;
   let connectedParentWindow = isPopupRuntime ? window.opener : null;
   let popupReconnectTimer = 0;
+  const scrollbarHiddenReplayWindows = new WeakSet();
 
   function getFeatureUrl(fileName, dataAttribute) {
     const configuredUrl = coreScript?.dataset?.[dataAttribute];
@@ -197,7 +207,33 @@
     return null;
   }
 
-  function connectParentWindow(parentWindow) {
+  function ensureReplayWindowScrollbarStyle(parentWindow, parentDocument) {
+    if (!scrollbarHiddenReplayWindows.has(parentWindow) || !parentDocument) {
+      return;
+    }
+
+    try {
+      if (parentDocument.getElementById(REPLAY_WINDOW_SCROLLBAR_STYLE_ID)) {
+        return;
+      }
+
+      const container = parentDocument.head || parentDocument.documentElement;
+
+      if (!container) {
+        return;
+      }
+
+      // Hide only the bars; overflow and scrolling must keep working during replay.
+      const style = parentDocument.createElement("style");
+      style.id = REPLAY_WINDOW_SCROLLBAR_STYLE_ID;
+      style.textContent = REPLAY_WINDOW_SCROLLBAR_CSS;
+      container.append(style);
+    } catch (error) {
+      // Navigation can detach the document; retry on the next connection check.
+    }
+  }
+
+  function connectParentWindow(parentWindow, { hideScrollbars = false } = {}) {
     if (!isPopupRuntime || !isWindowOpen(parentWindow)) {
       return false;
     }
@@ -214,6 +250,12 @@
 
       connectedParentWindow = parentWindow;
       connectedParentDocument = parentWindow.document;
+
+      if (hideScrollbars) {
+        scrollbarHiddenReplayWindows.add(parentWindow);
+      }
+
+      ensureReplayWindowScrollbarStyle(parentWindow, connectedParentDocument);
       return true;
     } catch (error) {
       return false;
@@ -240,6 +282,7 @@
     }
 
     connectedParentDocument = getParentDocument();
+    ensureReplayWindowScrollbarStyle(getPopupParentWindow(), connectedParentDocument);
     document.dispatchEvent(new CustomEvent(PARENT_READY_EVENT));
   }
 
@@ -312,6 +355,8 @@
   function monitorParentConnection() {
     const parentWindow = getPopupParentWindow();
     const parentDocument = getParentDocument();
+
+    ensureReplayWindowScrollbarStyle(parentWindow, parentDocument);
 
     if (!parentWindow || !parentDocument || parentDocument === connectedParentDocument) {
       return;

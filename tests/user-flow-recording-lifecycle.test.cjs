@@ -273,18 +273,22 @@ test("continued recording without a known source viewport captures the current s
   assert.equal(fixture.storedSessions().find((session) => session.id === originalId).viewport, null);
 });
 
-test("JSON export and import preserve viewport and mobile environment metadata", async (t) => {
+test("JSON export and import preserve viewport, mobile environment and click coordinate metadata", async (t) => {
   const fixture = createRecorder(t);
   fixture.window.innerWidth = 390;
   fixture.window.innerHeight = 844;
   fixture.window.navigator = { userAgent: MOBILE_UA, userAgentData: { mobile: true } };
   fixture.recorder.start();
-  fixture.record();
+  const pointer = {
+    clientX: 100, clientY: 400, viewportWidth: 390, viewportHeight: 844,
+    scrollX: 0, scrollY: 200, xPercent: 25, yPercent: 50, pointerType: "touch",
+  };
+  fixture.record({ pointer });
   fixture.recorder.stop();
   const sessionId = fixture.recorder.getState().sessions[0].id;
   assert.equal(fixture.recorder.exportRecording(sessionId), true);
   const exported = JSON.parse(await fixture.downloads[0].blob.text());
-  assert.equal(exported.version, 6);
+  assert.equal(exported.version, 7);
   assert.deepEqual(exported.session.viewport, { width: 390, height: 844 });
   const imported = createRecorder(t);
   assert.equal(imported.recorder.importRecordings(exported), true);
@@ -292,15 +296,21 @@ test("JSON export and import preserve viewport and mobile environment metadata",
   assert.deepEqual(toPlain(imported.recorder.getState().sessions[0].viewport), exported.session.viewport);
   assert.deepEqual(exported.session.environment, { isMobile: true, userAgent: MOBILE_UA });
   assert.deepEqual(imported.storedSessions()[0].environment, exported.session.environment);
+  assert.deepEqual(exported.session.events[0].pointer, pointer);
+  assert.deepEqual(imported.storedSessions()[0].events[0].pointer, pointer);
 });
 
-test("ZIP session entries retain viewport and mobile environment metadata for re-import", (t) => {
+test("ZIP session entries retain viewport, mobile environment and click coordinates for re-import", (t) => {
   const fixture = createRecorder(t);
   fixture.window.innerWidth = 390;
   fixture.window.innerHeight = 844;
   fixture.window.navigator = { userAgent: MOBILE_UA, userAgentData: { mobile: true } };
   fixture.recorder.start();
-  fixture.record();
+  const pointer = {
+    clientX: 100, clientY: 400, viewportWidth: 390, viewportHeight: 844,
+    scrollX: 0, scrollY: 200, xPercent: 25, yPercent: 50, pointerType: "touch",
+  };
+  fixture.record({ pointer });
   fixture.recorder.stop();
   assert.equal(fixture.recorder.exportAllRecordings(), true);
   const sessionEntry = fixture.archives[0].find((entry) => entry.name.endsWith(".json") && entry.name.includes("/"));
@@ -312,6 +322,8 @@ test("ZIP session entries retain viewport and mobile environment metadata for re
   assert.deepEqual(imported.storedSessions()[0].viewport, exported.session.viewport);
   assert.deepEqual(exported.session.environment, { isMobile: true, userAgent: MOBILE_UA });
   assert.deepEqual(imported.storedSessions()[0].environment, exported.session.environment);
+  assert.deepEqual(exported.session.events[0].pointer, pointer);
+  assert.deepEqual(imported.storedSessions()[0].events[0].pointer, pointer);
 });
 
 test("recording captures browser mobile hints independently of viewport width", (t) => {

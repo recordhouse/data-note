@@ -13,6 +13,8 @@
   const MESSAGE_COMMAND = "response-mapping-user-flow-command";
   const MESSAGE_STATE = "response-mapping-user-flow-state";
   const IGNORE_ATTRIBUTE = "data-user-flow-ignore";
+  // 선택자를 찾지 못한 클릭을 저장된 화면 좌표로 대체합니다. 끄려면 false로 변경하세요.
+  const USER_FLOW_COORDINATE_CLICK_FALLBACK_ENABLED = true;
   const MAX_EVENTS = 10000;
   const MAX_SESSIONS = 150;
   const MAX_SESSION_NAME_LENGTH = 40;
@@ -25,7 +27,7 @@
   const REQUEST_ABORT_POLL_MS = 50;
   const REQUEST_IDLE_MS = 500;
   const REQUEST_REPEAT_RESUME_LIMIT = 5;
-  const RECORDING_FORMAT_VERSION = 6;
+  const RECORDING_FORMAT_VERSION = 7;
   const ARCHIVE_MANIFEST_FILE_NAME = "user-flow-manifest.json";
   const MAX_NOTICE_LENGTH = 1000;
   const IMPORTABLE_EVENT_TYPES = new Set(["change", "click", "input", "scroll"]);
@@ -74,6 +76,7 @@
   const showRuntimeStatus = recorderVisuals?.showRuntimeStatus || (() => {});
   const showScreenMask = recorderVisuals?.showScreenMask || (() => {});
   const recorderEvents = window.UserFlowRecorderEvents?.create({
+    allowCoordinateClickFallback: USER_FLOW_COORDINATE_CLICK_FALLBACK_ENABLED,
     ignoreAttribute: IGNORE_ATTRIBUTE,
     isRecording: () => state.isRecording,
     isReplaying: () => state.isReplaying,
@@ -1366,7 +1369,9 @@
           break;
         }
 
-        await playEvent(recordedEvent);
+        await playEvent(recordedEvent, {
+          shouldAbort: () => state.replayAbort || state.replayRunId !== replayRunId,
+        });
 
         if (state.replayRunId !== replayRunId) {
           break;

@@ -1538,7 +1538,7 @@
       }
 
       activeParentWindow = parentWindow;
-      window.PopupCore?.connectParent?.(parentWindow);
+      window.PopupCore?.connectParent?.(parentWindow, { hideScrollbars: openInNewWindow });
       startParentReconnect(parentWindow);
       parentWindow.location.replace(replayUrl.href);
       parentWindow.focus();

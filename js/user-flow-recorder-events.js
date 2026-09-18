@@ -9,6 +9,7 @@
   const PERCENT_PRECISION = 6;
   const SCROLL_SAMPLE_MS = 80;
   const TARGET_WAIT_MS = 5000;
+  const COORDINATE_CONTEXT_TOLERANCE_PX = 2;
   const SENSITIVE_AUTOCOMPLETE = new Set([
     "cc-csc",
     "cc-number",
@@ -18,6 +19,7 @@
   ]);
 
   function create(options = {}) {
+    const allowCoordinateClickFallback = options.allowCoordinateClickFallback === true;
     const ignoreAttribute =
       String(options.ignoreAttribute || "").trim() || "data-user-flow-ignore";
     const isRecording =
@@ -274,6 +276,12 @@
         selector: getStableSelector(target),
         button: event.button,
         pointer: {
+          clientX: event.clientX,
+          clientY: event.clientY,
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+          scrollX: window.scrollX,
+          scrollY: window.scrollY,
           xPercent: getPercent(event.clientX - targetRect.left, targetRect.width, 50),
           yPercent: getPercent(event.clientY - targetRect.top, targetRect.height, 50),
           pointerType,
@@ -399,10 +407,17 @@
       });
     }
 
-    async function waitForTarget(selector, { elementOnly = false } = {}) {
+    async function waitForTarget(
+      selector,
+      { elementOnly = false, shouldAbort = () => false } = {},
+    ) {
       const startedAt = performance.now();
 
       while (performance.now() - startedAt < TARGET_WAIT_MS) {
+        if (shouldAbort()) {
+          return null;
+        }
+
         const resolvedTarget = findTarget(selector);
         // Older logs used the window marker for both body and html clicks.
         // Keep scrolling on Window, but replay element actions on the page root.
@@ -420,6 +435,54 @@
       return null;
     }
 
+    function findCoordinateClickTarget(pointer) {
+      if (!allowCoordinateClickFallback || typeof document.elementFromPoint !== "function") {
+        return null;
+      }
+
+      if (
+        !Number.isFinite(pointer?.clientX) ||
+        !Number.isFinite(pointer?.clientY) ||
+        pointer.clientX < 0 ||
+        pointer.clientY < 0 ||
+        pointer.clientX >= window.innerWidth ||
+        pointer.clientY >= window.innerHeight
+      ) {
+        return null;
+      }
+
+      // Do not scale coordinates or guess across different viewport/scroll states.
+      const contextMatches = [
+        [pointer.viewportWidth, window.innerWidth],
+        [pointer.viewportHeight, window.innerHeight],
+        [pointer.scrollX, window.scrollX],
+        [pointer.scrollY, window.scrollY],
+      ].every(([recordedValue, currentValue]) =>
+        Number.isFinite(recordedValue) &&
+        Number.isFinite(currentValue) &&
+        Math.abs(recordedValue - currentValue) <= COORDINATE_CONTEXT_TOLERANCE_PX,
+      );
+
+      if (!contextMatches) {
+        return null;
+      }
+
+      const target = document.elementFromPoint(pointer.clientX, pointer.clientY);
+
+      if (
+        !target ||
+        target === document.body ||
+        target === document.documentElement ||
+        target.tagName === "IFRAME" ||
+        isIgnoredTarget(target) ||
+        target.closest?.(":disabled, [aria-disabled=\"true\"], [inert]")
+      ) {
+        return null;
+      }
+
+      return { target, clientX: pointer.clientX, clientY: pointer.clientY };
+    }
+
     function createReplayTargetError(selector) {
       const targetSelector = String(selector || "").trim().slice(0, 180);
       return new Error(
@@ -429,8 +492,12 @@
       );
     }
 
-    async function playScroll(recordedEvent) {
-      const target = await waitForTarget(recordedEvent.selector);
+    async function playScroll(recordedEvent, { shouldAbort = () => false } = {}) {
+      const target = await waitForTarget(recordedEvent.selector, { shouldAbort });
+
+      if (shouldAbort()) {
+        return;
+      }
 
       if (target === window) {
         const { maxX, maxY } = getWindowScrollBounds();
@@ -490,21 +557,25 @@
       target.scrollTop = top;
     }
 
-    function playClick(target, recordedEvent) {
+    function playClick(target, recordedEvent, pointerPosition = null) {
       const pointer = recordedEvent.pointer || {};
       const targetRect = target.getBoundingClientRect();
-      const clientX = Number.isFinite(Number(pointer.xPercent))
-        ? targetRect.left +
-          getPositionFromPercent(pointer.xPercent, targetRect.width, targetRect.width / 2)
-        : Number.isFinite(Number(pointer.clientX))
-          ? Number(pointer.clientX)
-          : targetRect.left + targetRect.width / 2;
-      const clientY = Number.isFinite(Number(pointer.yPercent))
-        ? targetRect.top +
-          getPositionFromPercent(pointer.yPercent, targetRect.height, targetRect.height / 2)
-        : Number.isFinite(Number(pointer.clientY))
-          ? Number(pointer.clientY)
-          : targetRect.top + targetRect.height / 2;
+      const clientX = pointerPosition
+        ? pointerPosition.clientX
+        : Number.isFinite(Number(pointer.xPercent))
+          ? targetRect.left +
+            getPositionFromPercent(pointer.xPercent, targetRect.width, targetRect.width / 2)
+          : Number.isFinite(Number(pointer.clientX))
+            ? Number(pointer.clientX)
+            : targetRect.left + targetRect.width / 2;
+      const clientY = pointerPosition
+        ? pointerPosition.clientY
+        : Number.isFinite(Number(pointer.yPercent))
+          ? targetRect.top +
+            getPositionFromPercent(pointer.yPercent, targetRect.height, targetRect.height / 2)
+          : Number.isFinite(Number(pointer.clientY))
+            ? Number(pointer.clientY)
+            : targetRect.top + targetRect.height / 2;
       const mouseOptions = {
         bubbles: true,
         cancelable: true,
@@ -531,7 +602,8 @@
         target.dispatchEvent(replayEvent);
       }
 
-      if (typeof target.click === "function") {
+      // Native .click() discards coordinates; point-based replay needs them on click too.
+      if (!pointerPosition && typeof target.click === "function") {
         target.click();
       } else {
         target.dispatchEvent(new MouseEvent("click", mouseOptions));
@@ -604,7 +676,7 @@
         .filter(Boolean);
     }
 
-    async function playCheckableClick(target, recordedEvent) {
+    async function playCheckableClick(target, recordedEvent, pointerPosition = null) {
       const desiredChecked = recordedEvent.replayChecked;
 
       if (target.type === "radio" && !desiredChecked) {
@@ -616,10 +688,11 @@
       }
 
       setNativeValue(target, "checked", !desiredChecked);
-      playClick(target, recordedEvent);
+      playClick(target, recordedEvent, pointerPosition);
       await waitForRenderFrame();
 
-      const currentTarget = findTarget(recordedEvent.selector);
+      const currentTarget = findTarget(recordedEvent.selector) ||
+        (pointerPosition && target.isConnected ? target : null);
 
       if (!isCheckableInput(currentTarget) || currentTarget.checked === desiredChecked) {
         return;
@@ -635,13 +708,27 @@
       await waitForRenderFrame();
     }
 
-    async function playEvent(recordedEvent) {
+    async function playEvent(recordedEvent, { shouldAbort = () => false } = {}) {
       if (recordedEvent.type === "scroll") {
-        await playScroll(recordedEvent);
+        await playScroll(recordedEvent, { shouldAbort });
         return;
       }
 
-      const target = await waitForTarget(recordedEvent.selector, { elementOnly: true });
+      let target = await waitForTarget(recordedEvent.selector, {
+        elementOnly: true,
+        shouldAbort,
+      });
+
+      if (shouldAbort()) {
+        return;
+      }
+
+      let pointerPosition = null;
+
+      if (!target && recordedEvent.type === "click") {
+        pointerPosition = findCoordinateClickTarget(recordedEvent.pointer);
+        target = pointerPosition?.target;
+      }
 
       if (!target || target === window) {
         throw createReplayTargetError(recordedEvent.selector);
@@ -652,11 +739,11 @@
           isCheckableInput(target) &&
           typeof recordedEvent.replayChecked === "boolean"
         ) {
-          await playCheckableClick(target, recordedEvent);
+          await playCheckableClick(target, recordedEvent, pointerPosition);
           return;
         }
 
-        playClick(target, recordedEvent);
+        playClick(target, recordedEvent, pointerPosition);
         return;
       }
 
