@@ -1458,45 +1458,6 @@
     );
   }
 
-  function applyUserFlowTestReplayUserAgent(sessionId) {
-    const session = (currentUserFlowState.sessions || []).find(
-      (item) => item.id === sessionId,
-    );
-    const environment = session?.environment;
-
-    if (
-      environment?.isMobile !== true ||
-      typeof environment.userAgent !== "string" ||
-      !environment.userAgent.trim()
-    ) {
-      return true;
-    }
-
-    try {
-      const navigator = getActiveParentWindow()?.navigator;
-      const userAgent = environment.userAgent.trim().slice(0, 2048);
-
-      if (!navigator) {
-        return false;
-      }
-
-      if (navigator.userAgent !== userAgent) {
-        // Experimental: affects JavaScript reads only, not HTTP UA or device mode.
-        // Blank-tab overrides are lost on navigation, so apply after page readiness.
-        Object.defineProperty(navigator, "userAgent", {
-          configurable: true,
-          enumerable: true,
-          get: () => userAgent,
-        });
-      }
-
-      return navigator.userAgent === userAgent;
-    } catch (error) {
-      console.warn("Data Note: 모바일 UA를 적용하지 못했습니다. 기본 환경으로 재생합니다.", error);
-      return false;
-    }
-  }
-
   function openParentForReplay(sessionId) {
     const session = (currentUserFlowState.sessions || []).find(
       (item) => item.id === sessionId,
@@ -1854,7 +1815,6 @@
         clearReplayNavigationState({ rerender: false });
 
         if (shouldStartTestReplay) {
-          applyUserFlowTestReplayUserAgent(expectedSessionId);
           rerenderUserFlowTestReplay();
 
           if (!requestUserFlowReplay(expectedSessionId)) {

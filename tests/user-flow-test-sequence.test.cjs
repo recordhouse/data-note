@@ -98,7 +98,6 @@ function createSequence({
     escapeHtml: (value) => String(value).replaceAll('"', "&quot;"),
   });
   vm.runInContext(extract("isUserFlowTestReplayRunning", "handleUserFlowControl"), context);
-  vm.runInContext(extract("applyUserFlowTestReplayUserAgent", "openParentForReplay"), context);
   vm.runInContext(extract("renderUserFlowTestReplayResult", "renderUserFlowTestSessions"), context);
   function ready(state = {}) {
     context.replayNavigationParentReady = true;
@@ -632,7 +631,7 @@ test("ordinary log replay does not force a sized popup when reopening the parent
   assert.deepEqual(sequence.openOptions, [undefined]);
 });
 
-test("mobile UA is applied after page readiness and network idle, before the replay command", () => {
+test("mobile logs wait for page readiness and network idle without overriding the native UA", () => {
   const fixture = createSequence({
     autoConnect: false,
     environment: { isMobile: true, userAgent: MOBILE_UA },
@@ -644,13 +643,16 @@ test("mobile UA is applied after page readiness and network idle, before the rep
   assert.equal(fixture.commands.length, 0);
   fixture.ready({ pendingRequestCount: 0, isWaitingForRequests: false });
   fixture.runIdle();
-  assert.equal(fixture.windows[0].navigator.userAgent, MOBILE_UA);
-  assert.equal(fixture.commandUserAgents[0], MOBILE_UA);
-  // UA-only override must not claim to emulate Client Hints or touch capabilities.
+  assert.equal(fixture.windows[0].navigator.userAgent, DESKTOP_UA);
+  assert.equal(fixture.commandUserAgents[0], DESKTOP_UA);
   assert.equal(fixture.windows[0].navigator.userAgentData.mobile, false);
+  assert.deepEqual(toPlain(fixture.context.currentUserFlowState.sessions[0].environment), {
+    isMobile: true,
+    userAgent: MOBILE_UA,
+  });
 });
 
-test("mobile UA remains on its result tab while PC and legacy tests keep their native UA", () => {
+test("mobile, PC and legacy result tabs retain their native UA throughout the sequence", () => {
   const fixture = createSequence();
   fixture.context.currentUserFlowState.sessions[0].environment = { isMobile: true, userAgent: MOBILE_UA };
   fixture.context.currentUserFlowState.sessions[1].environment = { isMobile: false, userAgent: DESKTOP_UA };
@@ -660,24 +662,25 @@ test("mobile UA remains on its result tab while PC and legacy tests keep their n
     fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: sessionId });
     fixture.runAdvance();
   }
-  assert.deepEqual(fixture.commandUserAgents, [MOBILE_UA, DESKTOP_UA, DESKTOP_UA]);
+  assert.deepEqual(fixture.commandUserAgents, [DESKTOP_UA, DESKTOP_UA, DESKTOP_UA]);
   fixture.viewResult("first");
-  assert.equal(fixture.windows[0].navigator.userAgent, MOBILE_UA);
+  assert.equal(fixture.windows[0].navigator.userAgent, DESKTOP_UA);
   assert.equal(fixture.windows[0].closed, false);
   assert.equal(fixture.windows[0].focusCount, 1);
 });
 
-test("UA can be reapplied after a page replaces its Navigator object", () => {
+test("a replacement Navigator retains its native UA after another page readiness cycle", () => {
   const fixture = createSequence({ environment: { isMobile: true, userAgent: MOBILE_UA } });
   fixture.start();
   fixture.windows[0].navigator = { userAgent: DESKTOP_UA };
   vm.runInContext('startReplayNavigationState("first")', fixture.context);
   fixture.ready();
   fixture.runIdle();
-  assert.equal(fixture.commandUserAgents.at(-1), MOBILE_UA);
+  assert.equal(fixture.commandUserAgents.at(-1), DESKTOP_UA);
+  assert.equal(fixture.windows[0].navigator.userAgent, DESKTOP_UA);
 });
 
-test("unsupported UA override warns without stopping ordinary test replay", () => {
+test("nonconfigurable native UA is left untouched during mobile log replay", () => {
   const fixture = createSequence({
     autoConnect: false,
     environment: { isMobile: true, userAgent: MOBILE_UA },
@@ -691,7 +694,8 @@ test("unsupported UA override warns without stopping ordinary test replay", () =
   fixture.runIdle();
   assert.equal(fixture.commandUserAgents[0], DESKTOP_UA);
   assert.equal(fixture.commands[0].sessionId, "first");
-  assert.equal(fixture.warnings.length, 1);
+  assert.equal(fixture.warnings.length, 0);
+  assert.equal(Object.getOwnPropertyDescriptor(fixture.windows[0].navigator, "userAgent").configurable, false);
   assert.equal(fixture.context.userFlowTestReplayFailedSessionIds.size, 0);
 });
 
