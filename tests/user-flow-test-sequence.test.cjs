@@ -26,6 +26,7 @@ function createSequence({
   const timers = new Map();
   const commands = [];
   const commandTargets = [];
+  const connections = [];
   const windows = [];
   const openOptions = [];
   const statuses = [];
@@ -37,6 +38,12 @@ function createSequence({
     console: { warn: (...args) => warnings.push(args) },
     window: {
       location: { origin: "https://example.test" },
+      PopupCore: {
+        connectParent(target) {
+          connections.push(target);
+          activeParent = target;
+        },
+      },
       setTimeout(callback, ms) {
         timers.set(++nextTimer, { callback, ms });
         return nextTimer;
@@ -60,11 +67,14 @@ function createSequence({
     userFlowTestReplayQueue: [],
     userFlowTestReplayStarted: false,
     renderedUserFlowTestSignature: "",
-    replayNavigationAutoStart: false,
+    replayNavigationRequestedReplay: false,
     replayNavigationIdleTimer: 0,
     replayNavigationTimer: 0,
     replayNavigationParentReady: false,
     replayNavigationSessionId: "",
+    userFlowReplayWindow: null,
+    activeParentWindow: activeParent,
+    startParentReconnect() {},
     getActiveParentWindow: () => activeParent,
     isParentWindowOpen: (target) => Boolean(target && !target.closed),
     openParentForReplay(sessionId, options) {
@@ -127,6 +137,7 @@ function createSequence({
     context,
     commands,
     commandTargets,
+    connections,
     windows,
     openOptions,
     warnings,
@@ -141,7 +152,19 @@ function createSequence({
         target: {
           closest: () => ({
             disabled,
-            dataset: { userFlowCommand: "replay-session-new-window", sessionId: id },
+            dataset: { userFlowCommand: "open-session-window", sessionId: id },
+          }),
+        },
+      };
+      vm.runInContext("handleUserFlowControl(controlEvent)", context);
+    },
+    clickReplay(id = "first") {
+      context.controlEvent = {
+        target: {
+          closest: () => ({
+            disabled: false,
+            dataset: { userFlowCommand: "toggle-replay-session", sessionId: id },
+            closest: () => null,
           }),
         },
       };
@@ -530,6 +553,7 @@ function createTabOpener({
   startPage = "/recorded?state=test",
   viewport,
   environment,
+  popupGeometry = {},
 } = {}) {
   const originalTab = { closed: false, closeCount: 0 };
   const tab = {
@@ -546,6 +570,7 @@ function createTabOpener({
   const context = vm.createContext({
     URL,
     window: {
+      ...popupGeometry,
       location: { href: "https://example.test/popup.html", origin: "https://example.test" },
       open(url, target, features) {
         opens.push(features ? { url, target, features } : { url, target });
@@ -724,21 +749,26 @@ test("mobile flags without a usable recorded UA leave the native UA alone", () =
   }
 });
 
-test("new-window playback is rendered beside ordinary replay only in the log list", () => {
+test("the blue new-window control is rendered before ordinary replay only in the log list", () => {
   const renderer = extract("renderUserFlowState", "isParentWindowOpen");
-  assert.match(renderer, /data-user-flow-command="toggle-replay-session"[\s\S]*?data-user-flow-command="replay-session-new-window"[\s\S]*?>새창재생<\/button>/);
-  assert.doesNotMatch(extract("renderUserFlowTestSessions", "renderUserFlowNotice"), /replay-session-new-window/);
-  assert.match(renderer, /newWindowReplayDisabled =\s*replayDisabled \|\| flowState\.isReplaying \|\| isUserFlowTestReplayRunning\(\)/);
+  assert.match(renderer, /class="user-flow-replay user-flow-new-window"[\s\S]*?data-user-flow-command="open-session-window"[\s\S]*?>새창<\/button>\s*<button[\s\S]*?data-user-flow-command="toggle-replay-session"/);
+  assert.doesNotMatch(extract("renderUserFlowTestSessions", "renderUserFlowNotice"), /open-session-window/);
+  assert.match(renderer, /newWindowDisabled =\s*replayDisabled \|\| flowState\.isReplaying \|\| isUserFlowTestReplayRunning\(\)/);
+  const css = fs.readFileSync(path.join(__dirname, "../css/popup.css"), "utf8");
+  assert.match(css, /\.user-flow-new-window\s*\{\s*border-color: #1266d6;\s*color: #1266d6;\s*\}/);
+  assert.match(css, /\.user-flow-replay\s*\{[^}]*background: #ffffff;/);
+  assert.doesNotMatch(css, /\.user-flow-new-window:hover/);
 });
 
-test("the new-window button opens once and waits for connection and network idle before replay", () => {
+test("opening a new window never replays until the user clicks replay, even after readiness", () => {
   const fixture = createSequence({ environment: { isMobile: true, userAgent: MOBILE_UA } });
   const originalTab = fixture.getActiveParent();
   fixture.clickNewWindow();
   assert.deepEqual(toPlain(fixture.openOptions), [{ openInNewWindow: true }]);
   assert.equal(fixture.windows.length, 1);
   assert.equal(originalTab.closed, false);
-  assert.equal(fixture.context.replayNavigationAutoStart, true);
+  assert.equal(fixture.context.replayNavigationRequestedReplay, false);
+  assert.equal(fixture.context.userFlowReplayWindow, fixture.windows[0]);
   assert.equal(fixture.commands.length, 0);
   assert.equal(fixture.context.userFlowTestReplayWindows.size, 0);
   assert.equal(fixture.context.userFlowTestReplayCurrentSessionId, "");
@@ -748,12 +778,15 @@ test("the new-window button opens once and waits for connection and network idle
   assert.equal(fixture.commands.length, 0);
   fixture.ready({ pendingRequestCount: 0, isWaitingForRequests: false });
   fixture.runIdle();
+  assert.equal(fixture.commands.length, 0);
+  assert.equal(fixture.context.replayNavigationSessionId, "");
+  assert.equal(fixture.context.replayNavigationRequestedReplay, false);
+  fixture.ready();
+  assert.equal(fixture.commands.length, 0);
+  fixture.clickReplay();
   assert.deepEqual(fixture.commands, [{ command: "toggle-replay-session", sessionId: "first" }]);
   assert.equal(fixture.commandTargets[0], fixture.windows[0]);
   assert.equal(fixture.commandUserAgents[0], DESKTOP_UA);
-  assert.equal(fixture.context.replayNavigationSessionId, "");
-  assert.equal(fixture.context.replayNavigationAutoStart, false);
-  fixture.ready();
   assert.equal(fixture.commands.length, 1);
   assert.equal(fixture.windows[0].closed, false);
 });
@@ -779,10 +812,10 @@ test("a blocked new window never falls back to replaying in the original site", 
   assert.equal(fixture.commands.length, 0);
   assert.equal(fixture.windows.length, 0);
   assert.equal(fixture.context.replayNavigationSessionId, "");
-  assert.equal(fixture.context.replayNavigationAutoStart, false);
+  assert.equal(fixture.context.replayNavigationRequestedReplay, false);
 });
 
-test("a new-window connection timeout reports no replay and does not start a test queue", () => {
+test("a new-window connection timeout never starts playback or a test queue", () => {
   const fixture = createSequence();
   fixture.clickNewWindow();
   const entry = [...fixture.timers].find(([, timer]) => timer.ms === 60000);
@@ -790,8 +823,7 @@ test("a new-window connection timeout reports no replay and does not start a tes
   fixture.timers.delete(entry[0]);
   entry[1].callback();
   assert.deepEqual(fixture.commands, [{ command: "get-state" }]);
-  assert.match(fixture.statuses.at(-1), /새 창.*재생을 시작하지 않았습니다/);
-  assert.equal(fixture.context.replayNavigationAutoStart, false);
+  assert.equal(fixture.context.replayNavigationRequestedReplay, false);
   assert.equal(fixture.context.userFlowTestReplayFailedSessionIds.size, 0);
   assert.equal(fixture.windows[0].closed, false);
 });
@@ -800,23 +832,28 @@ test("clearing pending navigation prevents a delayed new-window replay", () => {
   const fixture = createSequence();
   fixture.clickNewWindow();
   fixture.ready();
+  fixture.runIdle();
+  fixture.context.willReplayNavigate = () => true;
+  fixture.clickReplay("second");
+  fixture.ready();
   const callback = [...fixture.timers.values()].find((timer) => timer.ms === 500).callback;
   vm.runInContext("clearReplayNavigationState()", fixture.context);
   callback();
-  assert.equal(fixture.commands.length, 0);
-  assert.equal(fixture.context.replayNavigationAutoStart, false);
+  assert.equal(fixture.commands.length, 1);
+  assert.equal(fixture.context.replayNavigationRequestedReplay, false);
   assert.equal(fixture.timers.size, 0);
 });
 
-test("failed new-window replay commands report failure without advancing another list", () => {
-  const fixture = createSequence({ sendSucceeds: false });
+test("other log lists replay in the same opened window without opening or resizing another", () => {
+  const fixture = createSequence();
   fixture.clickNewWindow();
   fixture.ready();
   fixture.runIdle();
-  assert.match(fixture.statuses.at(-1), /새 창에서 로그 재생을 시작하지 못했습니다/);
-  assert.equal(fixture.commands.length, 1);
-  assert.equal(fixture.context.userFlowTestReplayFailedSessionIds.size, 0);
-  assert.ok(![...fixture.timers.values()].some((timer) => timer.ms === 350));
+  for (const sessionId of ["first", "second", "third"]) fixture.clickReplay(sessionId);
+  assert.deepEqual(fixture.commands.map((command) => command.sessionId), ["first", "second", "third"]);
+  assert.ok(fixture.commandTargets.every((target) => target === fixture.windows[0]));
+  assert.equal(fixture.windows.length, 1);
+  assert.deepEqual(toPlain(fixture.openOptions), [{ openInNewWindow: true }]);
 });
 
 test("mobile and desktop new-window playback requests the recorded content dimensions", () => {
@@ -864,16 +901,21 @@ test("new-window replay retains the same-origin restriction", () => {
   assert.equal(fixture.context.activeParentWindow, fixture.originalTab);
 });
 
-test("closing the new window in the idle gap cannot replay in another connected site", () => {
+test("closing the selected replay window during a requested navigation cannot replay in another site", () => {
   const fixture = createSequence();
   const originalTab = fixture.getActiveParent();
   fixture.clickNewWindow();
   fixture.ready();
+  fixture.runIdle();
+  fixture.context.willReplayNavigate = () => true;
+  fixture.clickReplay("second");
+  assert.equal(fixture.context.replayNavigationRequestedReplay, true);
+  fixture.ready();
   fixture.windows[0].closed = true;
   fixture.context.getActiveParentWindow = () => originalTab;
   fixture.runIdle();
-  assert.equal(fixture.commands.length, 0);
-  assert.equal(fixture.context.replayNavigationAutoStart, false);
+  assert.equal(fixture.commands.length, 1);
+  assert.equal(fixture.context.replayNavigationRequestedReplay, false);
   assert.match(fixture.statuses.at(-1), /새 창이 닫혔거나 연결이 변경되어/);
 });
 
@@ -881,10 +923,87 @@ test("ordinary log navigation still requires explicit replay after page readines
   const fixture = createSequence();
   fixture.context.willReplayNavigate = () => true;
   vm.runInContext('requestUserFlowReplay("first")', fixture.context);
-  assert.equal(fixture.context.replayNavigationAutoStart, false);
+  assert.equal(fixture.context.replayNavigationRequestedReplay, false);
   assert.equal(fixture.commands.length, 1);
   fixture.ready();
   fixture.runIdle();
   assert.equal(fixture.commands.length, 1);
   assert.equal(fixture.windows.length, 0);
+});
+
+test("the opened window is placed flush with the Data Note popup's right edge and top", () => {
+  const fixture = createTabOpener({
+    viewport: { width: 390, height: 844 },
+    popupGeometry: { screenX: 100, screenY: 60, outerWidth: 800 },
+  });
+  fixture.open({ openInNewWindow: true });
+  assert.equal(fixture.opens[0].features, "popup=yes,width=390,height=844,left=900,top=60");
+});
+
+test("positioning supports negative monitor coordinates and legacy screen-position aliases", () => {
+  const fixture = createTabOpener({
+    popupGeometry: { screenLeft: -1500, screenTop: -20, outerWidth: 400 },
+  });
+  fixture.open({ openInNewWindow: true });
+  assert.equal(fixture.opens[0].features, "popup=yes,left=-1100,top=-20");
+  const rounded = createTabOpener({
+    popupGeometry: { screenX: 100.4, screenY: 60.6, outerWidth: 800.4 },
+  });
+  rounded.open({ openInNewWindow: true });
+  assert.equal(rounded.opens[0].features, "popup=yes,left=901,top=61");
+});
+
+test("ordinary new tabs do not inherit new-window positioning features", () => {
+  const fixture = createTabOpener({
+    viewport: { width: 390, height: 844 },
+    popupGeometry: { screenX: 100, screenY: 60, outerWidth: 800 },
+  });
+  fixture.open();
+  assert.deepEqual(fixture.opens, [{ url: "about:blank", target: "_blank" }]);
+});
+
+test("an explicit replay request continues after another list navigates the same selected window", () => {
+  const fixture = createSequence();
+  fixture.clickNewWindow();
+  fixture.ready();
+  fixture.runIdle();
+  const selectedWindow = fixture.windows[0];
+  fixture.context.willReplayNavigate = () => true;
+  fixture.clickReplay("second");
+  assert.equal(fixture.context.replayNavigationSessionId, "second");
+  assert.equal(fixture.context.replayNavigationRequestedReplay, true);
+  assert.equal(fixture.commands.length, 1);
+  fixture.ready({ pendingRequestCount: 1 });
+  assert.ok(![...fixture.timers.values()].some((timer) => timer.ms === 500));
+
+  fixture.context.willReplayNavigate = () => false;
+  fixture.ready({ pendingRequestCount: 0 });
+  fixture.runIdle();
+  assert.equal(fixture.commands.length, 2);
+  assert.ok(fixture.commands.every((command) => command.sessionId === "second"));
+  assert.ok(fixture.commandTargets.every((target) => target === selectedWindow));
+  assert.equal(fixture.windows.length, 1);
+  assert.equal(fixture.context.replayNavigationRequestedReplay, false);
+  fixture.ready();
+  assert.equal(fixture.commands.length, 2);
+});
+
+test("log playback returns to the selected window after separate log-test result tabs finish", () => {
+  const fixture = createSequence();
+  fixture.clickNewWindow();
+  fixture.ready();
+  fixture.runIdle();
+  const selectedWindow = fixture.windows[0];
+  fixture.start();
+  for (const sessionId of ["first", "second", "third"]) {
+    assert.notEqual(fixture.commandTargets.at(-1), selectedWindow);
+    fixture.update({ isReplaying: true, replaySessionId: sessionId });
+    fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: sessionId });
+    fixture.runAdvance();
+  }
+  fixture.clickReplay("second");
+  assert.equal(fixture.commandTargets.at(-1), selectedWindow);
+  assert.equal(fixture.connections.at(-1), selectedWindow);
+  assert.equal(fixture.windows.length, 4);
+  assert.ok(fixture.windows.every((target) => !target.closed));
 });

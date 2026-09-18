@@ -77,7 +77,7 @@
   let draggedUserFlowSessionId = "";
   let userFlowMoveToastTimer = 0;
   let userFlowMoveToastClearTimer = 0;
-  let replayNavigationAutoStart = false;
+  let replayNavigationRequestedReplay = false;
   let replayNavigationIdleTimer = 0;
   let replayNavigationParentReady = false;
   let replayNavigationSessionId = "";
@@ -87,6 +87,7 @@
   let userFlowStatusDotStep = 0;
   let userFlowStatusDotTimer = 0;
   let activeParentWindow = window.opener || null;
+  let userFlowReplayWindow = null;
   let parentConnectionCheckTimer = 0;
   let parentReconnectStartedAt = 0;
   let parentReconnectTimer = 0;
@@ -1251,7 +1252,7 @@
           (!session.eventCount && !isReplayingSession) ||
           (flowState.isReplaying && !isReplayingSession);
         const replayDisabled = disabled || Boolean(replayNavigationSessionId);
-        const newWindowReplayDisabled =
+        const newWindowDisabled =
           replayDisabled || flowState.isReplaying || isUserFlowTestReplayRunning();
         const changeDisabled = flowState.isRecording || flowState.isReplaying;
         const sessionMeta = getUserFlowSessionMeta(session, flowState, isReplayingSession);
@@ -1310,6 +1311,14 @@
             </div>
             <div class="user-flow-session-controls">
               <button
+                class="user-flow-replay user-flow-new-window"
+                type="button"
+                data-user-flow-command="open-session-window"
+                data-session-id="${escapeHtml(session.id)}"
+                title="저장된 화면 크기로 새 창을 엽니다. 재생 버튼을 누르면 이 창에서 재생합니다."
+                ${newWindowDisabled ? "disabled" : ""}
+              >새창</button>
+              <button
                 class="user-flow-replay"
                 type="button"
                 data-user-flow-command="toggle-replay-session"
@@ -1319,14 +1328,6 @@
                 data-navigating="${String(isNavigatingSession)}"
                 ${replayDisabled ? "disabled" : ""}
               >${isNavigatingSession ? "이동 중" : isReplayingSession ? "재생 중지" : "재생"}</button>
-              <button
-                class="user-flow-replay"
-                type="button"
-                data-user-flow-command="replay-session-new-window"
-                data-session-id="${escapeHtml(session.id)}"
-                title="저장된 화면 크기로 새 창에서 재생합니다. 모바일 모드는 자동 적용되지 않습니다."
-                ${newWindowReplayDisabled ? "disabled" : ""}
-              >새창재생</button>
               <button
                 class="user-flow-name-action"
                 type="button"
@@ -1470,18 +1471,34 @@
   }
 
   function getUserFlowReplayWindowFeatures(viewport) {
+    const features = ["popup=yes"];
+
     if (
-      !Number.isFinite(viewport?.width) ||
-      !Number.isFinite(viewport?.height) ||
-      viewport.width < 100 ||
-      viewport.height < 100 ||
-      viewport.width > 16384 ||
-      viewport.height > 16384
+      Number.isFinite(viewport?.width) &&
+      Number.isFinite(viewport?.height) &&
+      viewport.width >= 100 &&
+      viewport.height >= 100 &&
+      viewport.width <= 16384 &&
+      viewport.height <= 16384
     ) {
-      return "popup=yes";
+      features.push(
+        `width=${Math.round(viewport.width)}`,
+        `height=${Math.round(viewport.height)}`,
+      );
     }
 
-    return `popup=yes,width=${Math.round(viewport.width)},height=${Math.round(viewport.height)}`;
+    const screenX = window.screenX ?? window.screenLeft;
+    const screenY = window.screenY ?? window.screenTop;
+
+    if (Number.isFinite(screenX) && Number.isFinite(window.outerWidth) && window.outerWidth > 0) {
+      features.push(`left=${Math.round(screenX + window.outerWidth)}`);
+    }
+
+    if (Number.isFinite(screenY)) {
+      features.push(`top=${Math.round(screenY)}`);
+    }
+
+    return features.join(",");
   }
 
   function openParentForReplay(sessionId, { openInNewWindow = false } = {}) {
@@ -1634,21 +1651,27 @@
     }
   }
 
-  function requestUserFlowReplay(
-    sessionId,
-    { openInNewTab = false, openInNewWindow = false } = {},
-  ) {
-    if (openInNewTab || openInNewWindow || !getActiveParentWindow()) {
-      const replayWindow = openInNewWindow
-        ? openParentForReplay(sessionId, { openInNewWindow: true })
-        : openParentForReplay(sessionId);
+  function requestUserFlowReplay(sessionId, { openInNewTab = false } = {}) {
+    if (
+      !openInNewTab &&
+      !isUserFlowTestReplayRunning() &&
+      isParentWindowOpen(userFlowReplayWindow) &&
+      getActiveParentWindow() !== userFlowReplayWindow
+    ) {
+      activeParentWindow = userFlowReplayWindow;
+      window.PopupCore?.connectParent?.(userFlowReplayWindow);
+      startParentReconnect(userFlowReplayWindow);
+    }
+
+    if (openInNewTab || !getActiveParentWindow()) {
+      const replayWindow = openParentForReplay(sessionId);
 
       if (replayWindow) {
         if (openInNewTab) {
           userFlowTestReplayWindows.set(sessionId, replayWindow);
         }
 
-        startReplayNavigationState(sessionId, { autoStartReplay: openInNewWindow });
+        startReplayNavigationState(sessionId);
         return true;
       }
 
@@ -1659,7 +1682,10 @@
       !currentUserFlowState.isReplaying && willReplayNavigate(sessionId);
 
     if (startsPageNavigation) {
-      startReplayNavigationState(sessionId);
+      // Only a user's explicit replay request may continue after navigation.
+      startReplayNavigationState(sessionId, {
+        resumeRequestedReplay: getActiveParentWindow() === userFlowReplayWindow,
+      });
     }
 
     const commandSent = sendUserFlowCommand("toggle-replay-session", {
@@ -1789,7 +1815,7 @@
     replayNavigationIdleTimer = 0;
     replayNavigationTimer = 0;
     replayNavigationParentReady = false;
-    replayNavigationAutoStart = false;
+    replayNavigationRequestedReplay = false;
 
     if (!replayNavigationSessionId) {
       return;
@@ -1802,17 +1828,17 @@
     }
   }
 
-  function startReplayNavigationState(sessionId, { autoStartReplay = false } = {}) {
+  function startReplayNavigationState(sessionId, { resumeRequestedReplay = false } = {}) {
     window.clearTimeout(replayNavigationIdleTimer);
     window.clearTimeout(replayNavigationTimer);
     replayNavigationIdleTimer = 0;
     replayNavigationParentReady = false;
     replayNavigationSessionId = sessionId;
-    replayNavigationAutoStart = autoStartReplay;
+    replayNavigationRequestedReplay = resumeRequestedReplay;
     replayNavigationTimer = window.setTimeout(() => {
       const isTestReplayNavigation =
         userFlowTestReplayCurrentSessionId === sessionId;
-      const wasAutoStartReplay = replayNavigationAutoStart;
+      const wasRequestedReplay = replayNavigationRequestedReplay;
       clearReplayNavigationState({ rerender: false });
 
       if (isTestReplayNavigation) {
@@ -1822,7 +1848,7 @@
       } else {
         rerenderUserFlowOrganization();
 
-        if (wasAutoStartReplay) {
+        if (wasRequestedReplay) {
           showUserFlowImportStatus("새 창의 사이트에 연결하지 못해 재생을 시작하지 않았습니다.");
         }
       }
@@ -1857,11 +1883,11 @@
       ) {
         const shouldStartTestReplay =
           userFlowTestReplayCurrentSessionId === expectedSessionId;
-        const shouldAutoStartReplay = replayNavigationAutoStart;
+        const shouldResumeRequestedReplay = replayNavigationRequestedReplay;
         clearReplayNavigationState({ rerender: false });
 
         if (
-          shouldAutoStartReplay &&
+          shouldResumeRequestedReplay &&
           (!isParentWindowOpen(expectedParentWindow) ||
             getActiveParentWindow() !== expectedParentWindow)
         ) {
@@ -1881,7 +1907,7 @@
         } else {
           rerenderUserFlowOrganization();
 
-          if (shouldAutoStartReplay && !requestUserFlowReplay(expectedSessionId)) {
+          if (shouldResumeRequestedReplay && !requestUserFlowReplay(expectedSessionId)) {
             showUserFlowImportStatus("새 창에서 로그 재생을 시작하지 못했습니다.");
           }
         }
@@ -1956,7 +1982,7 @@
       sessionId: button.dataset.sessionId || "",
     };
 
-    if (command === "replay-session-new-window") {
+    if (command === "open-session-window") {
       if (
         !payload.sessionId ||
         currentUserFlowState.isRecording ||
@@ -1968,12 +1994,18 @@
       }
 
       cancelUserFlowTestReplay({ rerender: false });
-      requestUserFlowReplay(payload.sessionId, { openInNewWindow: true });
+      const replayWindow = openParentForReplay(payload.sessionId, { openInNewWindow: true });
+
+      if (replayWindow) {
+        userFlowReplayWindow = replayWindow;
+        startReplayNavigationState(payload.sessionId);
+      }
+
       return;
     }
 
     if (
-      replayNavigationAutoStart &&
+      replayNavigationRequestedReplay &&
       (command === "toggle-record" ||
         command === "clear" ||
         (command === "delete-session" && payload.sessionId === replayNavigationSessionId))

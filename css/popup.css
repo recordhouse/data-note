@@ -1225,6 +1225,11 @@ body.is-user-flow-file-dragging .wrap {
   cursor: pointer;
 }
 
+.user-flow-new-window {
+  border-color: #1266d6;
+  color: #1266d6;
+}
+
 .user-flow-replay[aria-pressed="true"] {
   background: #0f766e;
   color: #ffffff;
