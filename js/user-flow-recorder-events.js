@@ -9,7 +9,6 @@
   const PERCENT_PRECISION = 6;
   const SCROLL_SAMPLE_MS = 80;
   const TARGET_WAIT_MS = 5000;
-  const COORDINATE_CONTEXT_TOLERANCE_PX = 2;
   const SENSITIVE_AUTOCOMPLETE = new Set([
     "cc-csc",
     "cc-number",
@@ -451,45 +450,22 @@
         return null;
       }
 
-      // Do not scale coordinates or guess across different viewport/scroll states.
-      const contextMatches = [
-        [pointer.viewportWidth, window.innerWidth],
-        [pointer.viewportHeight, window.innerHeight],
-        [pointer.scrollX, window.scrollX],
-        [pointer.scrollY, window.scrollY],
-      ].every(([recordedValue, currentValue]) =>
-        Number.isFinite(recordedValue) &&
-        Number.isFinite(currentValue) &&
-        Math.abs(recordedValue - currentValue) <= COORDINATE_CONTEXT_TOLERANCE_PX,
-      );
-
-      if (!contextMatches) {
-        return null;
-      }
-
+      // Use the recorded screen point as-is, even if the viewport or scroll has changed.
       const target = document.elementFromPoint(pointer.clientX, pointer.clientY);
 
-      if (
-        !target ||
-        target === document.body ||
-        target === document.documentElement ||
-        target.tagName === "IFRAME" ||
-        isIgnoredTarget(target) ||
-        target.closest?.(":disabled, [aria-disabled=\"true\"], [inert]")
-      ) {
+      if (!target || isIgnoredTarget(target)) {
         return null;
       }
 
       return { target, clientX: pointer.clientX, clientY: pointer.clientY };
     }
 
-    function createReplayTargetError(selector) {
+    function createReplayTargetError(selector, detail = "") {
       const targetSelector = String(selector || "").trim().slice(0, 180);
-      return new Error(
-        targetSelector
-          ? `재생 대상 요소를 찾지 못했습니다. (${targetSelector})`
-          : "재생 대상 요소의 선택자 정보가 없습니다.",
-      );
+      const message = targetSelector
+        ? `재생 대상 요소를 찾지 못했습니다. (${targetSelector})`
+        : "재생 대상 요소의 선택자 정보가 없습니다.";
+      return new Error(detail ? `${message} ${detail}` : message);
     }
 
     async function playScroll(recordedEvent, { shouldAbort = () => false } = {}) {
@@ -731,7 +707,12 @@
       }
 
       if (!target || target === window) {
-        throw createReplayTargetError(recordedEvent.selector);
+        const detail = recordedEvent.type === "click" && allowCoordinateClickFallback
+          ? Number.isFinite(recordedEvent.pointer?.clientX) && Number.isFinite(recordedEvent.pointer?.clientY)
+            ? "저장된 클릭 좌표에서 클릭할 요소를 찾지 못했습니다."
+            : "로그에 저장된 클릭 좌표가 없습니다. 로그를 다시 저장해주세요."
+          : "";
+        throw createReplayTargetError(recordedEvent.selector, detail);
       }
 
       if (recordedEvent.type === "click") {

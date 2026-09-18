@@ -324,7 +324,6 @@ test("legacy and malformed coordinates never click an arbitrary point", async (t
   const pointers = [undefined, { xPercent: 10, yPercent: 20 }, ...[
     { clientX: null }, { clientX: "100" }, { clientX: NaN },
     { clientX: -1 }, { clientX: 1000 }, { clientY: 800 },
-    { viewportWidth: undefined }, { scrollY: null },
   ].map((override) => coordinateClick(override).pointer)];
   for (const pointer of pointers) {
     await assert.rejects(fixture.api.playEvent({ ...coordinateClick(), pointer }), /재생 대상 요소를 찾지 못했습니다/);
@@ -333,33 +332,70 @@ test("legacy and malformed coordinates never click an arbitrary point", async (t
   assert.deepEqual(fixture.pointQueries, []);
 });
 
-test("coordinate replay refuses viewport or scroll changes beyond two pixels", async (t) => {
+test("coordinate replay clicks the original screen point despite viewport or scroll differences", async (t) => {
   const fixture = createEvents(t);
   const button = fixture.button();
   fixture.pointAt(button);
+  fixture.window.innerWidth = 640;
+  fixture.window.innerHeight = 640;
+  fixture.window.scrollY = 200;
   for (const pointer of [
-    { viewportWidth: 1003 }, { viewportHeight: 803 }, { scrollX: 3 }, { scrollY: 3 },
+    { viewportWidth: 390, viewportHeight: 844 }, { scrollX: 300 }, { scrollY: 800 },
+    { viewportWidth: undefined, viewportHeight: undefined, scrollX: undefined, scrollY: undefined },
   ]) {
-    await assert.rejects(fixture.api.playEvent(coordinateClick(pointer)), /재생 대상 요소를 찾지 못했습니다/);
+    await fixture.api.playEvent(coordinateClick(pointer));
   }
-  assert.deepEqual(fixture.pointQueries, []);
-  await fixture.api.playEvent(coordinateClick({ viewportWidth: 1002, scrollY: 2 }));
-  assert.equal(button.clickCount, 1);
+  assert.deepEqual(fixture.pointQueries, Array.from({ length: 4 }, () => [100, 400]));
+  assert.equal(button.clickCount, 4);
+  assert.ok(button.dispatched.every((event) => event.clientX === 100 && event.clientY === 400));
 });
 
-test("coordinate fallback rejects roots, iframes, recorder UI and disabled targets", async (t) => {
+test("coordinate fallback clicks body, html and the element actually occupying the point", async (t) => {
   const fixture = createEvents(t);
   const iframe = fixture.button("iframe");
   iframe.tagName = "IFRAME";
-  const ignored = fixture.button("ignored");
-  ignored.closest = (selector) => selector === "[data-user-flow-ignore]" ? ignored : null;
   const disabled = fixture.button("disabled");
   disabled.closest = (selector) => selector.includes(":disabled") ? disabled : null;
-  for (const target of [null, fixture.body, fixture.html, iframe, ignored, disabled]) {
+  for (const target of [fixture.body, fixture.html, iframe, disabled]) {
     fixture.pointAt(target);
-    await assert.rejects(fixture.api.playEvent(coordinateClick()), /재생 대상 요소를 찾지 못했습니다/);
+    await fixture.api.playEvent(coordinateClick());
+    assert.equal(target.clickCount, 1);
+  }
+  assert.deepEqual(fixture.played, [fixture.body, fixture.html, iframe, disabled]);
+});
+
+test("coordinate fallback still excludes the recorder's own controls and absent point targets", async (t) => {
+  const fixture = createEvents(t);
+  const ignored = fixture.button("ignored");
+  ignored.closest = (selector) => selector === "[data-user-flow-ignore]" ? ignored : null;
+  for (const target of [null, ignored]) {
+    fixture.pointAt(target);
+    await assert.rejects(fixture.api.playEvent(coordinateClick()), /저장된 클릭 좌표에서 클릭할 요소를 찾지 못했습니다/);
   }
   assert.deepEqual(fixture.played, []);
+});
+
+test("old logs without a screen point report missing coordinate data explicitly", async (t) => {
+  const fixture = createEvents(t);
+  fixture.pointAt(fixture.button());
+  await assert.rejects(fixture.api.playEvent({
+    type: "click", selector: "#missing", pointer: { xPercent: 10, yPercent: 20 },
+  }), /로그에 저장된 클릭 좌표가 없습니다/);
+  assert.deepEqual(fixture.pointQueries, []);
+  assert.deepEqual(fixture.played, []);
+});
+
+test("main recorder completes after coordinate fallback with a different saved viewport and scroll", async (t) => {
+  const fixture = createEvents(t);
+  fixture.pointAt(fixture.body);
+  const recorder = fixture.recorder([coordinateClick({
+    viewportWidth: 390, viewportHeight: 844, scrollY: 1200,
+  })]);
+  await recorder.replay("first");
+  assert.deepEqual(fixture.pointQueries, [[100, 400]]);
+  assert.equal(fixture.body.clickCount, 1);
+  assert.equal(recorder.getState().completedReplaySessionId, "first");
+  assert.equal(recorder.getState().failedReplaySessionId, "");
 });
 
 test("input, change and scroll events never use coordinate click fallback", async (t) => {
