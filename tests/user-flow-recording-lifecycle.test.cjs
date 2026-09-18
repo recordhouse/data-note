@@ -11,10 +11,21 @@ function createRecorder(t, sessions = []) {
   const timers = new Set();
   const clock = { now: 100, wall: 1800000000000 };
   const storage = new Map([[storageKey, JSON.stringify({ version: 4, sessions })]]);
+  const downloads = [];
+  const archives = [];
+  const blobs = new Map();
   let recordEvent;
   let failWrites = false;
   class TestDate extends Date {
     static now() { return clock.wall; }
+  }
+  class TestURL extends URL {
+    static createObjectURL(blob) {
+      const url = `blob:test-${blobs.size}`;
+      blobs.set(url, blob);
+      return url;
+    }
+    static revokeObjectURL() {}
   }
   const window = {
     location: new URL("https://example.test/test?state=initial"),
@@ -33,6 +44,12 @@ function createRecorder(t, sessions = []) {
     },
     clearTimeout,
     UserFlowRequestTracker: { create: () => ({ install() {} }) },
+    UserFlowArchive: {
+      createArchive(entries) {
+        archives.push(entries);
+        return new Blob([]);
+      },
+    },
     UserFlowRecorderEvents: {
       create(options) {
         recordEvent = options.recordEvent;
@@ -47,8 +64,19 @@ function createRecorder(t, sessions = []) {
   };
   const context = vm.createContext({
     window,
-    document: { querySelector: () => null, readyState: "complete", addEventListener() {} },
-    URL,
+    document: {
+      querySelector: () => null,
+      readyState: "complete",
+      addEventListener() {},
+      body: { append() {} },
+      createElement: () => ({
+        setAttribute() {},
+        click() { downloads.push({ fileName: this.download, blob: blobs.get(this.href) }); },
+        remove() {},
+      }),
+    },
+    URL: TestURL,
+    Blob,
     Date: TestDate,
     performance: { now: () => clock.now },
     console,
@@ -61,6 +89,8 @@ function createRecorder(t, sessions = []) {
   return {
     window,
     clock,
+    downloads,
+    archives,
     recorder: window.UserFlowRecorder,
     record: (event = {}) => recordEvent({ type: "click", selector: "#button", ...event }),
     storedSessions: () => JSON.parse(storage.get(storageKey)).sessions,
@@ -179,6 +209,120 @@ test("the last available slot can be used and stopping needs no extra slot", (t)
   assert.equal(recorder.resume(), false);
   assert.equal(recorder.getState().resumeRecordingSessionId, originalId);
   assert.equal(storedSessions().length, 150);
+});
+
+test("recording captures its initial viewport once and retains it after reload", (t) => {
+  const fixture = createRecorder(t);
+  fixture.window.innerWidth = 390;
+  fixture.window.innerHeight = 844;
+  assert.equal(fixture.recorder.start(), true);
+  fixture.record();
+  fixture.window.innerWidth = 1280;
+  fixture.window.innerHeight = 720;
+  fixture.recorder.stop();
+  const expected = { width: 390, height: 844 };
+  assert.deepEqual(toPlain(fixture.recorder.getState().sessions[0].viewport), expected);
+  assert.deepEqual(fixture.storedSessions()[0].viewport, expected);
+  const reloaded = createRecorder(t, fixture.storedSessions());
+  assert.deepEqual(toPlain(reloaded.recorder.getState().sessions[0].viewport), expected);
+});
+
+test("legacy logs keep unknown viewport metadata instead of borrowing the current page size", (t) => {
+  const fixture = createRecorder(t, [{ id: "legacy", recordedAt: 1, events: [] }]);
+  fixture.window.innerWidth = 390;
+  fixture.window.innerHeight = 844;
+  assert.equal(fixture.recorder.getState().sessions[0].viewport, null);
+  assert.equal(fixture.recorder.renameSession("legacy", "renamed"), true);
+  assert.equal(fixture.storedSessions()[0].viewport, null);
+});
+
+test("continued recording preserves the source viewport for its original actions", (t) => {
+  const fixture = createRecorder(t);
+  fixture.window.innerWidth = 390;
+  fixture.window.innerHeight = 844;
+  fixture.recorder.start();
+  fixture.record();
+  fixture.recorder.stop();
+  fixture.window.innerWidth = 1280;
+  fixture.window.innerHeight = 720;
+  fixture.clock.wall += 1000;
+  assert.equal(fixture.recorder.resume(), true);
+  fixture.recorder.stop();
+  assert.equal(fixture.storedSessions().length, 2);
+  assert.ok(fixture.storedSessions().every((session) =>
+    session.viewport.width === 390 && session.viewport.height === 844,
+  ));
+});
+
+test("continued recording without a known source viewport captures the current size", (t) => {
+  const fixture = createRecorder(t);
+  fixture.recorder.start();
+  fixture.record();
+  fixture.recorder.stop();
+  const originalId = fixture.recorder.getState().resumeRecordingSessionId;
+  fixture.window.innerWidth = 390;
+  fixture.window.innerHeight = 844;
+  fixture.clock.wall += 1000;
+  assert.equal(fixture.recorder.resume(), true);
+  fixture.recorder.stop();
+  assert.deepEqual(fixture.storedSessions()[0].viewport, { width: 390, height: 844 });
+  assert.equal(fixture.storedSessions().find((session) => session.id === originalId).viewport, null);
+});
+
+test("JSON export and import preserve viewport metadata", async (t) => {
+  const fixture = createRecorder(t);
+  fixture.window.innerWidth = 390;
+  fixture.window.innerHeight = 844;
+  fixture.recorder.start();
+  fixture.record();
+  fixture.recorder.stop();
+  const sessionId = fixture.recorder.getState().sessions[0].id;
+  assert.equal(fixture.recorder.exportRecording(sessionId), true);
+  const exported = JSON.parse(await fixture.downloads[0].blob.text());
+  assert.equal(exported.version, 5);
+  assert.deepEqual(exported.session.viewport, { width: 390, height: 844 });
+  const imported = createRecorder(t);
+  assert.equal(imported.recorder.importRecordings(exported), true);
+  assert.deepEqual(imported.storedSessions()[0].viewport, exported.session.viewport);
+  assert.deepEqual(toPlain(imported.recorder.getState().sessions[0].viewport), exported.session.viewport);
+});
+
+test("ZIP session entries retain viewport metadata for re-import", (t) => {
+  const fixture = createRecorder(t);
+  fixture.window.innerWidth = 390;
+  fixture.window.innerHeight = 844;
+  fixture.recorder.start();
+  fixture.record();
+  fixture.recorder.stop();
+  assert.equal(fixture.recorder.exportAllRecordings(), true);
+  const sessionEntry = fixture.archives[0].find((entry) => entry.name.endsWith(".json") && entry.name.includes("/"));
+  assert.ok(sessionEntry);
+  const exported = JSON.parse(sessionEntry.data);
+  assert.deepEqual(exported.session.viewport, { width: 390, height: 844 });
+  const imported = createRecorder(t);
+  assert.equal(imported.recorder.importRecordings(exported), true);
+  assert.deepEqual(imported.storedSessions()[0].viewport, exported.session.viewport);
+});
+
+test("imported viewport sizes are normalized and malformed metadata does not reject valid logs", (t) => {
+  const fixture = createRecorder(t);
+  const viewports = [
+    { width: 390.4, height: 843.6, ignored: "extra" },
+    undefined, null, {}, { width: 390 }, { width: "390", height: 844 },
+    { width: 0, height: 844 }, { width: 390, height: -844 },
+    { width: NaN, height: 844 }, { width: 390, height: Infinity },
+    { width: 16385, height: 844 },
+  ];
+  assert.equal(fixture.recorder.importRecordings({ sessions: viewports.map((viewport, index) => ({
+    id: `import-${index}`,
+    recordedAt: 100 + index,
+    viewport,
+    events: [{ type: "click", selector: "#button", at: 10 }],
+  })) }), true);
+  const sessions = fixture.storedSessions();
+  assert.equal(sessions.length, viewports.length);
+  assert.deepEqual(sessions.find((session) => session.id === "import-0").viewport, { width: 390, height: 844 });
+  assert.ok(sessions.filter((session) => session.id !== "import-0").every((session) => session.viewport === null));
 });
 
 test("continued log goes to the top of its original tab without being added to tests", () => {

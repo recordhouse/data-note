@@ -776,6 +776,7 @@
         titlePrefix: session.titlePrefix || "",
         recordedAt: session.recordedAt,
         startPage: session.startPage || "",
+        viewport: session.viewport || null,
       })),
     });
   }
@@ -1446,7 +1447,24 @@
     );
   }
 
-  function openParentForReplay(sessionId) {
+  function getUserFlowReplayWindowFeatures(session) {
+    const viewport = session?.viewport;
+
+    if (
+      !Number.isFinite(viewport?.width) ||
+      !Number.isFinite(viewport?.height) ||
+      viewport.width < 100 ||
+      viewport.height < 100 ||
+      viewport.width > 16384 ||
+      viewport.height > 16384
+    ) {
+      return "";
+    }
+
+    return `popup=yes,width=${Math.round(viewport.width)},height=${Math.round(viewport.height)}`;
+  }
+
+  function openParentForReplay(sessionId, { useRecordedViewport = false } = {}) {
     const session = (currentUserFlowState.sessions || []).find(
       (item) => item.id === sessionId,
     );
@@ -1467,7 +1485,12 @@
         return false;
       }
 
-      parentWindow = window.open("about:blank", "_blank");
+      const windowFeatures = useRecordedViewport
+        ? getUserFlowReplayWindowFeatures(session)
+        : "";
+      parentWindow = windowFeatures
+        ? window.open("about:blank", "_blank", windowFeatures)
+        : window.open("about:blank", "_blank");
 
       if (!parentWindow) {
         showUserFlowImportStatus(
@@ -1592,7 +1615,9 @@
 
   function requestUserFlowReplay(sessionId, { openInNewTab = false } = {}) {
     if (openInNewTab || !getActiveParentWindow()) {
-      const replayWindow = openParentForReplay(sessionId);
+      const replayWindow = openParentForReplay(sessionId, {
+        useRecordedViewport: openInNewTab,
+      });
 
       if (replayWindow) {
         if (openInNewTab) {

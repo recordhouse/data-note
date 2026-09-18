@@ -25,7 +25,7 @@
   const REQUEST_ABORT_POLL_MS = 50;
   const REQUEST_IDLE_MS = 500;
   const REQUEST_REPEAT_RESUME_LIMIT = 5;
-  const RECORDING_FORMAT_VERSION = 4;
+  const RECORDING_FORMAT_VERSION = 5;
   const ARCHIVE_MANIFEST_FILE_NAME = "user-flow-manifest.json";
   const MAX_NOTICE_LENGTH = 1000;
   const IMPORTABLE_EVENT_TYPES = new Set(["change", "click", "input", "scroll"]);
@@ -98,6 +98,31 @@
 
   function getCurrentPage() {
     return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  }
+
+  function normalizeSessionViewport(viewport) {
+    if (
+      !Number.isFinite(viewport?.width) ||
+      !Number.isFinite(viewport?.height) ||
+      viewport.width < 100 ||
+      viewport.height < 100 ||
+      viewport.width > 16384 ||
+      viewport.height > 16384
+    ) {
+      return null;
+    }
+
+    return {
+      width: Math.round(viewport.width),
+      height: Math.round(viewport.height),
+    };
+  }
+
+  function getCurrentRecordingViewport() {
+    return normalizeSessionViewport({
+      width: window.innerWidth,
+      height: window.innerHeight,
+    });
   }
 
   function normalizeSessionTitlePrefix(value) {
@@ -187,6 +212,7 @@
               ? session.importSourceZipName
               : "",
           recordedAt: session.recordedAt || null,
+          viewport: normalizeSessionViewport(session.viewport),
           events: session.events,
         }));
     }
@@ -199,6 +225,7 @@
           name: "",
           titlePrefix: getCurrentSessionTitlePrefix(),
           recordedAt,
+          viewport: normalizeSessionViewport(recording.viewport),
           events: recording.events,
         },
       ];
@@ -395,6 +422,7 @@
         titlePrefix: session.titlePrefix || "",
         importSourceZipName: session.importSourceZipName || "",
         recordedAt: session.recordedAt,
+        viewport: normalizeSessionViewport(session.viewport),
         eventCount: session.events.length,
         durationMs: getDurationMs(session.events),
       })),
@@ -914,6 +942,7 @@
         ),
         importSourceZipName,
         recordedAt,
+        viewport: normalizeSessionViewport(candidate.viewport),
         events,
       });
     }
@@ -1026,6 +1055,9 @@
       importSourceZipName: "",
       titlePrefix: getCurrentSessionTitlePrefix(),
       recordedAt: resumedAt,
+      // Earlier actions still need the viewport where the original log began.
+      viewport:
+        normalizeSessionViewport(sourceSession.viewport) || getCurrentRecordingViewport(),
       events: JSON.parse(JSON.stringify(sourceSession.events)),
     };
     const previousState = {
@@ -1104,6 +1136,7 @@
       name: "",
       titlePrefix: getCurrentSessionTitlePrefix(),
       recordedAt,
+      viewport: getCurrentRecordingViewport(),
       events: [],
     };
     const previousState = {
@@ -1528,6 +1561,7 @@
             name: session.name || "",
             titlePrefix: session.titlePrefix || "",
             recordedAt: session.recordedAt,
+            viewport: normalizeSessionViewport(session.viewport),
             events: session.events,
           },
         };
@@ -1572,6 +1606,7 @@
           name: session.name || "",
           titlePrefix: session.titlePrefix || "",
           recordedAt: session.recordedAt,
+          viewport: normalizeSessionViewport(session.viewport),
           events: session.events,
         },
       };

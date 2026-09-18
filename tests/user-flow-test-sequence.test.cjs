@@ -24,6 +24,7 @@ function createSequence({
   const commands = [];
   const commandTargets = [];
   const windows = [];
+  const openOptions = [];
   const statuses = [];
   let activeParent = { id: "original", closed: false };
   let nextTimer = 0;
@@ -59,7 +60,8 @@ function createSequence({
     replayNavigationSessionId: "",
     getActiveParentWindow: () => activeParent,
     isParentWindowOpen: (target) => Boolean(target && !target.closed),
-    openParentForReplay(sessionId) {
+    openParentForReplay(sessionId, options) {
+      openOptions.push(options);
       if (!openSucceeds) {
         statuses.push("부모 화면이 차단되었습니다. 이 사이트의 팝업을 허용해주세요.");
         return false;
@@ -116,6 +118,7 @@ function createSequence({
     commands,
     commandTargets,
     windows,
+    openOptions,
     statuses,
     timers,
     ready,
@@ -499,7 +502,12 @@ test("ordinary log replay continues using the original tab", () => {
   assert.equal(fixture.context.userFlowTestReplayWindows.size, 0);
 });
 
-function createTabOpener({ blocked = false, startPage = "/recorded?state=test" } = {}) {
+function createTabOpener({
+  blocked = false,
+  startPage = "/recorded?state=test",
+  viewport,
+  useRecordedViewport = false,
+} = {}) {
   const originalTab = { closed: false, closeCount: 0 };
   const tab = {
     closed: false,
@@ -516,22 +524,23 @@ function createTabOpener({ blocked = false, startPage = "/recorded?state=test" }
     URL,
     window: {
       location: { href: "https://example.test/popup.html", origin: "https://example.test" },
-      open(url, target) {
-        opens.push({ url, target });
+      open(url, target, features) {
+        opens.push(features ? { url, target, features } : { url, target });
         return blocked ? null : tab;
       },
       PopupCore: { connectParent: (target) => connections.push(target) },
     },
     activeParentWindow: originalTab,
-    currentUserFlowState: { sessions: [{ id: "first", eventCount: 1, startPage }] },
+    currentUserFlowState: { sessions: [{ id: "first", eventCount: 1, startPage, viewport }] },
+    useRecordedViewport,
     startParentReconnect: (target) => reconnects.push(target),
     stopParentReconnect() {},
     showUserFlowImportStatus: (message) => statuses.push(message),
   });
-  vm.runInContext(extract("openParentForReplay", "willReplayNavigate"), context);
+  vm.runInContext(extract("getUserFlowReplayWindowFeatures", "willReplayNavigate"), context);
   return {
     tab, originalTab, opens, connections, reconnects, statuses, context,
-    open: () => vm.runInContext('openParentForReplay("first")', context),
+    open: () => vm.runInContext('openParentForReplay("first", { useRecordedViewport })', context),
   };
 }
 
@@ -564,4 +573,54 @@ test("the real opener retains the existing same-origin restriction", () => {
   assert.equal(fixture.opens.length, 0);
   assert.equal(fixture.context.activeParentWindow, fixture.originalTab);
   assert.match(fixture.statuses[0], /다른 사이트/);
+});
+
+test("test replay requests recorded viewport sizing for every new result window", () => {
+  const fixture = createSequence();
+  fixture.start();
+  fixture.update({ isReplaying: true, replaySessionId: "first" });
+  fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "first" });
+  fixture.runAdvance();
+  assert.deepEqual(toPlain(fixture.openOptions), [
+    { useRecordedViewport: true },
+    { useRecordedViewport: true },
+  ]);
+});
+
+test("recorded mobile and desktop viewports open sized popup windows", () => {
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 720 }]) {
+    const fixture = createTabOpener({ viewport, useRecordedViewport: true });
+    assert.equal(fixture.open(), fixture.tab);
+    assert.deepEqual(fixture.opens, [{
+      url: "about:blank",
+      target: "_blank",
+      features: `popup=yes,width=${viewport.width},height=${viewport.height}`,
+    }]);
+    assert.equal(fixture.tab.url, "https://example.test/recorded?state=test");
+    assert.deepEqual(fixture.connections, [fixture.tab]);
+    assert.deepEqual(fixture.reconnects, [fixture.tab]);
+  }
+});
+
+test("missing or invalid viewport metadata retains ordinary new-tab behavior", () => {
+  for (const viewport of [
+    undefined, null, {}, { width: 390 }, { width: 0, height: 844 },
+    { width: 390, height: -844 }, { width: "390", height: 844 },
+    { width: "390,noopener=yes", height: 844 }, { width: NaN, height: 844 },
+    { width: 390, height: Infinity }, { width: 16385, height: 844 },
+  ]) {
+    const fixture = createTabOpener({ viewport, useRecordedViewport: true });
+    assert.equal(fixture.open(), fixture.tab);
+    assert.deepEqual(fixture.opens, [{ url: "about:blank", target: "_blank" }]);
+  }
+});
+
+test("ordinary log replay does not force a sized popup when reopening the parent", () => {
+  const fixture = createTabOpener({ viewport: { width: 390, height: 844 } });
+  assert.equal(fixture.open(), fixture.tab);
+  assert.deepEqual(fixture.opens, [{ url: "about:blank", target: "_blank" }]);
+  const sequence = createSequence();
+  sequence.context.getActiveParentWindow = () => null;
+  vm.runInContext('requestUserFlowReplay("first")', sequence.context);
+  assert.deepEqual(toPlain(sequence.openOptions), [{ useRecordedViewport: false }]);
 });
