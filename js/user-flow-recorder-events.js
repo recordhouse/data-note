@@ -699,11 +699,18 @@
         return;
       }
 
+      const selectorTarget = target;
       let pointerPosition = null;
 
-      if (!target && recordedEvent.type === "click") {
-        pointerPosition = findCoordinateClickTarget(recordedEvent.pointer);
-        target = pointerPosition?.target;
+      if (recordedEvent.type === "click") {
+        const coordinateTarget = findCoordinateClickTarget(recordedEvent.pointer);
+
+        // A selector can still resolve behind a modal. Follow the actual hit
+        // target at the recorded point instead of clicking through the overlay.
+        if (coordinateTarget && coordinateTarget.target !== target) {
+          pointerPosition = coordinateTarget;
+          target = coordinateTarget.target;
+        }
       }
 
       if (!target || target === window) {
@@ -718,7 +725,8 @@
       if (recordedEvent.type === "click") {
         if (
           isCheckableInput(target) &&
-          typeof recordedEvent.replayChecked === "boolean"
+          typeof recordedEvent.replayChecked === "boolean" &&
+          (!selectorTarget || target === selectorTarget)
         ) {
           await playCheckableClick(target, recordedEvent, pointerPosition);
           return;

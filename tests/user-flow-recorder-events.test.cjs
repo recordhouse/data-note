@@ -142,7 +142,11 @@ function createEvents(t, { allowCoordinateClickFallback = true } = {}) {
     get now() { return now; },
     queryWith: (callback) => { queryOverride = callback; },
     pointAt: (target) => { pointTarget = target; },
-    input() { return new FakeInput("INPUT"); },
+    input(id) {
+      const input = new FakeInput("INPUT");
+      if (id) nodes.set(`#${id}`, input);
+      return input;
+    },
     button(id = "button") {
       const button = new FakeElement("BUTTON");
       button.id = id;
@@ -294,16 +298,86 @@ test("missing selectors fall back after five seconds to the recorded point, not 
   assert.ok(button.dispatched.every((event) => event.clientX === 100 && event.clientY === 400));
 });
 
-test("selector matches take priority over coordinate targets, including delayed elements", async (t) => {
+test("a delayed selector still replays normally when it is visible at the recorded point", async (t) => {
   const fixture = createEvents(t);
   const original = fixture.button("missing");
   const replacement = fixture.button("replacement");
-  fixture.pointAt(replacement);
+  fixture.pointAt(original);
   fixture.queryWith((selector, now) => selector === "#missing" && now >= 250 ? original : null);
   await fixture.api.playEvent(coordinateClick());
   assert.equal(original.clickCount, 1);
   assert.equal(replacement.clickCount, 0);
+  assert.deepEqual(fixture.pointQueries, [[100, 400]]);
+});
+
+test("a selector covered by a layer clicks the element actually under the recorded point", async (t) => {
+  const fixture = createEvents(t);
+  const background = fixture.button("missing");
+  const layer = fixture.button("layer");
+  fixture.pointAt(layer);
+  await fixture.api.playEvent(coordinateClick());
+  assert.equal(background.clickCount, 0);
+  assert.equal(layer.clickCount, 1);
+  assert.equal(layer.dispatched[0].clientX, 100);
+  assert.equal(layer.dispatched[0].clientY, 400);
+  assert.deepEqual(fixture.pointQueries, [[100, 400]]);
+});
+
+test("a selector covered by a layer does not break the remaining replay actions", async (t) => {
+  const fixture = createEvents(t);
+  const background = fixture.button("missing");
+  const layer = fixture.button("layer");
+  const next = fixture.button("next");
+  fixture.pointAt(layer);
+  const recorder = fixture.recorder([
+    coordinateClick(),
+    { type: "click", selector: "#next", at: 1, page: "/test" },
+  ]);
+  await recorder.replay("first");
+  assert.deepEqual(fixture.played, [layer, next]);
+  assert.equal(background.clickCount, 0);
+  assert.equal(recorder.getState().completedReplaySessionId, "first");
+  assert.equal(recorder.getState().failedReplaySessionId, "");
+});
+
+test("a click without saved screen coordinates keeps selector-based replay", async (t) => {
+  const fixture = createEvents(t);
+  const background = fixture.button("background");
+  const layer = fixture.button("layer");
+  fixture.pointAt(layer);
+  await fixture.api.playEvent({
+    type: "click", selector: "#background", pointer: { xPercent: 10, yPercent: 20 },
+  });
+  assert.equal(background.clickCount, 1);
+  assert.equal(layer.clickCount, 0);
   assert.deepEqual(fixture.pointQueries, []);
+});
+
+test("disabling coordinate fallback also preserves selector-based clicks behind overlays", async (t) => {
+  const fixture = createEvents(t, { allowCoordinateClickFallback: false });
+  const background = fixture.button("missing");
+  const layer = fixture.button("layer");
+  fixture.pointAt(layer);
+  await fixture.api.playEvent(coordinateClick());
+  assert.equal(background.clickCount, 1);
+  assert.equal(layer.clickCount, 0);
+  assert.deepEqual(fixture.pointQueries, []);
+});
+
+test("a covered checkbox does not force its recorded checked state onto another checkbox", async (t) => {
+  const fixture = createEvents(t);
+  const original = fixture.input("original");
+  original.type = "checkbox";
+  original.checked = false;
+  const layerCheckbox = fixture.input("layer");
+  layerCheckbox.type = "checkbox";
+  layerCheckbox.checked = true;
+  fixture.pointAt(layerCheckbox);
+  await fixture.api.playEvent({ ...coordinateClick(), selector: "#original", replayChecked: true });
+  assert.equal(original.clickCount, 0);
+  assert.equal(original.checked, false);
+  assert.equal(layerCheckbox.clickCount, 1);
+  assert.equal(layerCheckbox.checked, false);
 });
 
 test("coordinate fallback can be disabled without affecting selector replay", async (t) => {

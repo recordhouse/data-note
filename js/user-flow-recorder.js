@@ -13,7 +13,8 @@
   const MESSAGE_COMMAND = "response-mapping-user-flow-command";
   const MESSAGE_STATE = "response-mapping-user-flow-state";
   const IGNORE_ATTRIBUTE = "data-user-flow-ignore";
-  // 선택자를 찾지 못한 클릭을 저장된 화면 좌표로 대체합니다. 끄려면 false로 변경하세요.
+  // 클릭한 화면 위치의 실제 요소를 사용하고, 선택자가 없으면 좌표로 대체합니다.
+  // 끄려면 false로 변경하세요.
   const USER_FLOW_COORDINATE_CLICK_FALLBACK_ENABLED = true;
   const MAX_EVENTS = 10000;
   const MAX_SESSIONS = 150;
