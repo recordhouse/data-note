@@ -99,7 +99,7 @@
   let userFlowTestReplayIndex = -1;
   let userFlowTestReplayQueue = [];
   let userFlowTestReplayStarted = false;
-  let userFlowTestReplayOpenInNewWindow = false;
+  let userFlowTestReplayOpenedWindowCount = 0;
   let userFlowImportController = null;
   let syncingUserFlowTabsFromStorage = false;
   let userFlowTabs = readUserFlowTabs();
@@ -781,7 +781,6 @@
       ),
       testReplayFailedSessionIds: Array.from(userFlowTestReplayFailedSessionIds),
       testReplayCurrentSessionId: userFlowTestReplayCurrentSessionId,
-      testReplayOpenInNewWindow: userFlowTestReplayOpenInNewWindow,
       sessions: sessions.map((session) => ({
         durationMs: session.durationMs,
         eventCount: session.eventCount,
@@ -931,8 +930,6 @@
           (flowState.isReplaying && !isReplayingSession);
         const replayDisabled =
           disabled || Boolean(replayNavigationSessionId);
-        const testWindowDisabled =
-          replayDisabled || isUserFlowTestReplayRunning();
         const changeDisabled =
           flowState.isRecording ||
           flowState.isReplaying ||
@@ -959,15 +956,6 @@
               </span>
             </div>
             <div class="user-flow-session-controls">
-              <button
-                class="user-flow-replay user-flow-new-window"
-                type="button"
-                data-user-flow-command="start-test-session-window"
-                data-session-id="${escapeHtml(session.id)}"
-                aria-busy="${String(isNavigatingSession && userFlowTestReplayOpenInNewWindow)}"
-                data-navigating="${String(isNavigatingSession && userFlowTestReplayOpenInNewWindow)}"
-                ${testWindowDisabled ? "disabled" : ""}
-              >${isNavigatingSession && userFlowTestReplayOpenInNewWindow ? "이동 중" : "새창 재생"}</button>
               <button
                 class="user-flow-replay"
                 type="button"
@@ -1483,8 +1471,13 @@
     );
   }
 
-  function getUserFlowReplayWindowFeatures(viewport) {
+  function getUserFlowReplayWindowFeatures(
+    viewport,
+    { offsetX = 0, offsetY = 0 } = {},
+  ) {
     const features = ["popup=yes"];
+    const normalizedOffsetX = Number.isFinite(offsetX) ? Math.round(offsetX) : 0;
+    const normalizedOffsetY = Number.isFinite(offsetY) ? Math.round(offsetY) : 0;
 
     if (
       Number.isFinite(viewport?.width) &&
@@ -1504,17 +1497,20 @@
     const screenY = window.screenY ?? window.screenTop;
 
     if (Number.isFinite(screenX) && Number.isFinite(window.outerWidth) && window.outerWidth > 0) {
-      features.push(`left=${Math.round(screenX + window.outerWidth)}`);
+      features.push(`left=${Math.round(screenX + window.outerWidth + normalizedOffsetX)}`);
     }
 
     if (Number.isFinite(screenY)) {
-      features.push(`top=${Math.round(screenY)}`);
+      features.push(`top=${Math.round(screenY + normalizedOffsetY)}`);
     }
 
     return features.join(",");
   }
 
-  function openParentForReplay(sessionId, { openInNewWindow = false } = {}) {
+  function openParentForReplay(
+    sessionId,
+    { openInNewWindow = false, positionOffset = 0 } = {},
+  ) {
     const session = (currentUserFlowState.sessions || []).find(
       (item) => item.id === sessionId,
     );
@@ -1539,7 +1535,10 @@
         ? window.open(
             "about:blank",
             "_blank",
-            getUserFlowReplayWindowFeatures(session.viewport),
+            getUserFlowReplayWindowFeatures(session.viewport, {
+              offsetX: positionOffset,
+              offsetY: positionOffset,
+            }),
           )
         : window.open("about:blank", "_blank");
 
@@ -1635,7 +1634,7 @@
     userFlowTestReplayIndex = -1;
     userFlowTestReplayQueue = [];
     userFlowTestReplayStarted = false;
-    userFlowTestReplayOpenInNewWindow = false;
+    userFlowTestReplayOpenedWindowCount = 0;
     rerenderUserFlowTestReplay();
   }
 
@@ -1650,7 +1649,7 @@
     userFlowTestReplayIndex = -1;
     userFlowTestReplayQueue = [];
     userFlowTestReplayStarted = false;
-    userFlowTestReplayOpenInNewWindow = false;
+    userFlowTestReplayOpenedWindowCount = 0;
 
     if (clearResults) {
       userFlowTestReplayCompletedSessionIds.clear();
@@ -1668,10 +1667,9 @@
 
   function requestUserFlowReplay(
     sessionId,
-    { openInNewTab = false, openInNewWindow = false } = {},
+    { openInNewWindow = false, positionOffset = 0 } = {},
   ) {
     if (
-      !openInNewTab &&
       !openInNewWindow &&
       !isUserFlowTestReplayRunning() &&
       isParentWindowOpen(userFlowReplayWindow) &&
@@ -1682,14 +1680,14 @@
       startParentReconnect(userFlowReplayWindow);
     }
 
-    if (openInNewTab || openInNewWindow || !getActiveParentWindow()) {
+    if (openInNewWindow || !getActiveParentWindow()) {
       const replayWindow = openParentForReplay(
         sessionId,
-        openInNewWindow ? { openInNewWindow: true } : undefined,
+        openInNewWindow ? { openInNewWindow: true, positionOffset } : undefined,
       );
 
       if (replayWindow) {
-        if (openInNewTab || openInNewWindow) {
+        if (openInNewWindow) {
           userFlowTestReplayWindows.set(sessionId, replayWindow);
         }
 
@@ -1747,18 +1745,19 @@
 
     rerenderUserFlowTestReplay();
 
-    const opensInNewWindow = userFlowTestReplayOpenInNewWindow;
-
     if (!requestUserFlowReplay(sessionId, {
-      openInNewTab: !opensInNewWindow,
-      openInNewWindow: opensInNewWindow,
+      openInNewWindow: true,
+      positionOffset: userFlowTestReplayOpenedWindowCount * 20,
     })) {
-      // Stop instead of silently skipping lists whose result tabs cannot open.
+      // Stop instead of silently skipping lists whose result windows cannot open.
       cancelUserFlowTestReplay();
       showUserFlowImportStatus(
-        `${opensInNewWindow ? "새 창" : "새 탭"}을 열지 못해 로그 테스트를 중지했습니다. 현재 팝업 주소의 사이트(${window.location.origin})에서 팝업 허용 여부와 로그 시작 페이지 주소를 확인해주세요.`,
+        `새 창을 열지 못해 로그 테스트를 중지했습니다. 현재 팝업 주소의 사이트(${window.location.origin})에서 팝업 허용 여부와 로그 시작 페이지 주소를 확인해주세요.`,
       );
+      return;
     }
+
+    userFlowTestReplayOpenedWindowCount += 1;
   }
 
   function scheduleNextUserFlowTestReplay() {
@@ -1771,7 +1770,7 @@
     }, USER_FLOW_TEST_REPLAY_ADVANCE_MS);
   }
 
-  function startUserFlowTestReplay(sessionId, { openInNewWindow = false } = {}) {
+  function startUserFlowTestReplay(sessionId) {
     const availableSessionIds = new Set(
       (currentUserFlowState.sessions || []).map((session) => session.id),
     );
@@ -1786,7 +1785,6 @@
     }
 
     cancelUserFlowTestReplay({ clearResults: true, rerender: false });
-    userFlowTestReplayOpenInNewWindow = openInNewWindow;
     userFlowTestReplayQueue = orderedSessionIds.slice(startIndex);
     userFlowTestReplayIndex = 0;
     playCurrentUserFlowTestReplay();
@@ -1955,15 +1953,15 @@
     );
 
     if (!isParentWindowOpen(resultWindow)) {
-      showUserFlowImportStatus("결과 화면 탭이 닫혀 있습니다.");
+      showUserFlowImportStatus("결과 화면 창이 닫혀 있습니다.");
       return;
     }
 
     try {
-      // Viewing a result must not change the currently replaying tab connection.
+      // Viewing a result must not change the currently replaying window connection.
       resultWindow.focus();
     } catch (error) {
-      showUserFlowImportStatus("결과 화면 탭으로 이동하지 못했습니다.");
+      showUserFlowImportStatus("결과 화면 창으로 이동하지 못했습니다.");
     }
   }
 
@@ -2029,21 +2027,6 @@
         startReplayNavigationState(payload.sessionId);
       }
 
-      return;
-    }
-
-    if (command === "start-test-session-window") {
-      if (
-        !payload.sessionId ||
-        currentUserFlowState.isRecording ||
-        currentUserFlowState.isReplaying ||
-        replayNavigationSessionId ||
-        isUserFlowTestReplayRunning()
-      ) {
-        return;
-      }
-
-      startUserFlowTestReplay(payload.sessionId, { openInNewWindow: true });
       return;
     }
 
