@@ -38,9 +38,16 @@ function createEvents(t, { allowCoordinateClickFallback = true } = {}) {
       this.scrollLeft = 0;
       this.scrollTop = 0;
       this.clickCount = 0;
+      this.nativeClickCount = 0;
       this.isConnected = true;
     }
     closest() { return null; }
+    contains(element) {
+      for (let current = element; current; current = current.parentElement) {
+        if (current === this) return true;
+      }
+      return false;
+    }
     getAttribute(name) { return this.attributes.get(name) || null; }
     getBoundingClientRect() {
       return { left: 0, top: 0, width: 1000, height: 2000 };
@@ -55,6 +62,7 @@ function createEvents(t, { allowCoordinateClickFallback = true } = {}) {
       return true;
     }
     click() {
+      this.nativeClickCount += 1;
       this.dispatchEvent(new FakeMouseEvent("click"));
     }
     scrollTo(options) {
@@ -295,7 +303,9 @@ test("missing selectors fall back after five seconds to the recorded point, not 
   assert.ok(fixture.now - started >= 5000);
   assert.deepEqual(fixture.pointQueries, [[100, 400]]);
   assert.equal(button.clickCount, 1);
-  assert.ok(button.dispatched.every((event) => event.clientX === 100 && event.clientY === 400));
+  assert.equal(button.nativeClickCount, 1);
+  assert.ok(button.dispatched.filter((event) => event.type !== "click")
+    .every((event) => event.clientX === 100 && event.clientY === 400));
 });
 
 test("a delayed selector still replays normally when it is visible at the recorded point", async (t) => {
@@ -318,9 +328,42 @@ test("a selector covered by a layer clicks the element actually under the record
   await fixture.api.playEvent(coordinateClick());
   assert.equal(background.clickCount, 0);
   assert.equal(layer.clickCount, 1);
+  assert.equal(layer.nativeClickCount, 1);
   assert.equal(layer.dispatched[0].clientX, 100);
   assert.equal(layer.dispatched[0].clientY, 400);
   assert.deepEqual(fixture.pointQueries, [[100, 400]]);
+});
+
+test("a child at the recorded point keeps the original control's native click", async (t) => {
+  const fixture = createEvents(t);
+  const button = fixture.button("missing");
+  const child = fixture.button("child");
+  child.parentElement = button;
+  fixture.pointAt(child);
+  await fixture.api.playEvent(coordinateClick());
+  assert.equal(button.nativeClickCount, 1);
+  assert.equal(button.clickCount, 1);
+  assert.equal(child.clickCount, 0);
+});
+
+test("a stale saved point outside the selector's current position does not hijack its click", async (t) => {
+  const fixture = createEvents(t);
+  const button = fixture.button("missing");
+  button.getBoundingClientRect = () => ({ left: 250, top: 450, width: 100, height: 40 });
+  const elsewhere = fixture.button("elsewhere");
+  fixture.pointAt(elsewhere);
+  await fixture.api.playEvent(coordinateClick());
+  assert.equal(button.nativeClickCount, 1);
+  assert.equal(elsewhere.clickCount, 0);
+});
+
+test("a page-root hit does not replace a resolved button click", async (t) => {
+  const fixture = createEvents(t);
+  const button = fixture.button("missing");
+  fixture.pointAt(fixture.body);
+  await fixture.api.playEvent(coordinateClick());
+  assert.equal(button.nativeClickCount, 1);
+  assert.equal(fixture.body.clickCount, 0);
 });
 
 test("a selector covered by a layer does not break the remaining replay actions", async (t) => {
@@ -421,7 +464,9 @@ test("coordinate replay clicks the original screen point despite viewport or scr
   }
   assert.deepEqual(fixture.pointQueries, Array.from({ length: 4 }, () => [100, 400]));
   assert.equal(button.clickCount, 4);
-  assert.ok(button.dispatched.every((event) => event.clientX === 100 && event.clientY === 400));
+  assert.equal(button.nativeClickCount, 4);
+  assert.ok(button.dispatched.filter((event) => event.type !== "click")
+    .every((event) => event.clientX === 100 && event.clientY === 400));
 });
 
 test("coordinate fallback clicks body, html and the element actually occupying the point", async (t) => {
@@ -500,7 +545,8 @@ test("coordinate fallback retains checkbox replay state", async (t) => {
   await fixture.api.playEvent({ ...coordinateClick(), replayChecked: true });
   assert.equal(checkbox.clickCount, 1);
   assert.equal(checkbox.checked, true);
-  assert.equal(checkbox.dispatched.find((event) => event.type === "click").clientX, 100);
+  assert.equal(checkbox.nativeClickCount, 1);
+  assert.equal(checkbox.dispatched.find((event) => event.type === "mousedown").clientX, 100);
 });
 
 test("the main recorder continues remaining actions after a coordinate fallback", async (t) => {

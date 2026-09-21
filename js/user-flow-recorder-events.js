@@ -578,8 +578,9 @@
         target.dispatchEvent(replayEvent);
       }
 
-      // Native .click() discards coordinates; point-based replay needs them on click too.
-      if (!pointerPosition && typeof target.click === "function") {
+      // Native activation is needed for controls and sites that rely on .click().
+      // The preceding pointer/mouse events still use the recorded screen point.
+      if (typeof target.click === "function") {
         target.click();
       } else {
         target.dispatchEvent(new MouseEvent("click", mouseOptions));
@@ -705,11 +706,25 @@
       if (recordedEvent.type === "click") {
         const coordinateTarget = findCoordinateClickTarget(recordedEvent.pointer);
 
-        // A selector can still resolve behind a modal. Follow the actual hit
-        // target at the recorded point instead of clicking through the overlay.
-        if (coordinateTarget && coordinateTarget.target !== target) {
+        // A stale screen point or a child inside the matched control must not
+        // replace a working selector. Only a genuinely covered control uses
+        // the visible element at its recorded point.
+        const hit = coordinateTarget?.target;
+        const rect = target?.getBoundingClientRect();
+        const pointInsideTarget = coordinateTarget && rect &&
+          coordinateTarget.clientX >= rect.left &&
+          coordinateTarget.clientX <= rect.left + rect.width &&
+          coordinateTarget.clientY >= rect.top &&
+          coordinateTarget.clientY <= rect.top + rect.height;
+        const hitInsideTarget = target &&
+          target !== document.body &&
+          target !== document.documentElement &&
+          target.contains?.(hit);
+        const hitIsPageRoot = hit === document.body || hit === document.documentElement;
+
+        if (coordinateTarget && (!target || (pointInsideTarget && !hitInsideTarget && !hitIsPageRoot))) {
           pointerPosition = coordinateTarget;
-          target = coordinateTarget.target;
+          target = hit;
         }
       }
 
