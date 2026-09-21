@@ -90,6 +90,7 @@ function createOrdering({ view = "test", failSave = false } = {}) {
     userFlowTestReplayFailedSessionIds: new Set(),
     userFlowTestReplayWindows: new Map(),
     userFlowTestReplayCurrentSessionId: "",
+    userFlowTestReplayOpenInNewWindow: false,
     currentUserFlowState: { isRecording: false, isReplaying: false },
     userFlowTabs: {
       sessionOrder: ["third", "second", "first"],

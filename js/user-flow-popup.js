@@ -99,6 +99,7 @@
   let userFlowTestReplayIndex = -1;
   let userFlowTestReplayQueue = [];
   let userFlowTestReplayStarted = false;
+  let userFlowTestReplayOpenInNewWindow = false;
   let userFlowImportController = null;
   let syncingUserFlowTabsFromStorage = false;
   let userFlowTabs = readUserFlowTabs();
@@ -780,6 +781,7 @@
       ),
       testReplayFailedSessionIds: Array.from(userFlowTestReplayFailedSessionIds),
       testReplayCurrentSessionId: userFlowTestReplayCurrentSessionId,
+      testReplayOpenInNewWindow: userFlowTestReplayOpenInNewWindow,
       sessions: sessions.map((session) => ({
         durationMs: session.durationMs,
         eventCount: session.eventCount,
@@ -929,6 +931,8 @@
           (flowState.isReplaying && !isReplayingSession);
         const replayDisabled =
           disabled || Boolean(replayNavigationSessionId);
+        const testWindowDisabled =
+          replayDisabled || isUserFlowTestReplayRunning();
         const changeDisabled =
           flowState.isRecording ||
           flowState.isReplaying ||
@@ -955,6 +959,15 @@
               </span>
             </div>
             <div class="user-flow-session-controls">
+              <button
+                class="user-flow-replay user-flow-new-window"
+                type="button"
+                data-user-flow-command="start-test-session-window"
+                data-session-id="${escapeHtml(session.id)}"
+                aria-busy="${String(isNavigatingSession && userFlowTestReplayOpenInNewWindow)}"
+                data-navigating="${String(isNavigatingSession && userFlowTestReplayOpenInNewWindow)}"
+                ${testWindowDisabled ? "disabled" : ""}
+              >${isNavigatingSession && userFlowTestReplayOpenInNewWindow ? "이동 중" : "새창 재생"}</button>
               <button
                 class="user-flow-replay"
                 type="button"
@@ -1622,6 +1635,7 @@
     userFlowTestReplayIndex = -1;
     userFlowTestReplayQueue = [];
     userFlowTestReplayStarted = false;
+    userFlowTestReplayOpenInNewWindow = false;
     rerenderUserFlowTestReplay();
   }
 
@@ -1636,6 +1650,7 @@
     userFlowTestReplayIndex = -1;
     userFlowTestReplayQueue = [];
     userFlowTestReplayStarted = false;
+    userFlowTestReplayOpenInNewWindow = false;
 
     if (clearResults) {
       userFlowTestReplayCompletedSessionIds.clear();
@@ -1651,9 +1666,13 @@
     }
   }
 
-  function requestUserFlowReplay(sessionId, { openInNewTab = false } = {}) {
+  function requestUserFlowReplay(
+    sessionId,
+    { openInNewTab = false, openInNewWindow = false } = {},
+  ) {
     if (
       !openInNewTab &&
+      !openInNewWindow &&
       !isUserFlowTestReplayRunning() &&
       isParentWindowOpen(userFlowReplayWindow) &&
       getActiveParentWindow() !== userFlowReplayWindow
@@ -1663,11 +1682,14 @@
       startParentReconnect(userFlowReplayWindow);
     }
 
-    if (openInNewTab || !getActiveParentWindow()) {
-      const replayWindow = openParentForReplay(sessionId);
+    if (openInNewTab || openInNewWindow || !getActiveParentWindow()) {
+      const replayWindow = openParentForReplay(
+        sessionId,
+        openInNewWindow ? { openInNewWindow: true } : undefined,
+      );
 
       if (replayWindow) {
-        if (openInNewTab) {
+        if (openInNewTab || openInNewWindow) {
           userFlowTestReplayWindows.set(sessionId, replayWindow);
         }
 
@@ -1725,11 +1747,16 @@
 
     rerenderUserFlowTestReplay();
 
-    if (!requestUserFlowReplay(sessionId, { openInNewTab: true })) {
+    const opensInNewWindow = userFlowTestReplayOpenInNewWindow;
+
+    if (!requestUserFlowReplay(sessionId, {
+      openInNewTab: !opensInNewWindow,
+      openInNewWindow: opensInNewWindow,
+    })) {
       // Stop instead of silently skipping lists whose result tabs cannot open.
       cancelUserFlowTestReplay();
       showUserFlowImportStatus(
-        `새 탭을 열지 못해 로그 테스트를 중지했습니다. 현재 팝업 주소의 사이트(${window.location.origin})에서 팝업 허용 여부와 로그 시작 페이지 주소를 확인해주세요.`,
+        `${opensInNewWindow ? "새 창" : "새 탭"}을 열지 못해 로그 테스트를 중지했습니다. 현재 팝업 주소의 사이트(${window.location.origin})에서 팝업 허용 여부와 로그 시작 페이지 주소를 확인해주세요.`,
       );
     }
   }
@@ -1744,7 +1771,7 @@
     }, USER_FLOW_TEST_REPLAY_ADVANCE_MS);
   }
 
-  function startUserFlowTestReplay(sessionId) {
+  function startUserFlowTestReplay(sessionId, { openInNewWindow = false } = {}) {
     const availableSessionIds = new Set(
       (currentUserFlowState.sessions || []).map((session) => session.id),
     );
@@ -1759,6 +1786,7 @@
     }
 
     cancelUserFlowTestReplay({ clearResults: true, rerender: false });
+    userFlowTestReplayOpenInNewWindow = openInNewWindow;
     userFlowTestReplayQueue = orderedSessionIds.slice(startIndex);
     userFlowTestReplayIndex = 0;
     playCurrentUserFlowTestReplay();
@@ -2001,6 +2029,21 @@
         startReplayNavigationState(payload.sessionId);
       }
 
+      return;
+    }
+
+    if (command === "start-test-session-window") {
+      if (
+        !payload.sessionId ||
+        currentUserFlowState.isRecording ||
+        currentUserFlowState.isReplaying ||
+        replayNavigationSessionId ||
+        isUserFlowTestReplayRunning()
+      ) {
+        return;
+      }
+
+      startUserFlowTestReplay(payload.sessionId, { openInNewWindow: true });
       return;
     }
 

@@ -66,6 +66,7 @@ function createSequence({
     userFlowTestReplayIndex: -1,
     userFlowTestReplayQueue: [],
     userFlowTestReplayStarted: false,
+    userFlowTestReplayOpenInNewWindow: false,
     renderedUserFlowTestSignature: "",
     replayNavigationRequestedReplay: false,
     replayNavigationIdleTimer: 0,
@@ -170,6 +171,16 @@ function createSequence({
       };
       vm.runInContext("handleUserFlowControl(controlEvent)", context);
     },
+    clickTestNewWindow(id = "first", disabled = false) {
+      const button = {
+        disabled,
+        dataset: { userFlowCommand: "start-test-session-window", sessionId: id },
+        closest: (selector) => selector === "#userFlowTestSessionList" ? {} : null,
+      };
+      context.controlEvent = { target: { closest: () => button } };
+      vm.runInContext("handleUserFlowControl(controlEvent)", context);
+      connectIfNeeded();
+    },
     resultMarkup(id) {
       context.resultId = id;
       return vm.runInContext("renderUserFlowTestReplayResult(resultId)", context);
@@ -180,9 +191,10 @@ function createSequence({
       };
       vm.runInContext("handleUserFlowTestResultView(resultEvent)", context);
     },
-    start: (id = "first") => {
+    start: (id = "first", options = undefined) => {
       context.startId = id;
-      vm.runInContext("startUserFlowTestReplay(startId)", context);
+      context.startOptions = options;
+      vm.runInContext("startUserFlowTestReplay(startId, startOptions)", context);
       connectIfNeeded();
     },
     update,
@@ -437,10 +449,71 @@ test("list and test replay buttons both use the same replay function", () => {
   const normalHandler = extract("handleUserFlowControl", "isUserFlowOrganizationBlocked");
   const sequenceHandler = extract("playCurrentUserFlowTestReplay", "scheduleNextUserFlowTestReplay");
   assert.match(normalHandler, /requestUserFlowReplay\(payload.sessionId\)/);
-  assert.match(sequenceHandler, /requestUserFlowReplay\(sessionId, \{ openInNewTab: true \}\)/);
+  assert.match(sequenceHandler, /requestUserFlowReplay\(sessionId, \{[\s\S]*?openInNewTab: !opensInNewWindow,[\s\S]*?openInNewWindow: opensInNewWindow/);
   assert.doesNotMatch(source, /setUserFlowTestReplayError|userFlowTestReplayErrors|user-flow-test-replay-error/);
   const css = fs.readFileSync(path.join(__dirname, "../css/popup.css"), "utf8");
   assert.doesNotMatch(css, /user-flow-test-replay-error/);
+});
+
+test("test rows render a new-window replay button beside ordinary replay", () => {
+  const renderer = extract("renderUserFlowTestSessions", "renderUserFlowNotice");
+  assert.match(renderer, /class="user-flow-replay user-flow-new-window"[\s\S]*?data-user-flow-command="start-test-session-window"[\s\S]*?>\$\{[^}]*?"이동 중"[^}]*?"새창 재생"\}<\/button>\s*<button[\s\S]*?data-user-flow-command="toggle-replay-session"/);
+  assert.match(renderer, /testWindowDisabled =\s*replayDisabled \|\| isUserFlowTestReplayRunning\(\)/);
+  assert.match(renderer, /\$\{testWindowDisabled \? "disabled" : ""\}/);
+});
+
+test("new-window replay runs the remaining test list in separate sized-window mode", () => {
+  const fixture = createSequence();
+  fixture.clickTestNewWindow("second");
+  assert.equal(fixture.context.userFlowTestReplayOpenInNewWindow, true);
+  assert.deepEqual(toPlain(fixture.openOptions), [{ openInNewWindow: true }]);
+  assert.deepEqual(fixture.commands, [{ command: "toggle-replay-session", sessionId: "second" }]);
+  fixture.update({ isReplaying: true, replaySessionId: "second" });
+  fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "second" });
+  fixture.runAdvance();
+  assert.deepEqual(toPlain(fixture.openOptions), [
+    { openInNewWindow: true },
+    { openInNewWindow: true },
+  ]);
+  assert.equal(fixture.commands[1].sessionId, "third");
+  fixture.update({ isReplaying: true, replaySessionId: "third" });
+  fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "third" });
+  fixture.runAdvance();
+  assert.equal(fixture.context.userFlowTestReplayOpenInNewWindow, false);
+  assert.deepEqual([...fixture.context.userFlowTestReplayWindows.keys()], ["second", "third"]);
+  assert.ok(fixture.windows.every((window) => !window.closed));
+});
+
+test("ordinary test replay retains new-tab mode after a new-window sequence", () => {
+  const fixture = createSequence();
+  fixture.start("first", { openInNewWindow: true });
+  assert.deepEqual(toPlain(fixture.openOptions), [{ openInNewWindow: true }]);
+  vm.runInContext("cancelUserFlowTestReplay()", fixture.context);
+  fixture.start("second");
+  assert.equal(fixture.context.userFlowTestReplayOpenInNewWindow, false);
+  assert.deepEqual(toPlain(fixture.openOptions), [{ openInNewWindow: true }, null]);
+});
+
+test("blocked new-window test stops the queue with a new-window message", () => {
+  const fixture = createSequence({ openSucceeds: false });
+  fixture.clickTestNewWindow();
+  assert.equal(fixture.context.userFlowTestReplayCurrentSessionId, "");
+  assert.equal(fixture.context.userFlowTestReplayOpenInNewWindow, false);
+  assert.equal(fixture.commands.length, 0);
+  assert.match(fixture.statuses.at(-1), /새 창을 열지 못해 로그 테스트를 중지/);
+});
+
+test("new-window test control is ignored while another operation is active", () => {
+  for (const state of ["recording", "replaying", "navigating", "testing", "disabled"]) {
+    const fixture = createSequence();
+    if (state === "recording") fixture.context.currentUserFlowState.isRecording = true;
+    if (state === "replaying") fixture.context.currentUserFlowState.isReplaying = true;
+    if (state === "navigating") fixture.context.replayNavigationSessionId = "second";
+    if (state === "testing") fixture.context.userFlowTestReplayCurrentSessionId = "second";
+    fixture.clickTestNewWindow("first", state === "disabled");
+    assert.equal(fixture.windows.length, 0, state);
+    assert.equal(fixture.commands.length, 0, state);
+  }
 });
 
 test("each test list gets a separate tab and completed tabs stay open", () => {
