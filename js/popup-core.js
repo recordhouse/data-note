@@ -16,7 +16,7 @@
   const DEFAULT_POPUP_URL = "./popup.html";
   const DEFAULT_MAPPING_DIRECTORY = "./data/";
   const DEFAULT_POPUP_NAME = "_blank";
-  const DEFAULT_POPUP_FEATURES = "popup=yes,width=650,height=800,left=0,top=0";
+  const DEFAULT_POPUP_FEATURES = "popup=yes,width=700,height=800,left=0,top=0";
   const MAX_PENDING_RESPONSES = 50;
   const POPUP_RECONNECT_CHECK_MS = 400;
   const REPLAY_WINDOW_SCROLLBAR_STYLE_ID = "data-note-replay-window-scrollbars";
