@@ -141,18 +141,6 @@
             </section>
             <span class="user-flow-status" id="userFlowStatus" data-state="idle">연결 대기</span>
             <div class="user-flow-actions">
-              <a
-                class="user-flow-action user-flow-external-link"
-                id="userFlowLoginButton"
-                target="_blank"
-                rel="noopener noreferrer"
-              >로그인</a>
-              <a
-                class="user-flow-action user-flow-external-link"
-                id="userFlowCommunicationButton"
-                target="_blank"
-                rel="noopener noreferrer"
-              >통신</a>
               <button
                 class="user-flow-action"
                 id="userFlowImportButton"
@@ -209,6 +197,20 @@
                 data-user-flow-command="toggle-record"
                 aria-pressed="false"
               >로그 저장</button>
+              <div class="user-flow-external-actions">
+                <a
+                  class="user-flow-action user-flow-external-link"
+                  id="userFlowLoginButton"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >로그인</a>
+                <a
+                  class="user-flow-action user-flow-external-link"
+                  id="userFlowCommunicationButton"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >통신</a>
+              </div>
               <input
                 id="userFlowImportInput"
                 type="file"

@@ -559,15 +559,23 @@ body.is-user-flow-file-dragging .wrap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-color: #c4b5fd;
-  background: #f5f3ff;
-  color: #6d28d9;
   text-decoration: none;
 }
 
-.user-flow-external-link:hover:not([aria-disabled="true"]) {
-  border-color: #a78bfa;
-  background: #ede9fe;
+.user-flow-external-actions {
+  display: flex;
+  flex: 0 0 100%;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  min-width: 0;
+}
+
+.user-flow-external-actions .user-flow-external-link {
+  min-width: 54px;
+  height: 26px;
+  padding: 3px 7px;
+  font-size: 11px;
 }
 
 .user-flow-external-link[aria-disabled="true"] {

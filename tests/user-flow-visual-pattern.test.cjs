@@ -8,21 +8,26 @@ const source = fs.readFileSync(
   "utf8",
 );
 
-test("recording and replay share one dot layer confined to the edge gradients", () => {
+test("recording and replay colors are visible only through the shared dot mask", () => {
   const patternCount = (source.match(/radial-gradient\(\s*circle,/g) || []).length;
-  assert.equal(patternCount, 1);
+  assert.equal(patternCount, 2);
   assert.match(
     source,
-    /\.user-flow-screen-mask-layer\[data-layer="primary"\]::after\s*\{[\s\S]*?background-repeat: repeat;/,
+    /\.user-flow-screen-mask-layer::after\s*\{[\s\S]*?background-image: var\(--user-flow-screen-mask-dot-gradient\);/,
   );
   assert.match(
     source,
-    /\.user-flow-screen-mask-layer\[data-layer="primary"\]::after\s*\{[\s\S]*?background-size: 12px 12px;/,
+    /\.user-flow-screen-mask-layer::after\s*\{[\s\S]*?-webkit-mask-image: radial-gradient\([\s\S]*?-webkit-mask-repeat: repeat;[\s\S]*?-webkit-mask-size: 9px 9px;/,
   );
+  assert.match(source, /#000 0 1\.45px,[\s\S]*?transparent 2\.05px/);
   assert.match(
     source,
-    /-webkit-mask-image:[\s\S]*?linear-gradient\(to bottom,[\s\S]*?transparent 90px\),[\s\S]*?linear-gradient\(to top,[\s\S]*?transparent 90px\),[\s\S]*?linear-gradient\(to right,[\s\S]*?transparent 90px\),[\s\S]*?linear-gradient\(to left,[\s\S]*?transparent 90px\);/,
+    /data-mode="recording"[\s\S]*?data-layer="primary"[\s\S]*?--user-flow-screen-mask-dot-gradient:[\s\S]*?rgba\(255, 24, 78, 0\.95\)/,
   );
-  assert.match(source, /data-mode="recording"[\s\S]*?--user-flow-screen-mask-dot-color: rgba\(255, 235, 242, 0\.62\)/);
-  assert.match(source, /data-mode="replaying"[\s\S]*?--user-flow-screen-mask-dot-color: rgba\(218, 255, 242, 0\.62\)/);
+  assert.match(source, /data-mode="recording"[\s\S]*?data-layer="secondary"[\s\S]*?--user-flow-screen-mask-dot-gradient:[\s\S]*?rgba\(139, 61, 246, 0\.95\)/);
+  assert.match(source, /data-mode="replaying"[\s\S]*?data-layer="primary"[\s\S]*?--user-flow-screen-mask-dot-gradient:[\s\S]*?rgba\(0, 190, 112, 0\.95\)/);
+  assert.match(source, /data-mode="replaying"[\s\S]*?data-layer="secondary"[\s\S]*?--user-flow-screen-mask-dot-gradient:[\s\S]*?rgba\(0, 178, 214, 0\.95\)/);
+  assert.match(source, /rgba\(255, 24, 78, 0\) 90px/);
+  assert.match(source, /rgba\(0, 190, 112, 0\) 90px/);
+  assert.doesNotMatch(source, /--user-flow-screen-mask-dot-color/);
 });

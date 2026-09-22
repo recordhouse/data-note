@@ -16,16 +16,22 @@ const cssSource = fs.readFileSync(
   "utf8",
 );
 
-test("login and communication links keep adjacent editable URL settings", () => {
+test("login and communication links sit in a smaller lower-right action row", () => {
+  const importIndex = popupSource.indexOf('id="userFlowImportButton"');
+  const recordIndex = popupSource.indexOf('id="userFlowRecordButton"');
+  const externalActionsIndex = popupSource.indexOf(
+    'class="user-flow-external-actions"',
+  );
   const loginIndex = popupSource.indexOf('id="userFlowLoginButton"');
   const communicationIndex = popupSource.indexOf(
     'id="userFlowCommunicationButton"',
   );
-  const importIndex = popupSource.indexOf('id="userFlowImportButton"');
 
-  assert.ok(loginIndex >= 0);
+  assert.ok(importIndex >= 0);
+  assert.ok(recordIndex > importIndex);
+  assert.ok(externalActionsIndex > recordIndex);
+  assert.ok(loginIndex > externalActionsIndex);
   assert.ok(communicationIndex > loginIndex);
-  assert.ok(importIndex > communicationIndex);
   assert.match(popupSource, /window\.USER_FLOW_LOGIN_URL = "\/login";/);
   assert.match(
     popupSource,
@@ -35,8 +41,18 @@ test("login and communication links keep adjacent editable URL settings", () => 
     importSource,
     /configureExternalLink\(\s*"#userFlowCommunicationButton",\s*window\.USER_FLOW_COMMUNICATION_URL/,
   );
+  const externalLinkRule = cssSource.match(
+    /\.user-flow-external-link\s*\{([^}]*)\}/,
+  );
+  assert.ok(externalLinkRule);
+  assert.doesNotMatch(externalLinkRule[1], /border-color|background|color:/);
+  assert.doesNotMatch(cssSource, /\.user-flow-external-link:hover/);
   assert.match(
     cssSource,
-    /\.user-flow-external-link\s*\{[^}]*border-color: #c4b5fd;[^}]*background: #f5f3ff;[^}]*color: #6d28d9;/,
+    /\.user-flow-external-actions\s*\{[^}]*flex: 0 0 100%;[^}]*justify-content: flex-end;/,
+  );
+  assert.match(
+    cssSource,
+    /\.user-flow-external-actions \.user-flow-external-link\s*\{[^}]*min-width: 54px;[^}]*height: 26px;[^}]*font-size: 11px;/,
   );
 });
