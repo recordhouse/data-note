@@ -1362,6 +1362,7 @@ body.is-user-flow-file-dragging .wrap {
   opacity: 0.45;
 }
 
+.user-flow-test-view,
 .user-flow-test-remove {
   min-width: 64px;
   height: 30px;
@@ -1375,10 +1376,12 @@ body.is-user-flow-file-dragging .wrap {
   cursor: pointer;
 }
 
+.user-flow-test-view:hover:not(:disabled),
 .user-flow-test-remove:hover:not(:disabled) {
   background: #f1f5f9;
 }
 
+.user-flow-test-view:disabled,
 .user-flow-test-remove:disabled {
   cursor: not-allowed;
   opacity: 0.45;

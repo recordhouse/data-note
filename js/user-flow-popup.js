@@ -978,7 +978,7 @@
                 ${replayDisabled ? "disabled" : ""}
               >${isNavigatingSession ? "이동 중" : isReplayingSession ? "재생 중지" : isTestReplayCurrent ? "재생 대기" : "재생"}</button>
               <button
-                class="user-flow-replay"
+                class="user-flow-test-view"
                 type="button"
                 data-user-flow-test-result-view="${escapeHtml(session.id)}"
                 aria-label="${escapeHtml(sessionTitle)} 결과 화면 보기"
@@ -988,9 +988,9 @@
                 class="user-flow-test-remove"
                 type="button"
                 data-user-flow-test-remove="${escapeHtml(session.id)}"
-                aria-label="${escapeHtml(sessionTitle)} 로그 테스트 목록에서 제거"
+                aria-label="${escapeHtml(sessionTitle)} 로그 테스트 목록에서 삭제"
                 ${changeDisabled ? "disabled" : ""}
-              >목록 제거</button>
+              >삭제</button>
             </div>
             ${renderUserFlowTestReplayResult(session.id)}
           </article>

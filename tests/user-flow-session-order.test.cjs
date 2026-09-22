@@ -5,6 +5,7 @@ const test = require("node:test");
 const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "../js/user-flow-popup.js"), "utf8");
+const cssSource = fs.readFileSync(path.join(__dirname, "../css/popup.css"), "utf8");
 const storageKey = "response-mapping-user-flow-tabs:v1";
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
@@ -250,7 +251,16 @@ test("test view buttons stay beside replay, start disabled, and activate for a r
   const idleMarkup = fixture.markup();
   assert.match(
     idleMarkup,
-    /data-user-flow-command="toggle-replay-session"[\s\S]*?>재생<\/button>\s*<button[\s\S]*?data-user-flow-test-result-view="first"[\s\S]*?disabled[\s\S]*?>보기<\/button>/,
+    /data-user-flow-command="toggle-replay-session"[\s\S]*?>재생<\/button>\s*<button\s+class="user-flow-test-view"[\s\S]*?data-user-flow-test-result-view="first"[\s\S]*?disabled[\s\S]*?>보기<\/button>/,
+  );
+  assert.match(
+    idleMarkup,
+    /class="user-flow-test-remove"[\s\S]*?data-user-flow-test-remove="first"[\s\S]*?>삭제<\/button>/,
+  );
+  assert.doesNotMatch(idleMarkup, />목록 제거<\/button>/);
+  assert.match(
+    cssSource,
+    /\.user-flow-test-view,\s*\.user-flow-test-remove\s*\{[^}]*border: 1px solid #94a3b8;[^}]*color: #475569;/,
   );
   fixture.context.userFlowTestReplayFailedSessionIds.add("first");
   fixture.context.userFlowTestReplayWindows.set("first", {});
