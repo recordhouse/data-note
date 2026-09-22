@@ -1767,6 +1767,7 @@
     {
       openInNewWindow = false,
       positionOffset = 0,
+      resumeAfterNavigation = false,
       waitForNetworkIdle = false,
     } = {},
   ) {
@@ -1796,7 +1797,9 @@
           userFlowTestReplayWindows.set(sessionId, replayWindow);
         }
 
-        startReplayNavigationState(sessionId);
+        startReplayNavigationState(sessionId, {
+          resumeRequestedReplay: resumeAfterNavigation,
+        });
         return true;
       }
 
@@ -1807,9 +1810,8 @@
       !currentUserFlowState.isReplaying && willReplayNavigate(sessionId);
 
     if (startsPageNavigation) {
-      // Only a user's explicit replay request may continue after navigation.
       startReplayNavigationState(sessionId, {
-        resumeRequestedReplay: getActiveParentWindow() === userFlowReplayWindow,
+        resumeRequestedReplay: resumeAfterNavigation,
       });
     }
 
@@ -2058,8 +2060,10 @@
         } else {
           rerenderUserFlowOrganization();
 
-          if (shouldResumeRequestedReplay && !requestUserFlowReplay(expectedSessionId)) {
-            showUserFlowImportStatus("새 창에서 로그 재생을 시작하지 못했습니다.");
+          if (shouldResumeRequestedReplay && !requestUserFlowReplay(expectedSessionId, {
+            waitForNetworkIdle: true,
+          })) {
+            showUserFlowImportStatus("사이트에서 로그 재생을 시작하지 못했습니다.");
           }
         }
       }
@@ -2315,7 +2319,10 @@
 
     if (command === "toggle-replay-session") {
       cancelUserFlowTestReplay({ rerender: false });
-      requestUserFlowReplay(payload.sessionId);
+      requestUserFlowReplay(payload.sessionId, {
+        resumeAfterNavigation: true,
+        waitForNetworkIdle: true,
+      });
       return;
     }
 

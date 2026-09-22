@@ -503,7 +503,7 @@ test("a fatal failure before playback starts advances exactly once", () => {
 test("normal and test replay buttons use the same replay function with different window behavior", () => {
   const normalHandler = extract("handleUserFlowControl", "isUserFlowOrganizationBlocked");
   const sequenceHandler = extract("playCurrentUserFlowTestReplay", "scheduleNextUserFlowTestReplay");
-  assert.match(normalHandler, /requestUserFlowReplay\(payload.sessionId\)/);
+  assert.match(normalHandler, /requestUserFlowReplay\(payload.sessionId, \{[\s\S]*?resumeAfterNavigation: true,[\s\S]*?waitForNetworkIdle: true/);
   assert.match(sequenceHandler, /requestUserFlowReplay\(sessionId, \{[\s\S]*?openInNewWindow: true,[\s\S]*?positionOffset: userFlowTestReplayOpenedWindowCount \* 20/);
   assert.doesNotMatch(sequenceHandler, /openInNewTab/);
   assert.doesNotMatch(source, /setUserFlowTestReplayError|userFlowTestReplayErrors|user-flow-test-replay-error/);
@@ -669,8 +669,12 @@ test("a blocked first window does not run tests in the existing parent", () => {
 test("ordinary log replay continues using the original tab", () => {
   const fixture = createSequence();
   const originalTab = fixture.getActiveParent();
-  vm.runInContext('requestUserFlowReplay("first")', fixture.context);
-  assert.deepEqual(fixture.commands, [{ command: "toggle-replay-session", sessionId: "first" }]);
+  fixture.clickReplay("first");
+  assert.deepEqual(fixture.commands, [{
+    command: "toggle-replay-session",
+    sessionId: "first",
+    waitForNetworkIdle: true,
+  }]);
   assert.equal(fixture.commandTargets[0], originalTab);
   assert.equal(fixture.context.userFlowSessionWindows.get("first"), originalTab);
   fixture.clickSessionView("first");
@@ -983,7 +987,11 @@ test("opening a new window never replays until the user clicks replay, even afte
   fixture.ready();
   assert.equal(fixture.commands.length, 0);
   fixture.clickReplay();
-  assert.deepEqual(fixture.commands, [{ command: "toggle-replay-session", sessionId: "first" }]);
+  assert.deepEqual(fixture.commands, [{
+    command: "toggle-replay-session",
+    sessionId: "first",
+    waitForNetworkIdle: true,
+  }]);
   assert.equal(fixture.commandTargets[0], fixture.windows[0]);
   assert.equal(fixture.commandUserAgents[0], DESKTOP_UA);
   assert.equal(fixture.commands.length, 1);
@@ -1125,15 +1133,24 @@ test("closing the selected replay window during a requested navigation cannot re
   assert.match(fixture.statuses.at(-1), /새 창이 닫혔거나 연결이 변경되어/);
 });
 
-test("ordinary log navigation still requires explicit replay after page readiness", () => {
+test("ordinary log navigation waits for readiness and communication before replaying", () => {
   const fixture = createSequence();
   fixture.context.willReplayNavigate = () => true;
-  vm.runInContext('requestUserFlowReplay("first")', fixture.context);
-  assert.equal(fixture.context.replayNavigationRequestedReplay, false);
+  fixture.clickReplay("first");
+  assert.equal(fixture.context.replayNavigationRequestedReplay, true);
   assert.equal(fixture.commands.length, 1);
-  fixture.ready();
+  assert.equal(fixture.commands[0].waitForNetworkIdle, true);
+  fixture.ready({ pendingRequestCount: 1, isWaitingForRequests: true });
+  assert.ok(![...fixture.timers.values()].some((timer) => timer.ms === 500));
+  fixture.ready({ pendingRequestCount: 0, isWaitingForRequests: false });
   fixture.runIdle();
-  assert.equal(fixture.commands.length, 1);
+  assert.deepEqual(fixture.commands[1], {
+    command: "toggle-replay-session",
+    sessionId: "first",
+    waitForNetworkIdle: true,
+  });
+  assert.equal(fixture.commands.length, 2);
+  assert.equal(fixture.context.replayNavigationRequestedReplay, false);
   assert.equal(fixture.windows.length, 0);
 });
 
