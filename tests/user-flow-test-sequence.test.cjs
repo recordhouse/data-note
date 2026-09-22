@@ -30,9 +30,16 @@ function createSequence({
   const windows = [];
   const openOptions = [];
   const statuses = [];
+  const toasts = [];
   const warnings = [];
   const commandUserAgents = [];
-  let activeParent = { id: "original", closed: false, navigator: { userAgent: DESKTOP_UA } };
+  let activeParent = {
+    id: "original",
+    closed: false,
+    focusCount: 0,
+    navigator: { userAgent: DESKTOP_UA },
+    focus() { this.focusCount += 1; },
+  };
   let nextTimer = 0;
   const context = vm.createContext({
     console: { warn: (...args) => warnings.push(args) },
@@ -64,10 +71,13 @@ function createSequence({
     userFlowTestReplayFailedSessionIds: new Set(),
     userFlowTestReplayStartedSessionIds: new Set(),
     userFlowTestReplayWindows: new Map(),
+    userFlowOpenedWindows: new Set(),
+    userFlowSessionWindows: new Map(),
     userFlowTestReplayIndex: -1,
     userFlowTestReplayQueue: [],
     userFlowTestReplayStarted: false,
     userFlowTestReplayOpenedWindowCount: 0,
+    renderedUserFlowSessionSignature: "",
     renderedUserFlowTestSignature: "",
     replayNavigationRequestedReplay: false,
     replayNavigationIdleTimer: 0,
@@ -77,6 +87,7 @@ function createSequence({
     userFlowReplayWindow: null,
     activeParentWindow: activeParent,
     startParentReconnect() {},
+    stopParentReconnect() {},
     getActiveParentWindow: () => activeParent,
     isParentWindowOpen: (target) => Boolean(target && !target.closed),
     openParentForReplay(sessionId, options) {
@@ -107,6 +118,8 @@ function createSequence({
     },
     renderUserFlowState() {},
     rerenderUserFlowOrganization() {},
+    persistUserFlowTabs: () => true,
+    showUserFlowMoveToast: (message) => toasts.push(message),
     showUserFlowImportStatus: (message) => statuses.push(message),
     escapeHtml: (value) => String(value).replaceAll('"', "&quot;"),
   });
@@ -145,6 +158,7 @@ function createSequence({
     warnings,
     commandUserAgents,
     statuses,
+    toasts,
     timers,
     ready,
     runIdle,
@@ -167,6 +181,39 @@ function createSequence({
             disabled: false,
             dataset: { userFlowCommand: "toggle-replay-session", sessionId: id },
             closest: () => null,
+          }),
+        },
+      };
+      vm.runInContext("handleUserFlowControl(controlEvent)", context);
+    },
+    clickSessionView(id = "first") {
+      context.controlEvent = {
+        target: {
+          closest: () => ({
+            disabled: false,
+            dataset: { userFlowCommand: "view-session-window", sessionId: id },
+          }),
+        },
+      };
+      vm.runInContext("handleUserFlowControl(controlEvent)", context);
+    },
+    clickCloseWindows() {
+      context.controlEvent = {
+        target: {
+          closest: () => ({
+            disabled: false,
+            dataset: { userFlowCommand: "close-opened-windows" },
+          }),
+        },
+      };
+      vm.runInContext("handleUserFlowControl(controlEvent)", context);
+    },
+    clickAddTest(id = "first", disabled = false) {
+      context.controlEvent = {
+        target: {
+          closest: () => ({
+            disabled,
+            dataset: { userFlowCommand: "add-test-session", sessionId: id },
           }),
         },
       };
@@ -240,15 +287,11 @@ test("completed test sessions display the replay complete label", () => {
   fixture.start();
   assert.equal(fixture.resultMarkup("first"), "");
   fixture.update({ isReplaying: true, replaySessionId: "first" });
-  const replayingMarkup = fixture.resultMarkup("first");
-  assert.match(replayingMarkup, /data-result="replaying"/);
-  assert.match(replayingMarkup, /data-user-flow-test-result-view="first"/);
-  assert.doesNotMatch(replayingMarkup, /재생 완료|끝까지 재생 실패/);
+  assert.equal(fixture.resultMarkup("first"), "");
   fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "first" });
   const markup = fixture.resultMarkup("first");
   assert.match(markup, /<strong>재생 완료<\/strong>/);
-  assert.match(markup, /data-user-flow-test-result-view="first"/);
-  assert.match(markup, /결과 화면 보기/);
+  assert.doesNotMatch(markup, /data-user-flow-test-result-view|결과 화면 보기|>보기<\/button>/);
   assert.equal(fixture.resultMarkup("second"), "");
 });
 
@@ -263,7 +306,7 @@ test("an unrecoverable replay displays failure and retains its result window thr
   const markup = fixture.resultMarkup("first");
   assert.match(markup, /class="user-flow-test-replay-complete" data-result="failed"/);
   assert.match(markup, /<strong>끝까지 재생 실패<\/strong>/);
-  assert.match(markup, /data-user-flow-test-result-view="first"/);
+  assert.doesNotMatch(markup, /data-user-flow-test-result-view|>보기<\/button>/);
   assert.doesNotMatch(markup, /재생 완료/);
   fixture.runAdvance();
   assert.equal(fixture.commands[1].sessionId, "second");
@@ -289,7 +332,7 @@ test("a failed final list remains visible after the test queue finishes", () => 
   assert.equal(fixture.context.userFlowTestReplayCurrentSessionId, "");
   assert.equal(fixture.timers.size, 0);
   assert.match(fixture.resultMarkup("third"), /끝까지 재생 실패/);
-  assert.match(fixture.resultMarkup("third"), /data-user-flow-test-result-view="third"/);
+  assert.doesNotMatch(fixture.resultMarkup("third"), /data-user-flow-test-result-view/);
   assert.equal(fixture.windows[0].closed, false);
 });
 
@@ -332,8 +375,7 @@ test("response errors have no separate skip logic while ordinary replay continue
   assert.equal(fixture.commands.length, 1);
   assert.equal(fixture.timers.size, 0);
   assert.equal(fixture.context.userFlowTestReplayFailedSessionIds.size, 0);
-  assert.match(fixture.resultMarkup("first"), /data-user-flow-test-result-view="first"/);
-  assert.doesNotMatch(fixture.resultMarkup("first"), /재생 완료|끝까지 재생 실패/);
+  assert.equal(fixture.resultMarkup("first"), "");
   fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "first" });
   fixture.runAdvance();
   assert.equal(fixture.commands[1].sessionId, "second");
@@ -378,7 +420,7 @@ test("failed replay commands move to the next list", () => {
   fixture.start();
   assert.equal(fixture.commands.length, 1);
   assert.match(fixture.resultMarkup("first"), /끝까지 재생 실패/);
-  assert.match(fixture.resultMarkup("first"), /data-user-flow-test-result-view="first"/);
+  assert.doesNotMatch(fixture.resultMarkup("first"), /data-user-flow-test-result-view/);
   fixture.runAdvance();
   assert.equal(fixture.commands[1].sessionId, "second");
 });
@@ -415,7 +457,7 @@ test("page connection timeout advances to the next test session", () => {
   entry[1].callback();
   assert.deepEqual(fixture.commands, [{ command: "get-state" }]);
   assert.match(fixture.resultMarkup("first"), /끝까지 재생 실패/);
-  assert.match(fixture.resultMarkup("first"), /data-user-flow-test-result-view="first"/);
+  assert.doesNotMatch(fixture.resultMarkup("first"), /data-user-flow-test-result-view/);
   fixture.runAdvance();
   assert.equal(fixture.windows[1].sessionId, "second");
   assert.equal(fixture.commands.length, 1);
@@ -430,8 +472,7 @@ test("manual stop is not treated as a fatal failure and stops the sequence", () 
   assert.equal(fixture.timers.size, 0);
   assert.equal(fixture.commands.length, 1);
   assert.equal(fixture.context.userFlowTestReplayFailedSessionIds.size, 0);
-  assert.match(fixture.resultMarkup("first"), /data-user-flow-test-result-view="first"/);
-  assert.doesNotMatch(fixture.resultMarkup("first"), /재생 완료|끝까지 재생 실패/);
+  assert.equal(fixture.resultMarkup("first"), "");
 });
 
 test("a fatal failure before playback starts advances exactly once", () => {
@@ -617,6 +658,9 @@ test("ordinary log replay continues using the original tab", () => {
   vm.runInContext('requestUserFlowReplay("first")', fixture.context);
   assert.deepEqual(fixture.commands, [{ command: "toggle-replay-session", sessionId: "first" }]);
   assert.equal(fixture.commandTargets[0], originalTab);
+  assert.equal(fixture.context.userFlowSessionWindows.get("first"), originalTab);
+  fixture.clickSessionView("first");
+  assert.equal(originalTab.focusCount, 1);
   assert.equal(fixture.windows.length, 0);
   assert.equal(fixture.context.userFlowTestReplayWindows.size, 0);
 });
@@ -831,15 +875,74 @@ test("mobile flags without a usable recorded UA leave the native UA alone", () =
   }
 });
 
-test("the blue new-window control is rendered before ordinary replay only in the log list", () => {
+test("log-list title actions use rename and export icons while controls expose test addition", () => {
   const renderer = extract("renderUserFlowState", "isParentWindowOpen");
   assert.match(renderer, /class="user-flow-replay user-flow-new-window"[\s\S]*?data-user-flow-command="open-session-window"[\s\S]*?>새창<\/button>\s*<button[\s\S]*?data-user-flow-command="toggle-replay-session"/);
+  assert.match(renderer, /class="user-flow-session-title-row"[\s\S]*?class="user-flow-title-icon user-flow-name-edit-icon"[\s\S]*?data-user-flow-name-edit[\s\S]*?class="user-flow-title-icon user-flow-export-icon"[\s\S]*?data-user-flow-command="export-recording"/);
+  assert.match(renderer, /class="user-flow-window-view"[\s\S]*?data-user-flow-command="view-session-window"[\s\S]*?>보기<\/button>/);
+  assert.match(renderer, /class="user-flow-test-add"[\s\S]*?data-user-flow-command="add-test-session"[\s\S]*?>테스트<\/button>/);
+  assert.doesNotMatch(renderer, /class="user-flow-export"|>내보내기<\/button>/);
+  assert.doesNotMatch(renderer, /class="user-flow-name-action"/);
   assert.doesNotMatch(extract("renderUserFlowTestSessions", "renderUserFlowNotice"), /open-session-window/);
   assert.match(renderer, /newWindowDisabled =\s*replayDisabled \|\| flowState\.isReplaying \|\| isUserFlowTestReplayRunning\(\)/);
   const css = fs.readFileSync(path.join(__dirname, "../css/popup.css"), "utf8");
   assert.match(css, /\.user-flow-new-window\s*\{\s*border-color: #1266d6;\s*color: #1266d6;\s*\}/);
   assert.match(css, /\.user-flow-replay\s*\{[^}]*background: #ffffff;/);
   assert.doesNotMatch(css, /\.user-flow-new-window:hover/);
+  assert.doesNotMatch(css, /\.user-flow-name-action/);
+});
+
+test("the test button adds a log once and ignores duplicates or disabled clicks", () => {
+  const fixture = createSequence();
+  fixture.context.userFlowTabs.testSessionIds = [];
+
+  fixture.clickAddTest("second");
+  assert.deepEqual(toPlain(fixture.context.userFlowTabs.testSessionIds), ["second"]);
+  assert.deepEqual(fixture.toasts, ["로그 테스트 목록에 추가되었습니다"]);
+
+  fixture.clickAddTest("second");
+  fixture.clickAddTest("third", true);
+  fixture.clickAddTest("missing");
+  assert.deepEqual(toPlain(fixture.context.userFlowTabs.testSessionIds), ["second"]);
+  assert.equal(fixture.toasts.length, 1);
+});
+
+test("list view raises its linked window and close-windows closes every popup opened by Data Note", () => {
+  const fixture = createSequence();
+  fixture.start();
+  const firstWindow = fixture.windows[0];
+  fixture.clickSessionView("first");
+  assert.equal(firstWindow.focusCount, 1);
+  fixture.update({ isReplaying: true, replaySessionId: "first" });
+  fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "first" });
+  fixture.runAdvance();
+  const secondWindow = fixture.windows[1];
+  assert.equal(fixture.context.userFlowOpenedWindows.size, 2);
+  assert.equal(fixture.context.userFlowSessionWindows.get("second"), secondWindow);
+
+  fixture.clickCloseWindows();
+
+  assert.equal(firstWindow.closed, true);
+  assert.equal(secondWindow.closed, true);
+  assert.equal(firstWindow.closeCount, 1);
+  assert.equal(secondWindow.closeCount, 1);
+  assert.equal(fixture.context.userFlowOpenedWindows.size, 0);
+  assert.equal(fixture.context.userFlowSessionWindows.size, 0);
+  assert.equal(fixture.context.userFlowTestReplayWindows.size, 0);
+  assert.match(fixture.statuses.at(-1), /새창 2개를 닫았습니다/);
+});
+
+test("the top close-windows control follows export and the clear border is fully opaque", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../popup.html"), "utf8");
+  assert.match(
+    html,
+    /id="userFlowExportAllButton"[\s\S]*?>모두 내보내기<\/button>\s*<button[\s\S]*?id="userFlowCloseWindowsButton"[\s\S]*?data-user-flow-command="close-opened-windows"[\s\S]*?>새창 닫기<\/button>\s*<button[\s\S]*?id="userFlowClearAllButton"/,
+  );
+  const css = fs.readFileSync(path.join(__dirname, "../css/popup.css"), "utf8");
+  assert.match(
+    css,
+    /\.user-flow-action\[data-action="clear-all"\]\s*\{[^}]*border-color: #b42345;/,
+  );
 });
 
 test("opening a new window never replays until the user clicks replay, even after readiness", () => {

@@ -573,7 +573,7 @@ body.is-user-flow-file-dragging .wrap {
 }
 
 .user-flow-action[data-action="clear-all"] {
-  border-color: #d8a0ad;
+  border-color: #b42345;
   color: #b42345;
 }
 
@@ -1114,6 +1114,62 @@ body.is-user-flow-file-dragging .wrap {
   overflow-wrap: anywhere;
 }
 
+.user-flow-session-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+}
+
+.user-flow-title-icon {
+  display: inline-grid;
+  align-self: center;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #7b8797;
+  line-height: 0;
+  cursor: pointer;
+}
+
+.user-flow-name-edit-icon {
+  margin-left: 7px;
+}
+
+.user-flow-export-icon {
+  margin-left: 1px;
+}
+
+.user-flow-title-icon:hover:not(:disabled) {
+  color: #1266d6;
+}
+
+.user-flow-title-icon:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.user-flow-title-icon-svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.user-flow-export-icon .user-flow-title-icon-svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
+}
+
 .user-flow-session-recorded-at {
   color: #7b8797;
   font-size: 10px;
@@ -1132,8 +1188,8 @@ body.is-user-flow-file-dragging .wrap {
   gap: 6px;
 }
 
-.user-flow-name-action,
-.user-flow-export {
+.user-flow-window-view,
+.user-flow-test-add {
   min-width: 64px;
   height: 30px;
   padding: 4px 8px;
@@ -1146,13 +1202,13 @@ body.is-user-flow-file-dragging .wrap {
   cursor: pointer;
 }
 
-.user-flow-name-action:hover:not(:disabled),
-.user-flow-export:hover:not(:disabled) {
+.user-flow-window-view:hover:not(:disabled),
+.user-flow-test-add:hover:not(:disabled) {
   background: #f1f5f9;
 }
 
-.user-flow-name-action:disabled,
-.user-flow-export:disabled {
+.user-flow-window-view:disabled,
+.user-flow-test-add:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
@@ -1326,24 +1382,6 @@ body.is-user-flow-file-dragging .wrap {
 
 .user-flow-test-replay-complete[data-result="failed"] strong {
   color: #b42345;
-}
-
-.user-flow-test-replay-complete[data-result="replaying"] {
-  justify-content: flex-end;
-}
-
-.user-flow-test-result-view {
-  padding: 3px 8px;
-  border: 1px solid #94a3b8;
-  border-radius: 4px;
-  background: transparent;
-  color: #475569;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.user-flow-test-result-view:hover {
-  background: #f1f5f9;
 }
 
 .user-flow-test-panel {

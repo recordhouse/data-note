@@ -88,6 +88,8 @@
   let userFlowStatusDotTimer = 0;
   let activeParentWindow = window.opener || null;
   let userFlowReplayWindow = null;
+  const userFlowOpenedWindows = new Set();
+  const userFlowSessionWindows = new Map();
   let parentConnectionCheckTimer = 0;
   let parentReconnectStartedAt = 0;
   let parentReconnectTimer = 0;
@@ -783,6 +785,9 @@
       testReplayFailedSessionIds: Array.from(userFlowTestReplayFailedSessionIds),
       testReplayStartedSessionIds: Array.from(userFlowTestReplayStartedSessionIds),
       testReplayCurrentSessionId: userFlowTestReplayCurrentSessionId,
+      linkedSessionWindowIds: Array.from(userFlowSessionWindows)
+        .filter(([, linkedWindow]) => isParentWindowOpen(linkedWindow))
+        .map(([sessionId]) => sessionId),
       sessions: sessions.map((session) => ({
         durationMs: session.durationMs,
         eventCount: session.eventCount,
@@ -870,24 +875,14 @@
   function renderUserFlowTestReplayResult(sessionId) {
     const isFailed = userFlowTestReplayFailedSessionIds.has(sessionId);
     const isCompleted = userFlowTestReplayCompletedSessionIds.has(sessionId);
-    const canViewResult =
-      userFlowTestReplayWindows.has(sessionId) &&
-      (userFlowTestReplayStartedSessionIds.has(sessionId) || isFailed || isCompleted);
 
-    if (!isFailed && !isCompleted && !canViewResult) {
+    if (!isFailed && !isCompleted) {
       return "";
     }
 
     return `
-      <p class="user-flow-test-replay-complete" data-result="${isFailed ? "failed" : isCompleted ? "completed" : "replaying"}" role="status">
-        ${isFailed || isCompleted ? `<strong>${isFailed ? "끝까지 재생 실패" : "재생 완료"}</strong>` : ""}
-        ${canViewResult ? `
-          <button
-            class="user-flow-test-result-view"
-            type="button"
-            data-user-flow-test-result-view="${escapeHtml(sessionId)}"
-          >결과 화면 보기</button>
-        ` : ""}
+      <p class="user-flow-test-replay-complete" data-result="${isFailed ? "failed" : "completed"}" role="status">
+        <strong>${isFailed ? "끝까지 재생 실패" : "재생 완료"}</strong>
       </p>
     `;
   }
@@ -930,6 +925,12 @@
           userFlowTestReplayFailedSessionIds.has(session.id);
         const isTestReplayCurrent =
           userFlowTestReplayCurrentSessionId === session.id;
+        const testResultWindow = userFlowTestReplayWindows.get(session.id);
+        const canViewTestResult =
+          isParentWindowOpen(testResultWindow) &&
+          (userFlowTestReplayStartedSessionIds.has(session.id) ||
+            isTestReplayFailed ||
+            isTestReplayCompleted);
         const disabled =
           flowState.isRecording ||
           (!session.eventCount && !isReplayingSession) ||
@@ -972,6 +973,13 @@
                 data-navigating="${String(isNavigatingSession)}"
                 ${replayDisabled ? "disabled" : ""}
               >${isNavigatingSession ? "이동 중" : isReplayingSession ? "재생 중지" : isTestReplayCurrent ? "재생 대기" : "재생"}</button>
+              <button
+                class="user-flow-replay"
+                type="button"
+                data-user-flow-test-result-view="${escapeHtml(session.id)}"
+                aria-label="${escapeHtml(sessionTitle)} 결과 화면 보기"
+                ${canViewTestResult ? "" : "disabled"}
+              >보기</button>
               <button
                 class="user-flow-test-remove"
                 type="button"
@@ -1086,6 +1094,7 @@
     const status = document.querySelector("#userFlowStatus");
     const recordButton = document.querySelector("#userFlowRecordButton");
     const exportAllButton = document.querySelector("#userFlowExportAllButton");
+    const closeWindowsButton = document.querySelector("#userFlowCloseWindowsButton");
     const clearAllButton = document.querySelector("#userFlowClearAllButton");
     const tabAddButton = document.querySelector("#userFlowTabAddButton");
     const sessionList = document.querySelector("#userFlowSessionList");
@@ -1170,6 +1179,16 @@
       exportAllButton.disabled = Boolean(
         flowState.isRecording || flowState.isReplaying || !sessions.length,
       );
+    }
+
+    if (closeWindowsButton) {
+      for (const openedWindow of userFlowOpenedWindows) {
+        if (!isParentWindowOpen(openedWindow)) {
+          userFlowOpenedWindows.delete(openedWindow);
+        }
+      }
+
+      closeWindowsButton.disabled = userFlowOpenedWindows.size === 0;
     }
 
     if (clearAllButton) {
@@ -1262,6 +1281,8 @@
         const newWindowDisabled =
           replayDisabled || flowState.isReplaying || isUserFlowTestReplayRunning();
         const changeDisabled = flowState.isRecording || flowState.isReplaying;
+        const linkedWindow = userFlowSessionWindows.get(session.id);
+        const viewDisabled = !isParentWindowOpen(linkedWindow);
         const sessionMeta = getUserFlowSessionMeta(session, flowState, isReplayingSession);
         if (isEditing) {
           return `
@@ -1308,9 +1329,47 @@
             ${renderUserFlowSessionReplayProgress(session, flowState)}
             <div class="user-flow-session-main">
               ${sessionSubtitle ? `<span class="user-flow-session-subtitle">${escapeHtml(sessionSubtitle)}</span>` : ""}
-              <strong class="user-flow-session-time">
-                <span>${escapeHtml(sessionTitle)}</span>
-              </strong>
+              <div class="user-flow-session-title-row">
+                <strong class="user-flow-session-time">
+                  <span>${escapeHtml(sessionTitle)}</span>
+                </strong>
+                <button
+                  class="user-flow-title-icon user-flow-name-edit-icon"
+                  type="button"
+                  title="${escapeHtml(sessionTitle)} 로그 이름 수정"
+                  aria-label="${escapeHtml(sessionTitle)} 로그 이름 수정"
+                  data-user-flow-name-edit
+                  data-session-id="${escapeHtml(session.id)}"
+                  ${changeDisabled ? "disabled" : ""}
+                >
+                  <svg
+                    class="user-flow-title-icon-svg"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <path d="M9.5 3h5l.5 2 1.5 1 2-.5 2 3.5-1.5 1.5v3l1.5 1.5-2 3.5-2-.5-1.5 1-.5 2h-5l-.5-2-1.5-1-2 .5-2-3.5L5 13.5v-3L3.5 9l2-3.5 2 .5L9 5zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0" />
+                  </svg>
+                </button>
+                <button
+                  class="user-flow-title-icon user-flow-export-icon"
+                  type="button"
+                  title="${escapeHtml(sessionTitle)} 로그 내보내기"
+                  aria-label="${escapeHtml(sessionTitle)} 로그 내보내기"
+                  data-user-flow-command="export-recording"
+                  data-session-id="${escapeHtml(session.id)}"
+                  ${changeDisabled ? "disabled" : ""}
+                >
+                  <svg
+                    class="user-flow-title-icon-svg"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <path d="M13 5h6v6M19 5l-8 8M10 7H6.5A2.5 2.5 0 0 0 4 9.5v8A2.5 2.5 0 0 0 6.5 20h8a2.5 2.5 0 0 0 2.5-2.5V14" />
+                  </svg>
+                </button>
+              </div>
               ${sessionName ? `<span class="user-flow-session-recorded-at">${escapeHtml(recordedAt)}</span>` : ""}
               <span class="user-flow-session-meta" data-user-flow-session-meta="${escapeHtml(session.id)}">
                 ${escapeHtml(sessionMeta)}
@@ -1336,20 +1395,20 @@
                 ${replayDisabled ? "disabled" : ""}
               >${isNavigatingSession ? "이동 중" : isReplayingSession ? "재생 중지" : "재생"}</button>
               <button
-                class="user-flow-name-action"
+                class="user-flow-window-view"
                 type="button"
-                data-user-flow-name-edit
+                data-user-flow-command="view-session-window"
                 data-session-id="${escapeHtml(session.id)}"
-                ${changeDisabled ? "disabled" : ""}
-              >${sessionName ? "수정" : "이름변경"}</button>
+                ${viewDisabled ? "disabled" : ""}
+              >보기</button>
               <button
-                class="user-flow-export"
+                class="user-flow-test-add"
                 type="button"
-                data-user-flow-command="export-recording"
+                data-user-flow-command="add-test-session"
                 data-session-id="${escapeHtml(session.id)}"
-                aria-label="${escapeHtml(sessionTitle)} 로그 내보내기"
-                ${changeDisabled ? "disabled" : ""}
-              >내보내기</button>
+                aria-label="${escapeHtml(sessionTitle)} 로그 테스트 목록에 추가"
+                ${changeDisabled || isUserFlowTestReplayRunning() || replayNavigationSessionId || userFlowTabs.testSessionIds.includes(session.id) ? "disabled" : ""}
+              >테스트</button>
               <button
                 class="user-flow-delete"
                 type="button"
@@ -1592,6 +1651,33 @@
     return Boolean(userFlowTestReplayCurrentSessionId);
   }
 
+  function addUserFlowTestSession(sessionId) {
+    const normalizedSessionId = String(sessionId || "");
+    const sessionExists = (currentUserFlowState.sessions || []).some(
+      (session) => session.id === normalizedSessionId,
+    );
+
+    if (
+      !normalizedSessionId ||
+      !sessionExists ||
+      userFlowTabs.testSessionIds.includes(normalizedSessionId)
+    ) {
+      return false;
+    }
+
+    const previousTestSessionIds = [...userFlowTabs.testSessionIds];
+    userFlowTabs.testSessionIds.push(normalizedSessionId);
+
+    if (!persistUserFlowTabs()) {
+      userFlowTabs.testSessionIds = previousTestSessionIds;
+      return false;
+    }
+
+    renderedUserFlowSessionSignature = "";
+    renderedUserFlowTestSignature = "";
+    return true;
+  }
+
   function clearUserFlowTestReplayTimers() {
     window.clearTimeout(userFlowTestReplayAdvanceTimer);
     userFlowTestReplayAdvanceTimer = 0;
@@ -1698,6 +1784,10 @@
       );
 
       if (replayWindow) {
+        userFlowOpenedWindows.add(replayWindow);
+        userFlowSessionWindows.set(sessionId, replayWindow);
+        renderedUserFlowSessionSignature = "";
+
         if (openInNewWindow) {
           userFlowTestReplayWindows.set(sessionId, replayWindow);
         }
@@ -1725,6 +1815,7 @@
       replayPayload.waitForNetworkIdle = true;
     }
 
+    const replayTargetWindow = getActiveParentWindow();
     const commandSent = sendUserFlowCommand(
       "toggle-replay-session",
       replayPayload,
@@ -1736,6 +1827,11 @@
       }
 
       return false;
+    }
+
+    if (replayTargetWindow) {
+      userFlowSessionWindows.set(sessionId, replayTargetWindow);
+      renderedUserFlowSessionSignature = "";
     }
 
     return true;
@@ -1969,7 +2065,7 @@
   function handleUserFlowTestResultView(event) {
     const button = event.target.closest("[data-user-flow-test-result-view]");
 
-    if (!button) {
+    if (!button || button.disabled) {
       return;
     }
 
@@ -1977,17 +2073,115 @@
       button.dataset.userFlowTestResultView,
     );
 
-    if (!isParentWindowOpen(resultWindow)) {
-      showUserFlowImportStatus("결과 화면 창이 닫혀 있습니다.");
-      return;
+    focusUserFlowWindow(resultWindow, {
+      closedMessage: "결과 화면 창이 닫혀 있습니다.",
+      failedMessage: "결과 화면 창으로 이동하지 못했습니다.",
+    });
+  }
+
+  function focusUserFlowWindow(
+    targetWindow,
+    {
+      closedMessage = "연결된 화면이 닫혀 있습니다.",
+      failedMessage = "연결된 화면을 앞으로 가져오지 못했습니다.",
+    } = {},
+  ) {
+    if (!isParentWindowOpen(targetWindow)) {
+      showUserFlowImportStatus(closedMessage);
+      return false;
     }
 
     try {
-      // Viewing a result must not change the currently replaying window connection.
-      resultWindow.focus();
+      // A direct user gesture gives focus() the best chance of raising the browser window.
+      targetWindow.focus();
+      return true;
     } catch (error) {
-      showUserFlowImportStatus("결과 화면 창으로 이동하지 못했습니다.");
+      showUserFlowImportStatus(failedMessage);
+      return false;
     }
+  }
+
+  function focusUserFlowSessionWindow(sessionId) {
+    const linkedWindow = userFlowSessionWindows.get(String(sessionId || ""));
+
+    if (focusUserFlowWindow(linkedWindow)) {
+      return;
+    }
+
+    userFlowSessionWindows.delete(String(sessionId || ""));
+    renderedUserFlowSessionSignature = "";
+    renderUserFlowState(currentUserFlowState);
+  }
+
+  function closeAllUserFlowOpenedWindows() {
+    const openedWindows = Array.from(userFlowOpenedWindows);
+    const openedWindowSet = new Set(openedWindows);
+    const activeWindow = getActiveParentWindow();
+    const closesActiveWindow = openedWindowSet.has(activeWindow);
+    let closedCount = 0;
+
+    cancelUserFlowTestReplay({ rerender: false });
+    clearReplayNavigationState({ rerender: false });
+
+    openedWindows.forEach((openedWindow) => {
+      if (!isParentWindowOpen(openedWindow)) {
+        return;
+      }
+
+      try {
+        openedWindow.close();
+        closedCount += 1;
+      } catch (error) {
+        // Keep closing the other windows if the browser rejects one close request.
+      }
+    });
+
+    userFlowOpenedWindows.clear();
+
+    for (const [sessionId, linkedWindow] of userFlowSessionWindows) {
+      if (openedWindowSet.has(linkedWindow)) {
+        userFlowSessionWindows.delete(sessionId);
+      }
+    }
+
+    for (const [sessionId, resultWindow] of userFlowTestReplayWindows) {
+      if (openedWindowSet.has(resultWindow)) {
+        userFlowTestReplayWindows.delete(sessionId);
+      }
+    }
+
+    if (openedWindowSet.has(userFlowReplayWindow)) {
+      userFlowReplayWindow = null;
+    }
+
+    if (closesActiveWindow) {
+      activeParentWindow = null;
+      stopParentReconnect();
+    }
+
+    renderedUserFlowSessionSignature = "";
+    renderedUserFlowTestSignature = "";
+    const nextFlowState = closesActiveWindow
+      ? {
+          ...currentUserFlowState,
+          isRecording: false,
+          isReplaying: false,
+          activeRecordingSessionId: "",
+          replaySessionId: "",
+          replayCompletedEventCount: 0,
+          replayRemainingMs: 0,
+          isWaitingForRequests: false,
+          pendingRequestCount: 0,
+          blockingRequestCount: 0,
+        }
+      : currentUserFlowState;
+    renderUserFlowState(nextFlowState);
+    showUserFlowImportStatus(
+      closedCount
+        ? `새창 ${closedCount.toLocaleString("ko-KR")}개를 닫았습니다.`
+        : "열려 있는 새창이 없습니다.",
+      "ready",
+    );
   }
 
   function handleUserFlowControl(event) {
@@ -1998,6 +2192,34 @@
     }
 
     const command = button.dataset.userFlowCommand;
+
+    if (command === "close-opened-windows") {
+      closeAllUserFlowOpenedWindows();
+      return;
+    }
+
+    if (command === "view-session-window") {
+      focusUserFlowSessionWindow(button.dataset.sessionId);
+      return;
+    }
+
+    if (command === "add-test-session") {
+      if (
+        currentUserFlowState.isRecording ||
+        currentUserFlowState.isReplaying ||
+        replayNavigationSessionId ||
+        isUserFlowTestReplayRunning()
+      ) {
+        return;
+      }
+
+      if (addUserFlowTestSession(button.dataset.sessionId)) {
+        rerenderUserFlowOrganization();
+        showUserFlowMoveToast("로그 테스트 목록에 추가되었습니다");
+      }
+
+      return;
+    }
 
     if (command === "clear") {
       const sessionCount = (currentUserFlowState.sessions || []).length;
@@ -2048,6 +2270,9 @@
       const replayWindow = openParentForReplay(payload.sessionId, { openInNewWindow: true });
 
       if (replayWindow) {
+        userFlowOpenedWindows.add(replayWindow);
+        userFlowSessionWindows.set(payload.sessionId, replayWindow);
+        renderedUserFlowSessionSignature = "";
         userFlowReplayWindow = replayWindow;
         startReplayNavigationState(payload.sessionId);
       }
@@ -2465,7 +2690,7 @@
     });
   }
 
-  function showUserFlowMoveToast() {
+  function showUserFlowMoveToast(message = "이동되었습니다") {
     const toast = document.querySelector("#userFlowMoveToast");
 
     if (!toast) {
@@ -2477,7 +2702,7 @@
     toast.classList.remove("is-visible");
     toast.textContent = "";
     void toast.offsetWidth;
-    toast.textContent = "이동되었습니다";
+    toast.textContent = message;
     toast.classList.add("is-visible");
 
     userFlowMoveToastTimer = window.setTimeout(() => {
@@ -2690,23 +2915,7 @@
     const movedSessionId = draggedUserFlowSessionId;
     const previousPositions = captureUserFlowSessionPositions();
     let moveCompleted = false;
-    const sessionExists = (currentUserFlowState.sessions || []).some(
-      (session) => session.id === draggedUserFlowSessionId,
-    );
-
-    if (
-      sessionExists &&
-      !userFlowTabs.testSessionIds.includes(draggedUserFlowSessionId)
-    ) {
-      const previousTestSessionIds = [...userFlowTabs.testSessionIds];
-      userFlowTabs.testSessionIds.push(draggedUserFlowSessionId);
-
-      if (!persistUserFlowTabs()) {
-        userFlowTabs.testSessionIds = previousTestSessionIds;
-      } else {
-        moveCompleted = true;
-      }
-    }
+    moveCompleted = addUserFlowTestSession(draggedUserFlowSessionId);
 
     resetUserFlowSessionDrag();
     rerenderUserFlowOrganization();
@@ -3052,8 +3261,35 @@
     sendUserFlowCommand("get-state");
   }
 
+  function pruneClosedUserFlowWindows() {
+    let changed = false;
+
+    for (const openedWindow of userFlowOpenedWindows) {
+      if (!isParentWindowOpen(openedWindow)) {
+        userFlowOpenedWindows.delete(openedWindow);
+        changed = true;
+      }
+    }
+
+    for (const [sessionId, linkedWindow] of userFlowSessionWindows) {
+      if (!isParentWindowOpen(linkedWindow)) {
+        userFlowSessionWindows.delete(sessionId);
+        changed = true;
+      }
+    }
+
+    return changed;
+  }
+
   function monitorParentConnection() {
+    const windowReferencesChanged = pruneClosedUserFlowWindows();
+
     if (!activeParentWindow || isParentWindowOpen(activeParentWindow)) {
+      if (windowReferencesChanged) {
+        renderedUserFlowSessionSignature = "";
+        renderUserFlowState(currentUserFlowState);
+      }
+
       return;
     }
 

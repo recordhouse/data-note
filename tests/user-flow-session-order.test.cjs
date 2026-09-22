@@ -90,6 +90,7 @@ function createOrdering({ view = "test", failSave = false } = {}) {
     userFlowTestReplayFailedSessionIds: new Set(),
     userFlowTestReplayStartedSessionIds: new Set(),
     userFlowTestReplayWindows: new Map(),
+    userFlowSessionWindows: new Map(),
     userFlowTestReplayCurrentSessionId: "",
     currentUserFlowState: { isRecording: false, isReplaying: false },
     userFlowTabs: {
@@ -99,6 +100,7 @@ function createOrdering({ view = "test", failSave = false } = {}) {
     },
     isUserFlowOrganizationBlocked: () => context.currentUserFlowState.isRecording || context.currentUserFlowState.isReplaying,
     isUserFlowTestReplayRunning: () => Boolean(context.userFlowTestReplayCurrentSessionId),
+    isParentWindowOpen: (target) => Boolean(target && !target.closed),
     captureUserFlowSessionPositions: () => new Map([["first", { top: 120 }]]),
     clearUserFlowSessionDropIndicators() {
       lists[view].sessions.forEach((session) => session.classList.remove("is-drop-before", "is-drop-after"));
@@ -243,15 +245,31 @@ test("test rows enable dragging only while editing the order is safe", () => {
   assert.match(fixture.markup(), /draggable="false"/);
 });
 
-test("failed test rows retain the shared result layout and result-view button", () => {
+test("test view buttons stay beside replay, start disabled, and activate for a result window", () => {
   const fixture = createOrdering();
+  const idleMarkup = fixture.markup();
+  assert.match(
+    idleMarkup,
+    /data-user-flow-command="toggle-replay-session"[\s\S]*?>재생<\/button>\s*<button[\s\S]*?data-user-flow-test-result-view="first"[\s\S]*?disabled[\s\S]*?>보기<\/button>/,
+  );
   fixture.context.userFlowTestReplayFailedSessionIds.add("first");
   fixture.context.userFlowTestReplayWindows.set("first", {});
   const markup = fixture.markup();
   assert.match(markup, /data-test-state="failed"/);
   assert.match(markup, /class="user-flow-test-replay-complete" data-result="failed"/);
   assert.match(markup, /<strong>끝까지 재생 실패<\/strong>/);
-  assert.match(markup, /data-user-flow-test-result-view="first"/);
+  assert.match(
+    markup,
+    /data-user-flow-command="toggle-replay-session"[\s\S]*?>재생<\/button>\s*<button[\s\S]*?data-user-flow-test-result-view="first"[\s\S]*?>보기<\/button>/,
+  );
+  assert.doesNotMatch(
+    markup.match(/data-user-flow-test-result-view="first"[\s\S]*?>보기<\/button>/)?.[0] || "",
+    /disabled/,
+  );
+  assert.doesNotMatch(
+    markup.match(/class="user-flow-test-replay-complete"[\s\S]*?<\/p>/)?.[0] || "",
+    /data-user-flow-test-result-view|보기<\/button>/,
+  );
   assert.doesNotMatch(markup, /재생 완료/);
 });
 
