@@ -62,6 +62,7 @@ function createSequence({
     userFlowTestReplayCurrentSessionId: "",
     userFlowTestReplayCompletedSessionIds: new Set(),
     userFlowTestReplayFailedSessionIds: new Set(),
+    userFlowTestReplayStartedSessionIds: new Set(),
     userFlowTestReplayWindows: new Map(),
     userFlowTestReplayIndex: -1,
     userFlowTestReplayQueue: [],
@@ -201,7 +202,11 @@ test("completed sessions advance through the test list in order", () => {
   const fixture = createSequence();
   fixture.start("second");
   assert.deepEqual(fixture.commands, [
-    { command: "toggle-replay-session", sessionId: "second" },
+    {
+      command: "toggle-replay-session",
+      sessionId: "second",
+      waitForNetworkIdle: true,
+    },
   ]);
   fixture.update({ isReplaying: true, replaySessionId: "second" });
   fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "second" });
@@ -235,6 +240,10 @@ test("completed test sessions display the replay complete label", () => {
   fixture.start();
   assert.equal(fixture.resultMarkup("first"), "");
   fixture.update({ isReplaying: true, replaySessionId: "first" });
+  const replayingMarkup = fixture.resultMarkup("first");
+  assert.match(replayingMarkup, /data-result="replaying"/);
+  assert.match(replayingMarkup, /data-user-flow-test-result-view="first"/);
+  assert.doesNotMatch(replayingMarkup, /재생 완료|끝까지 재생 실패/);
   fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "first" });
   const markup = fixture.resultMarkup("first");
   assert.match(markup, /<strong>재생 완료<\/strong>/);
@@ -323,7 +332,8 @@ test("response errors have no separate skip logic while ordinary replay continue
   assert.equal(fixture.commands.length, 1);
   assert.equal(fixture.timers.size, 0);
   assert.equal(fixture.context.userFlowTestReplayFailedSessionIds.size, 0);
-  assert.equal(fixture.resultMarkup("first"), "");
+  assert.match(fixture.resultMarkup("first"), /data-user-flow-test-result-view="first"/);
+  assert.doesNotMatch(fixture.resultMarkup("first"), /재생 완료|끝까지 재생 실패/);
   fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "first" });
   fixture.runAdvance();
   assert.equal(fixture.commands[1].sessionId, "second");
@@ -420,7 +430,8 @@ test("manual stop is not treated as a fatal failure and stops the sequence", () 
   assert.equal(fixture.timers.size, 0);
   assert.equal(fixture.commands.length, 1);
   assert.equal(fixture.context.userFlowTestReplayFailedSessionIds.size, 0);
-  assert.equal(fixture.resultMarkup("first"), "");
+  assert.match(fixture.resultMarkup("first"), /data-user-flow-test-result-view="first"/);
+  assert.doesNotMatch(fixture.resultMarkup("first"), /재생 완료|끝까지 재생 실패/);
 });
 
 test("a fatal failure before playback starts advances exactly once", () => {
@@ -457,7 +468,11 @@ test("test replay always opens sequential result windows with 20px diagonal offs
   assert.deepEqual(toPlain(fixture.openOptions), [
     { openInNewWindow: true, positionOffset: 0 },
   ]);
-  assert.deepEqual(fixture.commands, [{ command: "toggle-replay-session", sessionId: "second" }]);
+  assert.deepEqual(fixture.commands, [{
+    command: "toggle-replay-session",
+    sessionId: "second",
+    waitForNetworkIdle: true,
+  }]);
   fixture.update({ isReplaying: true, replaySessionId: "second" });
   fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "second" });
   fixture.runAdvance();
@@ -548,7 +563,11 @@ test("new test windows wait for connection and outstanding requests before repla
   assert.ok(![...fixture.timers.values()].some((timer) => timer.ms === 500));
   fixture.ready({ pendingRequestCount: 0, isWaitingForRequests: false });
   fixture.runIdle();
-  assert.deepEqual(fixture.commands, [{ command: "toggle-replay-session", sessionId: "first" }]);
+  assert.deepEqual(fixture.commands, [{
+    command: "toggle-replay-session",
+    sessionId: "first",
+    waitForNetworkIdle: true,
+  }]);
   assert.equal(fixture.windows.length, 1);
   fixture.update({ isReplaying: true, replaySessionId: "first" });
   fixture.update({ isReplaying: false, replaySessionId: "", completedReplaySessionId: "first" });

@@ -88,6 +88,7 @@ function createOrdering({ view = "test", failSave = false } = {}) {
     renderedUserFlowTestSignature: "",
     userFlowTestReplayCompletedSessionIds: new Set(),
     userFlowTestReplayFailedSessionIds: new Set(),
+    userFlowTestReplayStartedSessionIds: new Set(),
     userFlowTestReplayWindows: new Map(),
     userFlowTestReplayCurrentSessionId: "",
     currentUserFlowState: { isRecording: false, isReplaying: false },

@@ -94,6 +94,7 @@
   let userFlowTestReplayAdvanceTimer = 0;
   let userFlowTestReplayCompletedSessionIds = new Set();
   const userFlowTestReplayFailedSessionIds = new Set();
+  const userFlowTestReplayStartedSessionIds = new Set();
   const userFlowTestReplayWindows = new Map();
   let userFlowTestReplayCurrentSessionId = "";
   let userFlowTestReplayIndex = -1;
@@ -780,6 +781,7 @@
         userFlowTestReplayCompletedSessionIds,
       ),
       testReplayFailedSessionIds: Array.from(userFlowTestReplayFailedSessionIds),
+      testReplayStartedSessionIds: Array.from(userFlowTestReplayStartedSessionIds),
       testReplayCurrentSessionId: userFlowTestReplayCurrentSessionId,
       sessions: sessions.map((session) => ({
         durationMs: session.durationMs,
@@ -867,15 +869,19 @@
 
   function renderUserFlowTestReplayResult(sessionId) {
     const isFailed = userFlowTestReplayFailedSessionIds.has(sessionId);
+    const isCompleted = userFlowTestReplayCompletedSessionIds.has(sessionId);
+    const canViewResult =
+      userFlowTestReplayWindows.has(sessionId) &&
+      (userFlowTestReplayStartedSessionIds.has(sessionId) || isFailed || isCompleted);
 
-    if (!isFailed && !userFlowTestReplayCompletedSessionIds.has(sessionId)) {
+    if (!isFailed && !isCompleted && !canViewResult) {
       return "";
     }
 
     return `
-      <p class="user-flow-test-replay-complete" data-result="${isFailed ? "failed" : "completed"}" role="status">
-        <strong>${isFailed ? "끝까지 재생 실패" : "재생 완료"}</strong>
-        ${userFlowTestReplayWindows.has(sessionId) ? `
+      <p class="user-flow-test-replay-complete" data-result="${isFailed ? "failed" : isCompleted ? "completed" : "replaying"}" role="status">
+        ${isFailed || isCompleted ? `<strong>${isFailed ? "끝까지 재생 실패" : "재생 완료"}</strong>` : ""}
+        ${canViewResult ? `
           <button
             class="user-flow-test-result-view"
             type="button"
@@ -1654,6 +1660,7 @@
     if (clearResults) {
       userFlowTestReplayCompletedSessionIds.clear();
       userFlowTestReplayFailedSessionIds.clear();
+      userFlowTestReplayStartedSessionIds.clear();
     }
 
     if (navigationBelongsToTest) {
@@ -1667,7 +1674,11 @@
 
   function requestUserFlowReplay(
     sessionId,
-    { openInNewWindow = false, positionOffset = 0 } = {},
+    {
+      openInNewWindow = false,
+      positionOffset = 0,
+      waitForNetworkIdle = false,
+    } = {},
   ) {
     if (
       !openInNewWindow &&
@@ -1708,9 +1719,16 @@
       });
     }
 
-    const commandSent = sendUserFlowCommand("toggle-replay-session", {
-      sessionId,
-    });
+    const replayPayload = { sessionId };
+
+    if (waitForNetworkIdle) {
+      replayPayload.waitForNetworkIdle = true;
+    }
+
+    const commandSent = sendUserFlowCommand(
+      "toggle-replay-session",
+      replayPayload,
+    );
 
     if (!commandSent) {
       if (startsPageNavigation) {
@@ -1807,6 +1825,11 @@
 
     if (isReplaying) {
       userFlowTestReplayStarted = true;
+
+      if (!userFlowTestReplayStartedSessionIds.has(sessionId)) {
+        userFlowTestReplayStartedSessionIds.add(sessionId);
+        renderedUserFlowTestSignature = "";
+      }
     }
 
     const replayFailed = Boolean(
@@ -1925,7 +1948,9 @@
         if (shouldStartTestReplay) {
           rerenderUserFlowTestReplay();
 
-          if (!requestUserFlowReplay(expectedSessionId)) {
+          if (!requestUserFlowReplay(expectedSessionId, {
+            waitForNetworkIdle: true,
+          })) {
             setUserFlowTestReplayFailed(expectedSessionId);
             scheduleNextUserFlowTestReplay();
             rerenderUserFlowTestReplay();
