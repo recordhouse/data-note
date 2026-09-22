@@ -555,14 +555,22 @@ body.is-user-flow-file-dragging .wrap {
   cursor: pointer;
 }
 
-.user-flow-login {
+.user-flow-external-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border-color: #c4b5fd;
+  background: #f5f3ff;
+  color: #6d28d9;
   text-decoration: none;
 }
 
-.user-flow-login[aria-disabled="true"] {
+.user-flow-external-link:hover:not([aria-disabled="true"]) {
+  border-color: #a78bfa;
+  background: #ede9fe;
+}
+
+.user-flow-external-link[aria-disabled="true"] {
   cursor: not-allowed;
   opacity: 0.45;
 }
@@ -989,6 +997,11 @@ body.is-user-flow-file-dragging .wrap {
   box-shadow: 0 0 4px rgba(20, 184, 166, 0.38);
   transition: transform 320ms linear;
   will-change: transform;
+}
+
+.user-flow-session-replay-progress[data-waiting="true"]
+  .user-flow-session-replay-progress-fill {
+  transition: none;
 }
 
 .user-flow-session[draggable="true"] {

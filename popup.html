@@ -142,11 +142,17 @@
             <span class="user-flow-status" id="userFlowStatus" data-state="idle">연결 대기</span>
             <div class="user-flow-actions">
               <a
-                class="user-flow-action user-flow-login"
+                class="user-flow-action user-flow-external-link"
                 id="userFlowLoginButton"
                 target="_blank"
                 rel="noopener noreferrer"
               >로그인</a>
+              <a
+                class="user-flow-action user-flow-external-link"
+                id="userFlowCommunicationButton"
+                target="_blank"
+                rel="noopener noreferrer"
+              >통신</a>
               <button
                 class="user-flow-action"
                 id="userFlowImportButton"
@@ -182,7 +188,7 @@
                 data-user-flow-command="export-all-recordings"
               >모두 내보내기</button>
               <button
-                class="user-flow-action"
+                class="user-flow-action user-flow-new-window"
                 id="userFlowCloseWindowsButton"
                 type="button"
                 data-user-flow-command="close-opened-windows"
@@ -330,6 +336,9 @@
     <script>
       // 로그인 버튼의 이동 경로는 이 값만 수정하면 됩니다.
       window.USER_FLOW_LOGIN_URL = "/login";
+
+      // 통신 버튼의 이동 경로는 이 값만 수정하면 됩니다.
+      window.USER_FLOW_COMMUNICATION_URL = "/communication";
 
       window.USER_FLOW_IMPORT_URLS = [
         // { name: "로그인 플로우", url: "/flowData/login.json" },

@@ -723,6 +723,7 @@
     const isActive = Boolean(
       flowState.isReplaying && flowState.replaySessionId === session.id,
     );
+    const isWaiting = Boolean(isActive && flowState.isWaitingForRequests);
     const durationMs = Math.max(0, Number(session.durationMs || 0));
     const remainingMs = Math.max(0, Number(flowState.replayRemainingMs || 0));
     const remainingRatio = isActive
@@ -733,6 +734,7 @@
 
     return {
       isActive,
+      isWaiting,
       remainingPercent: Math.round(remainingRatio * 100),
       remainingRatio,
     };
@@ -745,6 +747,7 @@
       <div
         class="user-flow-session-replay-progress"
         data-state="${progress.isActive ? "active" : "inactive"}"
+        data-waiting="${String(progress.isWaiting)}"
         data-user-flow-session-progress="${escapeHtml(session.id)}"
         role="progressbar"
         aria-label="재생 남은 시간"
@@ -752,7 +755,7 @@
         aria-valuemin="0"
         aria-valuemax="100"
         aria-valuenow="${progress.remainingPercent}"
-        aria-valuetext="${progress.isActive ? `재생 ${progress.remainingPercent}% 남음` : "재생 대기"}"
+        aria-valuetext="${progress.isActive ? `${progress.isWaiting ? "통신 대기 · " : ""}재생 ${progress.remainingPercent}% 남음` : "재생 대기"}"
         style="--user-flow-replay-remaining: ${progress.remainingRatio.toFixed(4)}"
       >
         <span class="user-flow-session-replay-progress-fill"></span>
@@ -832,6 +835,7 @@
 
         const progress = getUserFlowSessionReplayProgress(session, flowState);
         progressElement.dataset.state = progress.isActive ? "active" : "inactive";
+        progressElement.dataset.waiting = String(progress.isWaiting);
         progressElement.setAttribute(
           "aria-disabled",
           String(!progress.isActive),
@@ -843,7 +847,7 @@
         progressElement.setAttribute(
           "aria-valuetext",
           progress.isActive
-            ? `재생 ${progress.remainingPercent}% 남음`
+            ? `${progress.isWaiting ? "통신 대기 · " : ""}재생 ${progress.remainingPercent}% 남음`
             : "재생 대기",
         );
         progressElement.style.setProperty(

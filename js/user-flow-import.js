@@ -34,34 +34,42 @@
     let isUrlImporting = false;
     let renderedImportUrls = [];
 
-    function configureLoginLink() {
-      const loginLink = document.querySelector("#userFlowLoginButton");
+    function configureExternalLink(selector, configuredValue) {
+      const link = document.querySelector(selector);
 
-      if (!loginLink) {
+      if (!link) {
         return;
       }
 
-      const configuredUrl = String(window.USER_FLOW_LOGIN_URL || "").trim();
+      const configuredUrl = String(configuredValue || "").trim();
 
       if (!configuredUrl) {
-        loginLink.removeAttribute("href");
-        loginLink.setAttribute("aria-disabled", "true");
+        link.removeAttribute("href");
+        link.setAttribute("aria-disabled", "true");
         return;
       }
 
       try {
-        const loginUrl = new URL(configuredUrl, window.location.href);
+        const url = new URL(configuredUrl, window.location.href);
 
-        if (!["http:", "https:"].includes(loginUrl.protocol)) {
-          throw new Error("지원하지 않는 로그인 URL입니다.");
+        if (!["http:", "https:"].includes(url.protocol)) {
+          throw new Error("지원하지 않는 URL입니다.");
         }
 
-        loginLink.href = loginUrl.href;
-        loginLink.removeAttribute("aria-disabled");
+        link.href = url.href;
+        link.removeAttribute("aria-disabled");
       } catch {
-        loginLink.removeAttribute("href");
-        loginLink.setAttribute("aria-disabled", "true");
+        link.removeAttribute("href");
+        link.setAttribute("aria-disabled", "true");
       }
+    }
+
+    function configureExternalLinks() {
+      configureExternalLink("#userFlowLoginButton", window.USER_FLOW_LOGIN_URL);
+      configureExternalLink(
+        "#userFlowCommunicationButton",
+        window.USER_FLOW_COMMUNICATION_URL,
+      );
     }
 
     function isBlocked() {
@@ -831,7 +839,7 @@
       document.addEventListener("dragleave", handleDragLeave);
       document.addEventListener("drop", handleDrop);
       window.addEventListener("blur", resetFileDrag);
-      configureLoginLink();
+      configureExternalLinks();
       renderUrlOptions();
     }
 

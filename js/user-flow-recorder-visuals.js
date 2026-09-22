@@ -215,8 +215,39 @@
       mask-size: 140% 140%;
     }
 
+    .user-flow-screen-mask-layer[data-layer="primary"]::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      display: block;
+      background-image: radial-gradient(
+        circle,
+        var(--user-flow-screen-mask-dot-color) 0 1.2px,
+        transparent 1.75px
+      );
+      background-position: 0 0;
+      background-repeat: repeat;
+      background-size: 12px 12px;
+      -webkit-mask-image:
+        linear-gradient(to bottom, #000 0, rgba(0, 0, 0, 0.72) 18px, rgba(0, 0, 0, 0.22) 50px, transparent 90px),
+        linear-gradient(to top, #000 0, rgba(0, 0, 0, 0.72) 18px, rgba(0, 0, 0, 0.22) 50px, transparent 90px),
+        linear-gradient(to right, #000 0, rgba(0, 0, 0, 0.72) 18px, rgba(0, 0, 0, 0.22) 50px, transparent 90px),
+        linear-gradient(to left, #000 0, rgba(0, 0, 0, 0.72) 18px, rgba(0, 0, 0, 0.22) 50px, transparent 90px);
+      -webkit-mask-repeat: no-repeat;
+      -webkit-mask-size: 100% 100%;
+      mask-image:
+        linear-gradient(to bottom, #000 0, rgba(0, 0, 0, 0.72) 18px, rgba(0, 0, 0, 0.22) 50px, transparent 90px),
+        linear-gradient(to top, #000 0, rgba(0, 0, 0, 0.72) 18px, rgba(0, 0, 0, 0.22) 50px, transparent 90px),
+        linear-gradient(to right, #000 0, rgba(0, 0, 0, 0.72) 18px, rgba(0, 0, 0, 0.22) 50px, transparent 90px),
+        linear-gradient(to left, #000 0, rgba(0, 0, 0, 0.72) 18px, rgba(0, 0, 0, 0.22) 50px, transparent 90px);
+      mask-repeat: no-repeat;
+      mask-size: 100% 100%;
+      pointer-events: none;
+    }
+
     .user-flow-screen-mask[data-mode="recording"]
       .user-flow-screen-mask-layer[data-layer="primary"] {
+      --user-flow-screen-mask-dot-color: rgba(255, 235, 242, 0.62);
       background-image:
         linear-gradient(to bottom, rgba(244, 63, 94, 0.78) 0, rgba(244, 63, 94, 0.58) 18px, rgba(244, 63, 94, 0.22) 50px, rgba(244, 63, 94, 0) 90px),
         linear-gradient(to top, rgba(244, 63, 94, 0.78) 0, rgba(244, 63, 94, 0.58) 18px, rgba(244, 63, 94, 0.22) 50px, rgba(244, 63, 94, 0) 90px),
@@ -235,6 +266,7 @@
 
     .user-flow-screen-mask[data-mode="replaying"]
       .user-flow-screen-mask-layer[data-layer="primary"] {
+      --user-flow-screen-mask-dot-color: rgba(218, 255, 242, 0.62);
       background-image:
         linear-gradient(to bottom, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 18px, rgba(0, 168, 120, 0.22) 50px, rgba(0, 168, 120, 0) 90px),
         linear-gradient(to top, rgba(0, 168, 120, 0.78) 0, rgba(0, 168, 120, 0.58) 18px, rgba(0, 168, 120, 0.22) 50px, rgba(0, 168, 120, 0) 90px),

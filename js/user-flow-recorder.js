@@ -872,6 +872,41 @@
     return true;
   }
 
+  async function waitForReplayEventTime(
+    replayRunId,
+    replayStartedAt,
+    eventAt,
+    { waitForNetworkIdle = false } = {},
+  ) {
+    while (!state.replayAbort && state.replayRunId === replayRunId) {
+      if (waitForNetworkIdle && getPendingRequestCount() > 0) {
+        if (!(await waitForReplayRequests(replayRunId, { waitForNetworkIdle: true }))) {
+          return false;
+        }
+
+        continue;
+      }
+
+      const replayElapsedMs = Math.max(
+        0,
+        performance.now() - replayStartedAt - state.replayPausedMs,
+      );
+      const remainingDelayMs = Math.max(0, Number(eventAt || 0) - replayElapsedMs);
+
+      if (remainingDelayMs <= 0) {
+        return true;
+      }
+
+      await sleep(
+        waitForNetworkIdle
+          ? Math.min(remainingDelayMs, REQUEST_ABORT_POLL_MS)
+          : remainingDelayMs,
+      );
+    }
+
+    return false;
+  }
+
 
   function createUniqueSessionId(recordedAt = Date.now(), reservedIds) {
     const ids =
@@ -1352,15 +1387,12 @@
           break;
         }
 
-        const waitMs =
-          recordedEvent.at -
-          (performance.now() - replayStartedAt - state.replayPausedMs);
-
-        if (waitMs > 0) {
-          await sleep(waitMs);
-        }
-
-        if (state.replayAbort || state.replayRunId !== replayRunId) {
+        if (!(await waitForReplayEventTime(
+          replayRunId,
+          replayStartedAt,
+          recordedEvent.at,
+          { waitForNetworkIdle },
+        ))) {
           break;
         }
 

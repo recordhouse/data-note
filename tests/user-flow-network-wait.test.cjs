@@ -140,6 +140,34 @@ test("a new request in the idle gap restarts the test's quiet period", async (t)
   assert.ok(clicks[0].at - completedAt >= 490);
 });
 
+test("a request that starts during a scheduled replay delay freezes time and progress", async (t) => {
+  const { recorder, clicks } = createRecorder(t, {
+    events: [{ type: "click", selector: "#delayed", at: 250, page: "/test" }],
+  });
+  const replay = recorder.replay("first", { waitForNetworkIdle: true });
+  await delay(570);
+  assert.equal(clicks.length, 0);
+
+  const request = recorder.requestStart("fetch:GET:https://example.test/api/during-delay");
+  await delay(80);
+  const waitingState = recorder.getState();
+  assert.equal(waitingState.isWaitingForRequests, true);
+  const frozenRemainingMs = waitingState.replayRemainingMs;
+
+  await delay(150);
+  const laterWaitingState = recorder.getState();
+  assert.equal(laterWaitingState.isWaitingForRequests, true);
+  assert.ok(
+    Math.abs(laterWaitingState.replayRemainingMs - frozenRemainingMs) <= 20,
+    `expected frozen remaining time, got ${frozenRemainingMs} then ${laterWaitingState.replayRemainingMs}`,
+  );
+  assert.equal(clicks.length, 0);
+
+  recorder.requestEnd(request, { status: 200 });
+  await replay;
+  assert.equal(clicks.length, 1);
+});
+
 test("five identical outstanding requests cannot bypass a test wait", async (t) => {
   const { recorder, clicks } = createRecorder(t);
   const requestIds = Array.from({ length: 5 }, () => recorder.requestStart("same-request"));

@@ -415,6 +415,20 @@ test("top status ignores response errors and retains replay, waiting, and fatal 
   }
 });
 
+test("the replay progress bar disables interpolation while communication is waiting", () => {
+  const progressRenderer = extract(
+    "getUserFlowSessionReplayProgress",
+    "getUserFlowSessionSignature",
+  );
+  assert.match(progressRenderer, /isWaiting = Boolean\(isActive && flowState\.isWaitingForRequests\)/);
+  assert.match(progressRenderer, /data-waiting="\$\{String\(progress\.isWaiting\)\}"/);
+  const css = fs.readFileSync(path.join(__dirname, "../css/popup.css"), "utf8");
+  assert.match(
+    css,
+    /\.user-flow-session-replay-progress\[data-waiting="true"\][\s\S]*?\.user-flow-session-replay-progress-fill\s*\{\s*transition: none;/,
+  );
+});
+
 test("failed replay commands move to the next list", () => {
   const fixture = createSequence({ sendSucceeds: false });
   fixture.start();
@@ -936,7 +950,7 @@ test("the top close-windows control follows export and the clear border is fully
   const html = fs.readFileSync(path.join(__dirname, "../popup.html"), "utf8");
   assert.match(
     html,
-    /id="userFlowExportAllButton"[\s\S]*?>모두 내보내기<\/button>\s*<button[\s\S]*?id="userFlowCloseWindowsButton"[\s\S]*?data-user-flow-command="close-opened-windows"[\s\S]*?>새창 닫기<\/button>\s*<button[\s\S]*?id="userFlowClearAllButton"/,
+    /id="userFlowExportAllButton"[\s\S]*?>모두 내보내기<\/button>\s*<button\s+class="user-flow-action user-flow-new-window"[\s\S]*?id="userFlowCloseWindowsButton"[\s\S]*?data-user-flow-command="close-opened-windows"[\s\S]*?>새창 닫기<\/button>\s*<button[\s\S]*?id="userFlowClearAllButton"/,
   );
   const css = fs.readFileSync(path.join(__dirname, "../css/popup.css"), "utf8");
   assert.match(
