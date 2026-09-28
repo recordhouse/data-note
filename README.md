@@ -71,5 +71,5 @@ function renderResponsePopup(communicationName, responseJson) {
 openResponsePopup();
 
 // 서버 응답을 받은 시점
-renderResponsePopup("aaaaa", responseJson);
+renderResponsePopup("통신명", responseJson);
 ```
