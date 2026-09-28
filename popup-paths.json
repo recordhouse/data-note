@@ -1,0 +1,5 @@
+{
+  "loginUrl": "/login",
+  "communicationUrl": "/communication",
+  "importUrls": []
+}

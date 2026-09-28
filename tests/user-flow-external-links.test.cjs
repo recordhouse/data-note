@@ -16,10 +16,11 @@ const cssSource = fs.readFileSync(
   path.join(__dirname, "../css/popup.css"),
   "utf8",
 );
-const readmeSource = fs.readFileSync(
-  path.join(__dirname, "../README.md"),
+const pathConfigSource = fs.readFileSync(
+  path.join(__dirname, "../popup-paths.json"),
   "utf8",
 );
+const pathConfig = JSON.parse(pathConfigSource);
 
 test("login and communication links sit in a smaller lower-right action row", () => {
   const importIndex = popupSource.indexOf('id="userFlowImportButton"');
@@ -41,7 +42,7 @@ test("login and communication links sit in a smaller lower-right action row", ()
   assert.doesNotMatch(importSource, /window\.USER_FLOW_/);
   assert.match(
     importSource,
-    /configureExternalLink\(\s*"#userFlowCommunicationButton",\s*readmeConfig\.communicationUrl/,
+    /configureExternalLink\(\s*"#userFlowCommunicationButton",\s*pathConfig\.communicationUrl/,
   );
   const externalLinkRule = cssSource.match(
     /\.user-flow-external-link\s*\{([^}]*)\}/,
@@ -59,24 +60,18 @@ test("login and communication links sit in a smaller lower-right action row", ()
   );
 });
 
-test("popup paths are parsed from the marked README JSON block", () => {
-  const context = vm.createContext({ window: {} });
-  vm.runInContext(importSource, context);
-  const config = JSON.parse(JSON.stringify(
-    context.window.UserFlowImport.parseReadmeConfig(readmeSource),
-  ));
-
-  assert.deepEqual(config, {
+test("popup paths are stored in a dedicated root JSON file", () => {
+  assert.deepEqual(pathConfig, {
     communicationUrl: "/communication",
     importUrls: [],
     loginUrl: "/login",
   });
-  assert.match(importSource, /const README_CONFIG_PATH = "\.\/README\.md";/);
-  assert.match(importSource, /fetch\(readmeUrl\.href,[\s\S]*?cache: "no-store"/);
-  assert.match(readmeSource, /<!-- DATA_NOTE_POPUP_CONFIG_START -->[\s\S]*?<!-- DATA_NOTE_POPUP_CONFIG_END -->/);
+  assert.match(importSource, /const PATH_CONFIG_PATH = "\.\/popup-paths\.json";/);
+  assert.match(importSource, /fetch\(configUrl\.href,[\s\S]*?cache: "no-store"/);
+  assert.doesNotMatch(importSource, /README_CONFIG|parseReadmeConfig/);
 });
 
-test("controller loads README paths before enabling configured links", async () => {
+test("controller loads the root path config before enabling configured links", async () => {
   function createElement() {
     const attributes = new Map();
     return {
@@ -122,7 +117,7 @@ test("controller loads README paths before enabling configured links", async () 
       requests.push({ url, options });
       return {
         ok: true,
-        text: async () => readmeSource,
+        json: async () => pathConfig,
       };
     },
     window: {
@@ -136,10 +131,10 @@ test("controller loads README paths before enabling configured links", async () 
 
   controller.attach();
   assert.equal(elements["#userFlowLoginButton"].getAttribute("aria-disabled"), "true");
-  await controller.loadReadmeConfig();
+  await controller.loadPathConfig();
 
   assert.equal(requests.length, 1);
-  assert.equal(requests[0].url, "https://example.test/README.md");
+  assert.equal(requests[0].url, "https://example.test/popup-paths.json");
   assert.equal(requests[0].options.cache, "no-store");
   assert.equal(elements["#userFlowLoginButton"].href, "https://example.test/login");
   assert.equal(
