@@ -7,6 +7,9 @@
 
   const ARCHIVE_MANIFEST_FILE_NAME = "user-flow-manifest.json";
   const MAX_NOTICE_LENGTH = 1000;
+  const README_CONFIG_PATH = "./README.md";
+  const README_CONFIG_START_MARKER = "<!-- DATA_NOTE_POPUP_CONFIG_START -->";
+  const README_CONFIG_END_MARKER = "<!-- DATA_NOTE_POPUP_CONFIG_END -->";
 
   const DEFAULT_LIMITS = Object.freeze({
     maxArchiveBytes: 50 * 1024 * 1024,
@@ -16,6 +19,41 @@
     maxSessionsPerTab: 20,
     maxTabs: 20,
   });
+
+  function parseReadmeConfig(readmeSource) {
+    const source = String(readmeSource || "");
+    const startIndex = source.indexOf(README_CONFIG_START_MARKER);
+    const endIndex = source.indexOf(
+      README_CONFIG_END_MARKER,
+      startIndex + README_CONFIG_START_MARKER.length,
+    );
+
+    if (startIndex < 0 || endIndex <= startIndex) {
+      throw new Error("README에서 Data Note 경로 설정을 찾지 못했습니다.");
+    }
+
+    const configSection = source.slice(
+      startIndex + README_CONFIG_START_MARKER.length,
+      endIndex,
+    );
+    const jsonSource = configSection.match(
+      /```(?:json)?\s*([\s\S]*?)```/i,
+    )?.[1];
+
+    if (!jsonSource) {
+      throw new Error("README의 Data Note 경로 설정 JSON을 찾지 못했습니다.");
+    }
+
+    const parsedConfig = JSON.parse(jsonSource);
+
+    return Object.freeze({
+      communicationUrl: String(parsedConfig?.communicationUrl || "").trim(),
+      importUrls: Array.isArray(parsedConfig?.importUrls)
+        ? parsedConfig.importUrls
+        : [],
+      loginUrl: String(parsedConfig?.loginUrl || "").trim(),
+    });
+  }
 
   function createController(options = {}) {
     const limits = { ...DEFAULT_LIMITS, ...(options.limits || {}) };
@@ -32,6 +70,13 @@
     let attached = false;
     let dragDepth = 0;
     let isUrlImporting = false;
+    let isReadmeConfigLoading = true;
+    let readmeConfig = Object.freeze({
+      communicationUrl: "",
+      importUrls: [],
+      loginUrl: "",
+    });
+    let readmeConfigPromise = null;
     let renderedImportUrls = [];
 
     function configureExternalLink(selector, configuredValue) {
@@ -65,11 +110,57 @@
     }
 
     function configureExternalLinks() {
-      configureExternalLink("#userFlowLoginButton", window.USER_FLOW_LOGIN_URL);
+      configureExternalLink("#userFlowLoginButton", readmeConfig.loginUrl);
       configureExternalLink(
         "#userFlowCommunicationButton",
-        window.USER_FLOW_COMMUNICATION_URL,
+        readmeConfig.communicationUrl,
       );
+    }
+
+    function loadReadmeConfig() {
+      if (readmeConfigPromise) {
+        return readmeConfigPromise;
+      }
+
+      isReadmeConfigLoading = true;
+      updateControls();
+      const readmeUrl = new URL(README_CONFIG_PATH, window.location.href);
+      readmeConfigPromise = fetch(readmeUrl.href, {
+        cache: "no-store",
+        credentials: "same-origin",
+      })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`README 요청에 실패했습니다. (${response.status})`);
+          }
+
+          return response.text();
+        })
+        .then((readmeSource) => {
+          readmeConfig = parseReadmeConfig(readmeSource);
+          configureExternalLinks();
+          renderUrlOptions();
+          return readmeConfig;
+        })
+        .catch((error) => {
+          readmeConfig = Object.freeze({
+            communicationUrl: "",
+            importUrls: [],
+            loginUrl: "",
+          });
+          configureExternalLinks();
+          renderUrlOptions();
+          showStatus(
+            error?.message || "README 경로 설정을 불러오지 못했습니다.",
+          );
+          return readmeConfig;
+        })
+        .finally(() => {
+          isReadmeConfigLoading = false;
+          updateControls();
+        });
+
+      return readmeConfigPromise;
     }
 
     function isBlocked() {
@@ -108,7 +199,9 @@
       }
 
       if (urlImportButton) {
-        urlImportButton.disabled = disabled;
+        urlImportButton.disabled = Boolean(
+          disabled || isReadmeConfigLoading || !renderedImportUrls.length,
+        );
       }
 
       if (urlImportSelect) {
@@ -121,11 +214,11 @@
     }
 
     function getImportUrls() {
-      if (!Array.isArray(window.USER_FLOW_IMPORT_URLS)) {
+      if (!Array.isArray(readmeConfig.importUrls)) {
         return [];
       }
 
-      return window.USER_FLOW_IMPORT_URLS
+      return readmeConfig.importUrls
         .map((item) => ({
           name: String(item?.name || "").trim().slice(0, 100),
           url: String(item?.url || "").trim(),
@@ -841,16 +934,19 @@
       window.addEventListener("blur", resetFileDrag);
       configureExternalLinks();
       renderUrlOptions();
+      updateControls();
+      void loadReadmeConfig();
     }
 
     return Object.freeze({
       attach,
       importFile,
       importUrl: importFromUrl,
+      loadReadmeConfig,
       renderUrlOptions,
       updateControls,
     });
   }
 
-  window.UserFlowImport = Object.freeze({ createController });
+  window.UserFlowImport = Object.freeze({ createController, parseReadmeConfig });
 })();
