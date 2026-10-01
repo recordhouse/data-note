@@ -72,6 +72,7 @@
   let editingUserFlowSessionId = "";
   let editingUserFlowTabId = "";
   let editingUserFlowNotice = false;
+  let renderedUserFlowTabSignature = "";
   let renderedUserFlowSessionSignature = "";
   let renderedUserFlowTestSignature = "";
   let draggedUserFlowSessionId = "";
@@ -348,6 +349,7 @@
     editingUserFlowSessionId = "";
     editingUserFlowTabId = "";
     editingUserFlowNotice = false;
+    renderedUserFlowTabSignature = "";
     renderedUserFlowSessionSignature = "";
     renderedUserFlowTestSignature = "";
     resetUserFlowSessionDrag();
@@ -573,6 +575,18 @@
     const organizationDisabled = Boolean(
       currentUserFlowState.isRecording || currentUserFlowState.isReplaying,
     );
+    const tabSignature = JSON.stringify({
+      activeTabId: userFlowTabs.activeTabId,
+      editingTabId: editingUserFlowTabId,
+      organizationDisabled,
+      tabs: userFlowTabs.tabs.map((tab) => ({ id: tab.id, name: tab.name })),
+    });
+
+    if (renderedUserFlowTabSignature === tabSignature) {
+      return;
+    }
+
+    renderedUserFlowTabSignature = tabSignature;
 
     tabList.innerHTML = userFlowTabs.tabs
       .map((tab) => {

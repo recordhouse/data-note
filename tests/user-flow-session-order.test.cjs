@@ -284,11 +284,22 @@ test("test view buttons stay beside replay, start disabled, and activate for a r
 });
 
 test("list tab edit buttons use gear and check SVG icons without changing their controls", () => {
-  const tabList = { innerHTML: "" };
+  let renderCount = 0;
+  let tabMarkup = "";
+  const tabList = {
+    get innerHTML() {
+      return tabMarkup;
+    },
+    set innerHTML(value) {
+      renderCount += 1;
+      tabMarkup = value;
+    },
+  };
   const context = vm.createContext({
     document: { querySelector: () => tabList },
     currentUserFlowState: {},
     editingUserFlowTabId: "",
+    renderedUserFlowTabSignature: "",
     userFlowTabs: { activeTabId: "default", tabs: [{ id: "default", name: "Tab 01" }] },
     getUserFlowTabElementId: (id) => `tab-${id}`,
     escapeHtml: String,
@@ -304,14 +315,20 @@ test("list tab edit buttons use gear and check SVG icons without changing their 
   assert.match(tabList.innerHTML, /aria-label="Tab 01 탭 이름 수정"/);
   assert.doesNotMatch(tabList.innerHTML, /✎/);
   assert.doesNotMatch(tabList.innerHTML, />수정<\/button>/);
+  assert.equal(renderCount, 1);
+  context.currentUserFlowState = { replayProgress: 0.5 };
+  vm.runInContext("renderUserFlowTabs([])", context);
+  assert.equal(renderCount, 1, "unrelated state updates must preserve the tab input DOM");
   context.editingUserFlowTabId = "default";
   vm.runInContext("renderUserFlowTabs([])", context);
+  assert.equal(renderCount, 2);
   assert.match(tabList.innerHTML, /data-icon="save"/);
   assert.match(tabList.innerHTML, /<path d="M5 12l4 4L19 6"/);
   assert.match(tabList.innerHTML, /aria-label="Tab 01 탭 저장"/);
   assert.doesNotMatch(tabList.innerHTML, />저장<\/button>/);
   context.currentUserFlowState = { isRecording: true };
   vm.runInContext("renderUserFlowTabs([])", context);
+  assert.equal(renderCount, 3);
   assert.match(tabList.innerHTML, /data-user-flow-tab-edit="default"\s*disabled\s*>/);
   assert.match(tabList.innerHTML, /data-icon="save"/);
 });
