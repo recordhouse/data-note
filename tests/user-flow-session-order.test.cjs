@@ -38,7 +38,12 @@ function createOrdering({ view = "test", failSave = false } = {}) {
     list.sessions = sessionIds.map((sessionId, index) => {
       const classes = new Set();
       const session = {
-        dataset: { userFlowSessionId: sessionId },
+        dataset: {
+          userFlowSessionId: sessionId,
+          ...(id === "userFlowTestSessionList"
+            ? { userFlowTestEntryId: sessionId }
+            : {}),
+        },
         draggable: true,
         closest: (selector) => selector === "[data-user-flow-session-id]" ? session : null,
         getBoundingClientRect: () => ({ top: 120 + index * 90, height: 70 }),
@@ -80,10 +85,12 @@ function createOrdering({ view = "test", failSave = false } = {}) {
     },
     USER_FLOW_TAB_STORAGE_KEY: storageKey,
     USER_FLOW_VIEW_TEST: "test",
+    MAX_USER_FLOW_SESSIONS: 20,
     USER_FLOW_DRAG_SCROLL_EDGE_PX: 48,
     USER_FLOW_DRAG_SCROLL_STEP_PX: 18,
     activeUserFlowView: view,
     draggedUserFlowSessionId: "",
+    draggedUserFlowTestEntryId: "",
     replayNavigationSessionId: "",
     syncingUserFlowTabsFromStorage: false,
     renderedUserFlowTestSignature: "",
@@ -93,9 +100,11 @@ function createOrdering({ view = "test", failSave = false } = {}) {
     userFlowTestReplayWindows: new Map(),
     userFlowSessionWindows: new Map(),
     userFlowTestReplayCurrentSessionId: "",
+    userFlowTestReplayCurrentEntryId: "",
     currentUserFlowState: { isRecording: false, isReplaying: false },
     userFlowTabs: {
       sessionOrder: ["third", "second", "first"],
+      testEntryIds: ["first", "second", "third"],
       testSessionIds: ["first", "second", "third"],
       sessionTabs: { first: "default", second: "default", third: "default" },
     },
@@ -108,6 +117,7 @@ function createOrdering({ view = "test", failSave = false } = {}) {
     },
     resetUserFlowSessionDrag() {
       context.draggedUserFlowSessionId = "";
+      context.draggedUserFlowTestEntryId = "";
       lists[view].sessions.forEach((session) => session.classList.remove("is-dragging", "is-drop-before", "is-drop-after"));
     },
     rerenderUserFlowOrganization: () => { renders += 1; },
@@ -120,12 +130,14 @@ function createOrdering({ view = "test", failSave = false } = {}) {
     renderUserFlowSessionReplayProgress: () => "",
     escapeHtml: String,
   });
+  vm.runInContext(extract("normalizeUserFlowTestEntryIds", "normalizeUserFlowNotice"), context);
   vm.runInContext(extract("persistUserFlowTabs", "resetUserFlowOrganization"), context);
   vm.runInContext(extract("hasDraggedFiles", "captureUserFlowSessionPositions"), context);
   vm.runInContext(extract("handleUserFlowSessionDragStart", "handleUserFlowTabDragOver"), context);
   vm.runInContext(extract("getActiveUserFlowSessionList", "handleUserFlowTestDrop"), context);
   vm.runInContext(extract("handleUserFlowSessionOrderDrop", "handleUserFlowSessionDrop"), context);
   vm.runInContext(extract("renderUserFlowTestReplayResult", "renderUserFlowNotice"), context);
+  vm.runInContext(extract("handleUserFlowTestSessionRemove", "focusUserFlowTabNameInput"), context);
   function event(y, target = lists[view], types = []) {
     return {
       target, clientX: 150, clientY: y, prevented: false,
@@ -148,6 +160,17 @@ function createOrdering({ view = "test", failSave = false } = {}) {
     },
     dragOver: (value) => dispatch("handleUserFlowSessionOrderDragOver", value),
     drop: (value) => dispatch("handleUserFlowSessionOrderDrop", value),
+    remove(entryId) {
+      context.removeEvent = {
+        target: {
+          closest: () => ({
+            dataset: { userFlowTestRemove: entryId },
+            disabled: false,
+          }),
+        },
+      };
+      vm.runInContext("handleUserFlowTestSessionRemove(removeEvent)", context);
+    },
     markup(flowState = {}) {
       context.document.querySelector = () => renderedList;
       context.renderState = flowState;
@@ -281,6 +304,36 @@ test("test view buttons stay beside replay, start disabled, and activate for a r
     /data-user-flow-test-result-view|보기<\/button>/,
   );
   assert.doesNotMatch(markup, /재생 완료/);
+});
+
+test("duplicate test entries render independent numbered titles", () => {
+  const fixture = createOrdering();
+  fixture.context.userFlowTabs.testSessionIds = ["first", "first", "first"];
+  fixture.context.userFlowTabs.testEntryIds = ["first", "first::2", "first::3"];
+  const markup = fixture.markup();
+
+  assert.match(markup, /<span>first 1<\/span>/);
+  assert.match(markup, /<span>first 2<\/span>/);
+  assert.match(markup, /<span>first 3<\/span>/);
+  assert.match(markup, /data-user-flow-test-entry-id="first::2"/);
+  assert.match(markup, /data-user-flow-test-remove="first::3"/);
+});
+
+test("deleting one duplicate test entry preserves the other copies", () => {
+  const fixture = createOrdering();
+  fixture.context.userFlowTabs.testSessionIds = ["first", "first", "first"];
+  fixture.context.userFlowTabs.testEntryIds = ["first", "first::2", "first::3"];
+
+  fixture.remove("first::2");
+
+  assert.deepEqual(
+    plain(fixture.context.userFlowTabs.testSessionIds),
+    ["first", "first"],
+  );
+  assert.deepEqual(
+    plain(fixture.context.userFlowTabs.testEntryIds),
+    ["first", "first::3"],
+  );
 });
 
 test("list tab edit buttons use gear and check SVG icons without changing their controls", () => {

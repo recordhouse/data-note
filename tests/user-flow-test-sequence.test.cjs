@@ -58,15 +58,20 @@ function createSequence({
       clearTimeout: (id) => timers.delete(id),
     },
     USER_FLOW_TEST_REPLAY_ADVANCE_MS: 350,
+    MAX_USER_FLOW_SESSIONS: 20,
     REPLAY_NAVIGATION_TIMEOUT_MS: 60000,
     REPLAY_NAVIGATION_IDLE_MS: 500,
     currentUserFlowState: {
       isReplaying: false,
       sessions: ["first", "second", "third"].map((id) => ({ id, eventCount, environment })),
     },
-    userFlowTabs: { testSessionIds: ["first", "second", "third"] },
+    userFlowTabs: {
+      testEntryIds: ["first", "second", "third"],
+      testSessionIds: ["first", "second", "third"],
+    },
     userFlowTestReplayAdvanceTimer: 0,
     userFlowTestReplayCurrentSessionId: "",
+    userFlowTestReplayCurrentEntryId: "",
     userFlowTestReplayCompletedSessionIds: new Set(),
     userFlowTestReplayFailedSessionIds: new Set(),
     userFlowTestReplayStartedSessionIds: new Set(),
@@ -123,6 +128,7 @@ function createSequence({
     showUserFlowImportStatus: (message) => statuses.push(message),
     escapeHtml: (value) => String(value).replaceAll('"', "&quot;"),
   });
+  vm.runInContext(extract("normalizeUserFlowTestEntryIds", "normalizeUserFlowNotice"), context);
   vm.runInContext(extract("isUserFlowTestReplayRunning", "handleUserFlowControl"), context);
   vm.runInContext(extract("handleUserFlowControl", "isUserFlowOrganizationBlocked"), context);
   vm.runInContext(extract("renderUserFlowTestReplayResult", "renderUserFlowTestSessions"), context);
@@ -266,6 +272,35 @@ test("completed sessions advance through the test list in order", () => {
   assert.equal(fixture.context.userFlowTestReplayCurrentSessionId, "");
   assert.equal(fixture.commands.length, 2);
   assert.deepEqual([...fixture.context.userFlowTestReplayCompletedSessionIds], ["second", "third"]);
+});
+
+test("duplicate entries of one log replay and retain results independently", () => {
+  const fixture = createSequence();
+  const entryIds = ["first", "first::2", "first::3"];
+  fixture.context.userFlowTabs.testSessionIds = ["first", "first", "first"];
+  fixture.context.userFlowTabs.testEntryIds = entryIds;
+  fixture.start(entryIds[0]);
+
+  entryIds.forEach((entryId, index) => {
+    assert.equal(fixture.context.userFlowTestReplayCurrentEntryId, entryId);
+    assert.equal(fixture.commands.at(-1).sessionId, "first");
+    fixture.update({ isReplaying: true, replaySessionId: "first" });
+    fixture.update({
+      isReplaying: false,
+      replaySessionId: "",
+      completedReplaySessionId: "first",
+    });
+    assert.ok(fixture.context.userFlowTestReplayCompletedSessionIds.has(entryId));
+    fixture.runAdvance();
+    assert.equal(fixture.windows[index].closed, false);
+  });
+
+  assert.equal(fixture.commands.length, 3);
+  assert.equal(fixture.context.userFlowTestReplayCurrentEntryId, "");
+  assert.deepEqual(
+    [...fixture.context.userFlowTestReplayWindows.keys()],
+    entryIds,
+  );
 });
 
 test("test playback follows the saved reordered list", () => {
@@ -910,9 +945,10 @@ test("log-list title actions use rename and export icons while controls expose t
   assert.doesNotMatch(css, /\.user-flow-name-action/);
 });
 
-test("the test button adds a log once and ignores duplicates or disabled clicks", () => {
+test("the test button adds the same log repeatedly and ignores disabled or missing clicks", () => {
   const fixture = createSequence();
   fixture.context.userFlowTabs.testSessionIds = [];
+  fixture.context.userFlowTabs.testEntryIds = [];
 
   fixture.clickAddTest("second");
   assert.deepEqual(toPlain(fixture.context.userFlowTabs.testSessionIds), ["second"]);
@@ -921,8 +957,9 @@ test("the test button adds a log once and ignores duplicates or disabled clicks"
   fixture.clickAddTest("second");
   fixture.clickAddTest("third", true);
   fixture.clickAddTest("missing");
-  assert.deepEqual(toPlain(fixture.context.userFlowTabs.testSessionIds), ["second"]);
-  assert.equal(fixture.toasts.length, 1);
+  assert.deepEqual(toPlain(fixture.context.userFlowTabs.testSessionIds), ["second", "second"]);
+  assert.deepEqual(toPlain(fixture.context.userFlowTabs.testEntryIds), ["second", "second::2"]);
+  assert.equal(fixture.toasts.length, 2);
 });
 
 test("list view raises its linked window and close-windows closes every popup opened by Data Note", () => {

@@ -76,6 +76,7 @@
   let renderedUserFlowSessionSignature = "";
   let renderedUserFlowTestSignature = "";
   let draggedUserFlowSessionId = "";
+  let draggedUserFlowTestEntryId = "";
   let userFlowMoveToastTimer = 0;
   let userFlowMoveToastClearTimer = 0;
   let replayNavigationRequestedReplay = false;
@@ -95,11 +96,13 @@
   let parentReconnectStartedAt = 0;
   let parentReconnectTimer = 0;
   let userFlowTestReplayAdvanceTimer = 0;
+  // Test replay result collections use the unique test entry ID as their key.
   let userFlowTestReplayCompletedSessionIds = new Set();
   const userFlowTestReplayFailedSessionIds = new Set();
   const userFlowTestReplayStartedSessionIds = new Set();
   const userFlowTestReplayWindows = new Map();
   let userFlowTestReplayCurrentSessionId = "";
+  let userFlowTestReplayCurrentEntryId = "";
   let userFlowTestReplayIndex = -1;
   let userFlowTestReplayQueue = [];
   let userFlowTestReplayStarted = false;
@@ -115,12 +118,81 @@
       noticeCollapsed: true,
       sessionOrder: [],
       sessionTabs: {},
+      testEntryIds: [],
       testSessionIds: [],
       tabs: withInitialTab
         ? [{ id: DEFAULT_USER_FLOW_TAB_ID, name: "Tab 01" }]
         : [],
-      version: 9,
+      version: 10,
     };
+  }
+
+  function normalizeUserFlowTestEntryIds(sessionIds, storedEntryIds = []) {
+    const usedEntryIds = new Set();
+
+    return sessionIds.map((sessionId, index) => {
+      const storedEntryId = String(storedEntryIds[index] || "")
+        .trim()
+        .slice(0, 240);
+
+      if (
+        storedEntryId &&
+        !usedEntryIds.has(storedEntryId) &&
+        (storedEntryId === sessionId ||
+          storedEntryId.startsWith(`${sessionId}::`))
+      ) {
+        usedEntryIds.add(storedEntryId);
+        return storedEntryId;
+      }
+
+      let sequence = 1;
+      let entryId = sessionId;
+
+      while (usedEntryIds.has(entryId)) {
+        sequence += 1;
+        entryId = `${sessionId}::${sequence}`.slice(0, 240);
+      }
+
+      usedEntryIds.add(entryId);
+      return entryId;
+    });
+  }
+
+  function ensureUserFlowTestEntryIds() {
+    const sessionIds = Array.isArray(userFlowTabs.testSessionIds)
+      ? userFlowTabs.testSessionIds
+      : [];
+    const entryIds = Array.isArray(userFlowTabs.testEntryIds)
+      ? userFlowTabs.testEntryIds
+      : [];
+
+    if (
+      entryIds.length === sessionIds.length &&
+      new Set(entryIds).size === entryIds.length &&
+      entryIds.every(
+        (entryId, index) =>
+          typeof entryId === "string" &&
+          entryId &&
+          (entryId === sessionIds[index] ||
+            entryId.startsWith(`${sessionIds[index]}::`)),
+      )
+    ) {
+      return entryIds;
+    }
+
+    userFlowTabs.testEntryIds = normalizeUserFlowTestEntryIds(
+      sessionIds,
+      entryIds,
+    );
+    return userFlowTabs.testEntryIds;
+  }
+
+  function getUserFlowTestEntries() {
+    const entryIds = ensureUserFlowTestEntryIds();
+    return userFlowTabs.testSessionIds.map((sessionId, index) => ({
+      id: entryIds[index],
+      sessionId,
+    }));
   }
 
   function normalizeUserFlowNotice(value) {
@@ -273,7 +345,6 @@
       const sessionOrder = [];
       const orderedSessionIds = new Set();
       const testSessionIds = [];
-      const testSessionIdSet = new Set();
 
       if (stored.sessionTabs && typeof stored.sessionTabs === "object") {
         Object.entries(stored.sessionTabs).forEach(([sessionId, tabId]) => {
@@ -298,12 +369,16 @@
         stored.testSessionIds.slice(0, MAX_USER_FLOW_SESSIONS).forEach((sessionId) => {
           const normalizedId = String(sessionId || "").trim().slice(0, 200);
 
-          if (normalizedId && !testSessionIdSet.has(normalizedId)) {
-            testSessionIdSet.add(normalizedId);
+          if (normalizedId) {
             testSessionIds.push(normalizedId);
           }
         });
       }
+
+      const testEntryIds = normalizeUserFlowTestEntryIds(
+        testSessionIds,
+        Array.isArray(stored.testEntryIds) ? stored.testEntryIds : [],
+      );
 
       return {
         activeTabId: tabIds.has(stored.activeTabId)
@@ -318,9 +393,10 @@
           : true,
         sessionOrder,
         sessionTabs,
+        testEntryIds,
         testSessionIds,
         tabs,
-        version: 9,
+        version: 10,
       };
     } catch (error) {
       return fallback;
@@ -333,7 +409,8 @@
     }
 
     try {
-      userFlowTabs.version = 9;
+      ensureUserFlowTestEntryIds();
+      userFlowTabs.version = 10;
       window.localStorage.setItem(USER_FLOW_TAB_STORAGE_KEY, JSON.stringify(userFlowTabs));
       return true;
     } catch (error) {
@@ -400,12 +477,14 @@
         changed = true;
       }
 
-      const nextTestSessionIds = userFlowTabs.testSessionIds.filter((sessionId) =>
-        sessionIds.has(sessionId),
+      const nextTestEntries = getUserFlowTestEntries().filter((entry) =>
+        sessionIds.has(entry.sessionId),
       );
+      const nextTestSessionIds = nextTestEntries.map((entry) => entry.sessionId);
 
       if (nextTestSessionIds.length !== userFlowTabs.testSessionIds.length) {
         userFlowTabs.testSessionIds = nextTestSessionIds;
+        userFlowTabs.testEntryIds = nextTestEntries.map((entry) => entry.id);
         changed = true;
       }
     }
@@ -754,7 +833,7 @@
     };
   }
 
-  function renderUserFlowSessionReplayProgress(session, flowState) {
+  function renderUserFlowSessionReplayProgress(session, flowState, testEntryId = "") {
     const progress = getUserFlowSessionReplayProgress(session, flowState);
 
     return `
@@ -763,6 +842,7 @@
         data-state="${progress.isActive ? "active" : "inactive"}"
         data-waiting="${String(progress.isWaiting)}"
         data-user-flow-session-progress="${escapeHtml(session.id)}"
+        ${testEntryId ? `data-user-flow-test-entry-progress="${escapeHtml(testEntryId)}"` : ""}
         role="progressbar"
         aria-label="재생 남은 시간"
         aria-disabled="${String(!progress.isActive)}"
@@ -795,12 +875,14 @@
         getUserFlowSessionTabId(session.id),
       ]),
       tabs: userFlowTabs.tabs,
+      testEntryIds: ensureUserFlowTestEntryIds(),
       testSessionIds: userFlowTabs.testSessionIds,
       testReplayCompletedSessionIds: Array.from(
         userFlowTestReplayCompletedSessionIds,
       ),
       testReplayFailedSessionIds: Array.from(userFlowTestReplayFailedSessionIds),
       testReplayStartedSessionIds: Array.from(userFlowTestReplayStartedSessionIds),
+      testReplayCurrentEntryId: userFlowTestReplayCurrentEntryId,
       testReplayCurrentSessionId: userFlowTestReplayCurrentSessionId,
       linkedSessionWindowIds: Array.from(userFlowSessionWindows)
         .filter(([, linkedWindow]) => isParentWindowOpen(linkedWindow))
@@ -829,10 +911,15 @@
         return;
       }
 
+      const testEntryId = meta.dataset.userFlowTestEntryMeta || "";
+      const isCurrentEntry =
+        !testEntryId ||
+        !isUserFlowTestReplayRunning() ||
+        testEntryId === userFlowTestReplayCurrentEntryId;
       meta.textContent = getUserFlowSessionMeta(
         session,
         flowState,
-        flowState.replaySessionId === session.id,
+        flowState.replaySessionId === session.id && isCurrentEntry,
       );
     });
 
@@ -847,7 +934,15 @@
           return;
         }
 
-        const progress = getUserFlowSessionReplayProgress(session, flowState);
+        const testEntryId = progressElement.dataset.userFlowTestEntryProgress || "";
+        const isCurrentEntry =
+          !testEntryId ||
+          !isUserFlowTestReplayRunning() ||
+          testEntryId === userFlowTestReplayCurrentEntryId;
+        const progress = getUserFlowSessionReplayProgress(
+          session,
+          isCurrentEntry ? flowState : { ...flowState, isReplaying: false },
+        );
         progressElement.dataset.state = progress.isActive ? "active" : "inactive";
         progressElement.dataset.waiting = String(progress.isWaiting);
         progressElement.setAttribute(
@@ -890,9 +985,9 @@
     testView.hidden = !isTestView;
   }
 
-  function renderUserFlowTestReplayResult(sessionId) {
-    const isFailed = userFlowTestReplayFailedSessionIds.has(sessionId);
-    const isCompleted = userFlowTestReplayCompletedSessionIds.has(sessionId);
+  function renderUserFlowTestReplayResult(entryId) {
+    const isFailed = userFlowTestReplayFailedSessionIds.has(entryId);
+    const isCompleted = userFlowTestReplayCompletedSessionIds.has(entryId);
 
     if (!isFailed && !isCompleted) {
       return "";
@@ -908,8 +1003,14 @@
   function renderUserFlowTestSessions(flowState, sessions, sessionSignature) {
     const sessionList = document.querySelector("#userFlowTestSessionList");
     const sessionById = new Map(sessions.map((session) => [session.id, session]));
-    const testSessions = userFlowTabs.testSessionIds
-      .map((sessionId) => sessionById.get(sessionId))
+    const occurrenceCounts = new Map();
+    const testSessions = getUserFlowTestEntries()
+      .map((entry) => {
+        const session = sessionById.get(entry.sessionId);
+        const sequence = (occurrenceCounts.get(entry.sessionId) || 0) + 1;
+        occurrenceCounts.set(entry.sessionId, sequence);
+        return session ? { entry, sequence, session } : null;
+      })
       .filter(Boolean);
 
     if (!sessionList) {
@@ -929,24 +1030,30 @@
     }
 
     sessionList.innerHTML = testSessions
-      .map((session) => {
+      .map(({ entry, sequence, session }) => {
+        const entryId = entry.id;
         const isRecordingSession = flowState.activeRecordingSessionId === session.id;
-        const isReplayingSession = flowState.replaySessionId === session.id;
-        const isNavigatingSession = replayNavigationSessionId === session.id;
+        const isCurrentTestEntry = userFlowTestReplayCurrentEntryId === entryId;
+        const isReplayingSession =
+          flowState.replaySessionId === session.id &&
+          (!isUserFlowTestReplayRunning() || isCurrentTestEntry);
+        const isNavigatingSession =
+          replayNavigationSessionId === session.id &&
+          (!isUserFlowTestReplayRunning() || isCurrentTestEntry);
         const recordedAt = formatUserFlowRecordedAt(session.recordedAt);
         const sessionName = String(session.name || "").trim();
         const sessionTitle = formatUserFlowSessionTitle(session, recordedAt);
         const sessionSubtitle = formatUserFlowSessionSubtitle(session);
         const isTestReplayCompleted =
-          userFlowTestReplayCompletedSessionIds.has(session.id);
+          userFlowTestReplayCompletedSessionIds.has(entryId);
         const isTestReplayFailed =
-          userFlowTestReplayFailedSessionIds.has(session.id);
+          userFlowTestReplayFailedSessionIds.has(entryId);
         const isTestReplayCurrent =
-          userFlowTestReplayCurrentSessionId === session.id;
-        const testResultWindow = userFlowTestReplayWindows.get(session.id);
+          userFlowTestReplayCurrentEntryId === entryId;
+        const testResultWindow = userFlowTestReplayWindows.get(entryId);
         const canViewTestResult =
           isParentWindowOpen(testResultWindow) &&
-          (userFlowTestReplayStartedSessionIds.has(session.id) ||
+          (userFlowTestReplayStartedSessionIds.has(entryId) ||
             isTestReplayFailed ||
             isTestReplayCompleted);
         const disabled =
@@ -968,15 +1075,16 @@
             data-state="${isRecordingSession ? "recording" : isReplayingSession ? "replaying" : "idle"}"
             data-test-state="${isTestReplayCurrent ? "queued" : isTestReplayFailed ? "failed" : isTestReplayCompleted ? "completed" : "idle"}"
             data-user-flow-session-id="${escapeHtml(session.id)}"
+            data-user-flow-test-entry-id="${escapeHtml(entryId)}"
           >
-            ${renderUserFlowSessionReplayProgress(session, flowState)}
+            ${renderUserFlowSessionReplayProgress(session, isReplayingSession ? flowState : { ...flowState, isReplaying: false }, entryId)}
             <div class="user-flow-session-main">
               ${sessionSubtitle ? `<span class="user-flow-session-subtitle">${escapeHtml(sessionSubtitle)}</span>` : ""}
               <strong class="user-flow-session-time">
-                <span>${escapeHtml(sessionTitle)}</span>
+                <span>${escapeHtml(sessionTitle)} ${sequence}</span>
               </strong>
               ${sessionName ? `<span class="user-flow-session-recorded-at">${escapeHtml(recordedAt)}</span>` : ""}
-              <span class="user-flow-session-meta" data-user-flow-session-meta="${escapeHtml(session.id)}">
+              <span class="user-flow-session-meta" data-user-flow-session-meta="${escapeHtml(session.id)}" data-user-flow-test-entry-meta="${escapeHtml(entryId)}">
                 ${escapeHtml(sessionMeta)}
               </span>
             </div>
@@ -986,6 +1094,7 @@
                 type="button"
                 data-user-flow-command="toggle-replay-session"
                 data-session-id="${escapeHtml(session.id)}"
+                data-user-flow-test-entry-id="${escapeHtml(entryId)}"
                 aria-pressed="${String(isReplayingSession)}"
                 aria-busy="${String(isNavigatingSession)}"
                 data-navigating="${String(isNavigatingSession)}"
@@ -994,19 +1103,19 @@
               <button
                 class="user-flow-test-view"
                 type="button"
-                data-user-flow-test-result-view="${escapeHtml(session.id)}"
-                aria-label="${escapeHtml(sessionTitle)} 결과 화면 보기"
+                data-user-flow-test-result-view="${escapeHtml(entryId)}"
+                aria-label="${escapeHtml(`${sessionTitle} ${sequence}`)} 결과 화면 보기"
                 ${canViewTestResult ? "" : "disabled"}
               >보기</button>
               <button
                 class="user-flow-test-remove"
                 type="button"
-                data-user-flow-test-remove="${escapeHtml(session.id)}"
-                aria-label="${escapeHtml(sessionTitle)} 로그 테스트 목록에서 삭제"
+                data-user-flow-test-remove="${escapeHtml(entryId)}"
+                aria-label="${escapeHtml(`${sessionTitle} ${sequence}`)} 로그 테스트 목록에서 삭제"
                 ${changeDisabled ? "disabled" : ""}
               >삭제</button>
             </div>
-            ${renderUserFlowTestReplayResult(session.id)}
+            ${renderUserFlowTestReplayResult(entryId)}
           </article>
         `;
       })
@@ -1425,7 +1534,7 @@
                 data-user-flow-command="add-test-session"
                 data-session-id="${escapeHtml(session.id)}"
                 aria-label="${escapeHtml(sessionTitle)} 로그 테스트 목록에 추가"
-                ${changeDisabled || isUserFlowTestReplayRunning() || replayNavigationSessionId || userFlowTabs.testSessionIds.includes(session.id) ? "disabled" : ""}
+                ${changeDisabled || isUserFlowTestReplayRunning() || replayNavigationSessionId || userFlowTabs.testSessionIds.length >= MAX_USER_FLOW_SESSIONS ? "disabled" : ""}
               >테스트</button>
               <button
                 class="user-flow-delete"
@@ -1678,16 +1787,22 @@
     if (
       !normalizedSessionId ||
       !sessionExists ||
-      userFlowTabs.testSessionIds.includes(normalizedSessionId)
+      userFlowTabs.testSessionIds.length >= MAX_USER_FLOW_SESSIONS
     ) {
       return false;
     }
 
     const previousTestSessionIds = [...userFlowTabs.testSessionIds];
+    const previousTestEntryIds = [...ensureUserFlowTestEntryIds()];
     userFlowTabs.testSessionIds.push(normalizedSessionId);
+    userFlowTabs.testEntryIds = normalizeUserFlowTestEntryIds(
+      userFlowTabs.testSessionIds,
+      previousTestEntryIds,
+    );
 
     if (!persistUserFlowTabs()) {
       userFlowTabs.testSessionIds = previousTestSessionIds;
+      userFlowTabs.testEntryIds = previousTestEntryIds;
       return false;
     }
 
@@ -1706,34 +1821,34 @@
     renderUserFlowState(currentUserFlowState);
   }
 
-  function setUserFlowTestReplayCompleted(sessionId) {
-    const normalizedSessionId = String(sessionId || "");
+  function setUserFlowTestReplayCompleted(entryId) {
+    const normalizedEntryId = String(entryId || "");
 
     if (
-      !normalizedSessionId ||
-      userFlowTestReplayCompletedSessionIds.has(normalizedSessionId)
+      !normalizedEntryId ||
+      userFlowTestReplayCompletedSessionIds.has(normalizedEntryId)
     ) {
       return false;
     }
 
-    userFlowTestReplayFailedSessionIds.delete(normalizedSessionId);
-    userFlowTestReplayCompletedSessionIds.add(normalizedSessionId);
+    userFlowTestReplayFailedSessionIds.delete(normalizedEntryId);
+    userFlowTestReplayCompletedSessionIds.add(normalizedEntryId);
     renderedUserFlowTestSignature = "";
     return true;
   }
 
-  function setUserFlowTestReplayFailed(sessionId) {
-    const normalizedSessionId = String(sessionId || "");
+  function setUserFlowTestReplayFailed(entryId) {
+    const normalizedEntryId = String(entryId || "");
 
     if (
-      !normalizedSessionId ||
-      userFlowTestReplayFailedSessionIds.has(normalizedSessionId)
+      !normalizedEntryId ||
+      userFlowTestReplayFailedSessionIds.has(normalizedEntryId)
     ) {
       return false;
     }
 
-    userFlowTestReplayCompletedSessionIds.delete(normalizedSessionId);
-    userFlowTestReplayFailedSessionIds.add(normalizedSessionId);
+    userFlowTestReplayCompletedSessionIds.delete(normalizedEntryId);
+    userFlowTestReplayFailedSessionIds.add(normalizedEntryId);
     renderedUserFlowTestSignature = "";
     return true;
   }
@@ -1741,6 +1856,7 @@
   function finishUserFlowTestReplay() {
     clearUserFlowTestReplayTimers();
     userFlowTestReplayCurrentSessionId = "";
+    userFlowTestReplayCurrentEntryId = "";
     userFlowTestReplayIndex = -1;
     userFlowTestReplayQueue = [];
     userFlowTestReplayStarted = false;
@@ -1756,6 +1872,7 @@
 
     clearUserFlowTestReplayTimers();
     userFlowTestReplayCurrentSessionId = "";
+    userFlowTestReplayCurrentEntryId = "";
     userFlowTestReplayIndex = -1;
     userFlowTestReplayQueue = [];
     userFlowTestReplayStarted = false;
@@ -1782,6 +1899,7 @@
       openInNewWindow = false,
       positionOffset = 0,
       resumeAfterNavigation = false,
+      testEntryId = "",
       waitForNetworkIdle = false,
     } = {},
   ) {
@@ -1808,7 +1926,7 @@
         renderedUserFlowSessionSignature = "";
 
         if (openInNewWindow) {
-          userFlowTestReplayWindows.set(sessionId, replayWindow);
+          userFlowTestReplayWindows.set(testEntryId || sessionId, replayWindow);
         }
 
         startReplayNavigationState(sessionId, {
@@ -1858,13 +1976,15 @@
   }
 
   function playCurrentUserFlowTestReplay() {
-    const sessionId = userFlowTestReplayQueue[userFlowTestReplayIndex] || "";
+    const testEntry = userFlowTestReplayQueue[userFlowTestReplayIndex] || null;
+    const sessionId = testEntry?.sessionId || "";
 
-    if (!sessionId) {
+    if (!testEntry?.id || !sessionId) {
       finishUserFlowTestReplay();
       return;
     }
 
+    userFlowTestReplayCurrentEntryId = testEntry.id;
     userFlowTestReplayCurrentSessionId = sessionId;
     userFlowTestReplayStarted = false;
     const session = (currentUserFlowState.sessions || []).find(
@@ -1882,6 +2002,7 @@
     if (!requestUserFlowReplay(sessionId, {
       openInNewWindow: true,
       positionOffset: userFlowTestReplayOpenedWindowCount * 20,
+      testEntryId: testEntry.id,
     })) {
       // Stop instead of silently skipping lists whose result windows cannot open.
       cancelUserFlowTestReplay();
@@ -1904,14 +2025,14 @@
     }, USER_FLOW_TEST_REPLAY_ADVANCE_MS);
   }
 
-  function startUserFlowTestReplay(sessionId) {
+  function startUserFlowTestReplay(entryId) {
     const availableSessionIds = new Set(
       (currentUserFlowState.sessions || []).map((session) => session.id),
     );
-    const orderedSessionIds = userFlowTabs.testSessionIds.filter((testSessionId) =>
-      availableSessionIds.has(testSessionId),
+    const orderedEntries = getUserFlowTestEntries().filter((entry) =>
+      availableSessionIds.has(entry.sessionId),
     );
-    const startIndex = orderedSessionIds.indexOf(sessionId);
+    const startIndex = orderedEntries.findIndex((entry) => entry.id === entryId);
 
     if (startIndex < 0) {
       showUserFlowImportStatus("로그 테스트 목록에서 재생 항목을 찾지 못했습니다.");
@@ -1919,7 +2040,7 @@
     }
 
     cancelUserFlowTestReplay({ clearResults: true, rerender: false });
-    userFlowTestReplayQueue = orderedSessionIds.slice(startIndex);
+    userFlowTestReplayQueue = orderedEntries.slice(startIndex);
     userFlowTestReplayIndex = 0;
     playCurrentUserFlowTestReplay();
     return true;
@@ -1927,8 +2048,9 @@
 
   function updateUserFlowTestReplayState(previousState, nextState) {
     const sessionId = userFlowTestReplayCurrentSessionId;
+    const entryId = userFlowTestReplayCurrentEntryId;
 
-    if (!sessionId) {
+    if (!sessionId || !entryId) {
       return;
     }
 
@@ -1942,8 +2064,8 @@
     if (isReplaying) {
       userFlowTestReplayStarted = true;
 
-      if (!userFlowTestReplayStartedSessionIds.has(sessionId)) {
-        userFlowTestReplayStartedSessionIds.add(sessionId);
+      if (!userFlowTestReplayStartedSessionIds.has(entryId)) {
+        userFlowTestReplayStartedSessionIds.add(entryId);
         renderedUserFlowTestSignature = "";
       }
     }
@@ -1959,14 +2081,14 @@
         clearReplayNavigationState({ rerender: false });
       }
 
-      setUserFlowTestReplayFailed(sessionId);
+      setUserFlowTestReplayFailed(entryId);
       scheduleNextUserFlowTestReplay();
       return;
     }
 
     if (wasReplaying && !isReplaying && userFlowTestReplayStarted) {
       if (nextState.completedReplaySessionId === sessionId) {
-        setUserFlowTestReplayCompleted(sessionId);
+        setUserFlowTestReplayCompleted(entryId);
         scheduleNextUserFlowTestReplay();
       } else {
         cancelUserFlowTestReplay({ rerender: false });
@@ -2007,7 +2129,9 @@
       clearReplayNavigationState({ rerender: false });
 
       if (isTestReplayNavigation) {
-        setUserFlowTestReplayFailed(sessionId);
+        setUserFlowTestReplayFailed(
+          userFlowTestReplayCurrentEntryId || sessionId,
+        );
         scheduleNextUserFlowTestReplay();
         rerenderUserFlowTestReplay();
       } else {
@@ -2067,7 +2191,9 @@
           if (!requestUserFlowReplay(expectedSessionId, {
             waitForNetworkIdle: true,
           })) {
-            setUserFlowTestReplayFailed(expectedSessionId);
+            setUserFlowTestReplayFailed(
+              userFlowTestReplayCurrentEntryId || expectedSessionId,
+            );
             scheduleNextUserFlowTestReplay();
             rerenderUserFlowTestReplay();
           }
@@ -2327,7 +2453,9 @@
       isTestReplayButton &&
       !currentUserFlowState.isReplaying
     ) {
-      startUserFlowTestReplay(payload.sessionId);
+      startUserFlowTestReplay(
+        button.dataset.userFlowTestEntryId || payload.sessionId,
+      );
       return;
     }
 
@@ -2394,17 +2522,26 @@
       return;
     }
 
-    const sessionId = button.dataset.userFlowTestRemove || "";
+    const entryId = button.dataset.userFlowTestRemove || "";
     const previousTestSessionIds = [...userFlowTabs.testSessionIds];
-    userFlowTabs.testSessionIds = userFlowTabs.testSessionIds.filter(
-      (item) => item !== sessionId,
-    );
+    const previousTestEntryIds = [...ensureUserFlowTestEntryIds()];
+    const removedIndex = previousTestEntryIds.indexOf(entryId);
+
+    if (removedIndex < 0) {
+      return;
+    }
+
+    userFlowTabs.testSessionIds.splice(removedIndex, 1);
+    userFlowTabs.testEntryIds.splice(removedIndex, 1);
 
     if (!persistUserFlowTabs()) {
       userFlowTabs.testSessionIds = previousTestSessionIds;
+      userFlowTabs.testEntryIds = previousTestEntryIds;
     } else {
-      userFlowTestReplayCompletedSessionIds.delete(sessionId);
-      userFlowTestReplayFailedSessionIds.delete(sessionId);
+      userFlowTestReplayCompletedSessionIds.delete(entryId);
+      userFlowTestReplayFailedSessionIds.delete(entryId);
+      userFlowTestReplayStartedSessionIds.delete(entryId);
+      userFlowTestReplayWindows.delete(entryId);
     }
 
     rerenderUserFlowOrganization();
@@ -2564,9 +2701,13 @@
       userFlowTabs.sessionOrder = userFlowTabs.sessionOrder.filter(
         (sessionId) => !deletedSessionIds.has(sessionId),
       );
-      userFlowTabs.testSessionIds = userFlowTabs.testSessionIds.filter(
-        (sessionId) => !deletedSessionIds.has(sessionId),
+      const remainingTestEntries = getUserFlowTestEntries().filter(
+        (entry) => !deletedSessionIds.has(entry.sessionId),
       );
+      userFlowTabs.testSessionIds = remainingTestEntries.map(
+        (entry) => entry.sessionId,
+      );
+      userFlowTabs.testEntryIds = remainingTestEntries.map((entry) => entry.id);
       userFlowTabs.tabs = userFlowTabs.tabs.filter((item) => item.id !== tabId);
 
       if (userFlowTabs.activeTabId === tabId) {
@@ -2601,6 +2742,7 @@
 
   function resetUserFlowSessionDrag() {
     draggedUserFlowSessionId = "";
+    draggedUserFlowTestEntryId = "";
     document
       .querySelectorAll(
         ".user-flow-session.is-dragging, .user-flow-session.is-drop-before, .user-flow-session.is-drop-after",
@@ -2627,7 +2769,7 @@
           ".user-flow-view-panel:not([hidden]) .user-flow-session-list [data-user-flow-session-id]",
         ),
       ).map((session) => [
-        session.dataset.userFlowSessionId,
+        session.dataset.userFlowTestEntryId || session.dataset.userFlowSessionId,
         session.getBoundingClientRect(),
       ]),
     );
@@ -2648,7 +2790,9 @@
             return;
           }
 
-          const sessionId = session.dataset.userFlowSessionId;
+          const sessionId =
+            session.dataset.userFlowTestEntryId ||
+            session.dataset.userFlowSessionId;
           const previousRect = previousPositions.get(sessionId);
 
           if (previousRect) {
@@ -2764,6 +2908,7 @@
     }
 
     draggedUserFlowSessionId = session.dataset.userFlowSessionId || "";
+    draggedUserFlowTestEntryId = session.dataset.userFlowTestEntryId || "";
 
     if (!draggedUserFlowSessionId || !event.dataTransfer) {
       event.preventDefault();
@@ -2852,11 +2997,25 @@
       return null;
     }
 
+    const validDraggedTestEntryId =
+      draggedUserFlowTestEntryId === draggedUserFlowSessionId ||
+      draggedUserFlowTestEntryId.startsWith(
+        `${draggedUserFlowSessionId}::`,
+      )
+        ? draggedUserFlowTestEntryId
+        : "";
+    const draggedItemId =
+      activeUserFlowView === USER_FLOW_VIEW_TEST
+        ? validDraggedTestEntryId || draggedUserFlowSessionId
+        : draggedUserFlowSessionId;
     const sessions = Array.from(
       sessionList.querySelectorAll("[data-user-flow-session-id]"),
     ).filter(
       (session) =>
-        session.dataset.userFlowSessionId !== draggedUserFlowSessionId,
+        (activeUserFlowView === USER_FLOW_VIEW_TEST
+          ? session.dataset.userFlowTestEntryId ||
+            session.dataset.userFlowSessionId
+          : session.dataset.userFlowSessionId) !== draggedItemId,
     );
 
     if (!sessions.length) {
@@ -2955,6 +3114,8 @@
     const dropPosition = getUserFlowSessionOrderDropPosition(event);
     const targetSession = dropPosition?.targetSession;
     const targetSessionId = targetSession?.dataset.userFlowSessionId || "";
+    const targetTestEntryId =
+      targetSession?.dataset.userFlowTestEntryId || targetSessionId;
 
     if (
       !dropPosition ||
@@ -2968,16 +3129,34 @@
     event.preventDefault();
     const movedSessionId = draggedUserFlowSessionId;
     const previousPositions = captureUserFlowSessionPositions();
-    const orderKey = dropPosition.sessionList.id === "userFlowTestSessionList"
-      ? "testSessionIds"
-      : "sessionOrder";
-    const previousOrder = [...userFlowTabs[orderKey]];
-    const nextOrder = previousOrder.filter(
-      (sessionId) => sessionId !== draggedUserFlowSessionId,
+    const isTestOrder =
+      dropPosition.sessionList.id === "userFlowTestSessionList";
+    const previousOrder = isTestOrder
+      ? getUserFlowTestEntries()
+      : [...userFlowTabs.sessionOrder];
+    const validDraggedTestEntryId =
+      draggedUserFlowTestEntryId === draggedUserFlowSessionId ||
+      draggedUserFlowTestEntryId.startsWith(
+        `${draggedUserFlowSessionId}::`,
+      )
+        ? draggedUserFlowTestEntryId
+        : "";
+    const draggedItemId = isTestOrder
+      ? validDraggedTestEntryId || draggedUserFlowSessionId
+      : draggedUserFlowSessionId;
+    const nextOrder = previousOrder.filter((item) =>
+      isTestOrder ? item.id !== draggedItemId : item !== draggedItemId,
     );
-    const targetIndex = nextOrder.indexOf(targetSessionId);
+    const targetIndex = nextOrder.findIndex((item) =>
+      isTestOrder ? item.id === targetTestEntryId : item === targetSessionId,
+    );
 
-    if (targetIndex < 0 || !previousOrder.includes(draggedUserFlowSessionId)) {
+    if (
+      targetIndex < 0 ||
+      !previousOrder.some((item) =>
+        isTestOrder ? item.id === draggedItemId : item === draggedItemId,
+      )
+    ) {
       resetUserFlowSessionDrag();
       return;
     }
@@ -2987,16 +3166,35 @@
       : targetSession.classList.contains("is-drop-before")
         ? false
         : !dropPosition.dropBefore;
-    nextOrder.splice(targetIndex + (dropAfter ? 1 : 0), 0, draggedUserFlowSessionId);
-    userFlowTabs[orderKey] = nextOrder;
+    const movedItem = previousOrder.find((item) =>
+      isTestOrder ? item.id === draggedItemId : item === draggedItemId,
+    );
+    nextOrder.splice(targetIndex + (dropAfter ? 1 : 0), 0, movedItem);
+
+    if (isTestOrder) {
+      userFlowTabs.testSessionIds = nextOrder.map((entry) => entry.sessionId);
+      userFlowTabs.testEntryIds = nextOrder.map((entry) => entry.id);
+    } else {
+      userFlowTabs.sessionOrder = nextOrder;
+    }
 
     if (!persistUserFlowTabs()) {
-      userFlowTabs[orderKey] = previousOrder;
+      if (isTestOrder) {
+        userFlowTabs.testSessionIds = previousOrder.map(
+          (entry) => entry.sessionId,
+        );
+        userFlowTabs.testEntryIds = previousOrder.map((entry) => entry.id);
+      } else {
+        userFlowTabs.sessionOrder = previousOrder;
+      }
     }
 
     resetUserFlowSessionDrag();
     rerenderUserFlowOrganization();
-    animateUserFlowSessionMove(previousPositions, movedSessionId);
+    animateUserFlowSessionMove(
+      previousPositions,
+      isTestOrder ? draggedItemId : movedSessionId,
+    );
   }
 
   function handleUserFlowSessionDrop(event) {
