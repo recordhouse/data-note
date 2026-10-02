@@ -38,6 +38,11 @@
     const persistTabs = options.persistTabs || (() => false);
     const rerender = options.rerender || (() => {});
     const sendCommand = options.sendCommand || (() => false);
+    const reserveImportTarget = options.reserveImportTarget || (() => true);
+    const prepareImportTarget =
+      options.prepareImportTarget || (async () => true);
+    const completeImportTarget = options.completeImportTarget || (() => {});
+    const cancelImportTarget = options.cancelImportTarget || (() => {});
     const showStatus = options.showStatus || (() => {});
     const showTabLimit = options.showTabLimit || (() => {});
     let attached = false;
@@ -310,10 +315,15 @@
         }
       } catch (error) {
         showStatus(error?.message || "등록된 URL이 올바르지 않습니다.");
-        return;
+        return false;
+      }
+
+      if (!reserveImportTarget()) {
+        return false;
       }
 
       isUrlImporting = true;
+      let importSucceeded = false;
       setUrlPanelOpen(false);
       updateControls();
       showStatus("URL에서 가져오는 중", "ready");
@@ -331,15 +341,25 @@
         const blob = await response.blob();
         const { fileName, fileType } = getImportFileMeta(response, importUrl, blob);
         const file = new File([blob], fileName, { type: fileType });
-        await importFile(file, { skipZipNameDuplicateCheck: true });
+        importSucceeded = await importFile(file, {
+          skipZipNameDuplicateCheck: true,
+        });
       } catch (error) {
         showStatus(
           error?.message || "URL의 JSON 또는 ZIP 파일을 가져오지 못했습니다.",
         );
       } finally {
+        if (importSucceeded) {
+          completeImportTarget();
+        } else {
+          cancelImportTarget();
+        }
+
         isUrlImporting = false;
         updateControls();
       }
+
+      return importSucceeded;
     }
 
     function isJsonFile(file) {
@@ -384,6 +404,20 @@
       }
 
       return Array.isArray(importData?.events) ? [importData] : [];
+    }
+
+    function getImportStartPage(importData) {
+      for (const candidate of getImportCandidates(importData)) {
+        for (const recordedEvent of candidate?.events || []) {
+          const page = String(recordedEvent?.page || "").trim();
+
+          if (page) {
+            return page;
+          }
+        }
+      }
+
+      return "";
     }
 
     function normalizeNotice(value) {
@@ -608,6 +642,15 @@
         throw new Error("ZIP 파일의 로그가 이미 목록에 추가되어 있습니다.");
       }
 
+      if (
+        importedSessions.length &&
+        !(await prepareImportTarget(
+          getImportStartPage({ sessions: importedSessions }),
+        ))
+      ) {
+        throw new Error("샘플의 시작 사이트에 연결하지 못했습니다.");
+      }
+
       const previousTabs = JSON.parse(JSON.stringify(tabsState));
 
       try {
@@ -662,7 +705,7 @@
               : "빈 탭 폴더를 가져왔습니다.",
             "ready",
           );
-          return;
+          return true;
         }
 
         const importedTabCount = new Set(
@@ -681,6 +724,8 @@
         ) {
           throw new Error("사이트에 연결할 수 없습니다.");
         }
+
+        return true;
       } catch (error) {
         setTabs(previousTabs);
         persistTabs();
@@ -691,12 +736,12 @@
     async function importFile(file, { skipZipNameDuplicateCheck = false } = {}) {
       if (isBlocked()) {
         showStatus("로그 저장 또는 재생 중에는 가져올 수 없습니다.");
-        return;
+        return false;
       }
 
       if (!isImportFile(file)) {
         showStatus("JSON 또는 ZIP 파일만 가져올 수 있습니다.");
-        return;
+        return false;
       }
 
       const maxImportBytes = isZipFile(file)
@@ -709,14 +754,13 @@
             ? "50MB 이하의 ZIP 파일만 가져올 수 있습니다."
             : "10MB 이하의 JSON 파일만 가져올 수 있습니다.",
         );
-        return;
+        return false;
       }
 
       try {
         if (isZipFile(file)) {
           showStatus("ZIP 파일 확인 중", "ready");
-          await importArchive(file, { skipZipNameDuplicateCheck });
-          return;
+          return await importArchive(file, { skipZipNameDuplicateCheck });
         }
 
         const importData = JSON.parse(await file.text());
@@ -728,7 +772,7 @@
           !tabsState.tabs.some((tab) => tab.id === tabsState.activeTabId)
         ) {
           showStatus("로그를 가져오려면 목록 탭을 먼저 추가해주세요.");
-          return;
+          return false;
         }
 
         const activeTabSessionCount = getTabSessionCount(tabsState.activeTabId);
@@ -738,15 +782,26 @@
           limits.maxSessionsPerTab
         ) {
           showTabLimit(tabsState.activeTabId);
-          return;
+          return false;
+        }
+
+        if (
+          importSessionCount &&
+          !(await prepareImportTarget(getImportStartPage(importData)))
+        ) {
+          throw new Error("샘플의 시작 사이트에 연결하지 못했습니다.");
         }
 
         showStatus("가져오는 중", "ready");
         if (sendCommand("import-recordings", { importData })) {
           applyImportedNotice(importData);
+          return true;
         }
+
+        return false;
       } catch (error) {
         showStatus(error?.message || "가져오기 파일을 읽지 못했습니다.");
+        return false;
       }
     }
 

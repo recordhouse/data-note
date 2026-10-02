@@ -144,3 +144,119 @@ test("controller loads the root path config before enabling configured links", a
   assert.equal(elements["#userFlowLoginButton"].getAttribute("aria-disabled"), null);
   assert.equal(elements["#userFlowUrlImportButton"].disabled, true);
 });
+
+function createUrlImportController({ prepareSucceeds = true } = {}) {
+  const importData = {
+    sessions: [
+      {
+        events: [{ at: 0, page: "/sample/start", type: "click" }],
+        id: "sample-session",
+      },
+    ],
+  };
+  const serializedImport = JSON.stringify(importData);
+  const calls = [];
+  const commands = [];
+
+  class FakeFile {
+    constructor(parts, name, options = {}) {
+      [this.source] = parts;
+      this.name = name;
+      this.type = options.type || "";
+      this.size = serializedImport.length;
+    }
+
+    async text() {
+      return this.source.text();
+    }
+  }
+
+  const context = vm.createContext({
+    File: FakeFile,
+    URL,
+    document: { querySelector: () => null },
+    fetch: async () => {
+      calls.push("fetch");
+      return {
+        blob: async () => ({
+          size: serializedImport.length,
+          text: async () => serializedImport,
+          type: "application/json",
+        }),
+        headers: { get: () => "" },
+        ok: true,
+        url: "https://example.test/samples/basic.json",
+      };
+    },
+    window: {
+      location: { href: "https://example.test/popup.html" },
+    },
+  });
+  vm.runInContext(importSource, context);
+  const tabs = {
+    activeTabId: "tab-1",
+    notice: "",
+    sessionTabs: {},
+    tabs: [{ id: "tab-1", name: "기본" }],
+  };
+  const controller = context.window.UserFlowImport.createController({
+    cancelImportTarget: () => calls.push("cancel"),
+    completeImportTarget: () => calls.push("complete"),
+    getState: () => ({ sessions: [] }),
+    getTabSessionCount: () => 0,
+    getTabs: () => tabs,
+    prepareImportTarget: async (startPage) => {
+      calls.push(`prepare:${startPage}`);
+      return prepareSucceeds;
+    },
+    reserveImportTarget: () => {
+      calls.push("reserve");
+      return true;
+    },
+    sendCommand: (command, payload) => {
+      calls.push("send");
+      commands.push({ command, payload });
+      return true;
+    },
+  });
+
+  return { calls, commands, controller, importData };
+}
+
+test("sample URL import reserves a site window before fetching and connects it before sending logs", async () => {
+  const fixture = createUrlImportController();
+  const imported = await fixture.controller.importUrl({
+    url: "https://example.test/samples/basic.json",
+  });
+
+  assert.equal(imported, true);
+  assert.deepEqual(fixture.calls, [
+    "reserve",
+    "fetch",
+    "prepare:/sample/start",
+    "send",
+    "complete",
+  ]);
+  assert.equal(fixture.commands.length, 1);
+  assert.equal(fixture.commands[0].command, "import-recordings");
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(fixture.commands[0].payload.importData)),
+    fixture.importData,
+  );
+});
+
+test("sample URL import closes its reserved window when the sample site cannot connect", async () => {
+  const fixture = createUrlImportController({ prepareSucceeds: false });
+  const imported = await fixture.controller.importUrl({
+    url: "https://example.test/samples/basic.json",
+  });
+
+  assert.equal(imported, false);
+  assert.deepEqual(fixture.calls, [
+    "reserve",
+    "fetch",
+    "prepare:/sample/start",
+    "cancel",
+  ]);
+  assert.equal(fixture.commands.length, 0);
+});

@@ -58,6 +58,8 @@ function createSequence({
       clearTimeout: (id) => timers.delete(id),
     },
     USER_FLOW_TEST_REPLAY_ADVANCE_MS: 350,
+    USER_FLOW_MOVE_TOAST_CLEAR_MS: 160,
+    USER_FLOW_MOVE_TOAST_VISIBLE_MS: 1200,
     MAX_USER_FLOW_SESSIONS: 20,
     REPLAY_NAVIGATION_TIMEOUT_MS: 60000,
     REPLAY_NAVIGATION_IDLE_MS: 500,
@@ -82,6 +84,8 @@ function createSequence({
     userFlowTestReplayQueue: [],
     userFlowTestReplayStarted: false,
     userFlowTestReplayOpenedWindowCount: 0,
+    userFlowTestAddToastCount: 0,
+    userFlowTestAddToastResetTimer: 0,
     renderedUserFlowSessionSignature: "",
     renderedUserFlowTestSignature: "",
     replayNavigationRequestedReplay: false,
@@ -770,6 +774,137 @@ function createTabOpener({
   };
 }
 
+function createStandaloneSampleImporter({ blocked = false } = {}) {
+  const timers = new Map();
+  const connections = [];
+  const reconnects = [];
+  const statuses = [];
+  let nextTimerId = 0;
+  const siteWindow = {
+    closed: false,
+    closeCount: 0,
+    focusCount: 0,
+    location: {
+      href: "about:blank",
+      replace(url) {
+        this.href = url;
+      },
+    },
+    close() {
+      this.closeCount += 1;
+      this.closed = true;
+    },
+    focus() {
+      this.focusCount += 1;
+    },
+  };
+  const context = vm.createContext({
+    URL,
+    USER_FLOW_IMPORT_CONNECTION_TIMEOUT_MS: 60000,
+    activeParentWindow: null,
+    reservedUserFlowImportWindow: null,
+    userFlowImportConnectionResolve: null,
+    userFlowImportConnectionTimer: 0,
+    userFlowOpenedWindows: new Set(),
+    getActiveParentWindow() {
+      return context.activeParentWindow && !context.activeParentWindow.closed
+        ? context.activeParentWindow
+        : null;
+    },
+    isParentWindowOpen: (target) => Boolean(target && !target.closed),
+    showUserFlowImportStatus: (message) => statuses.push(message),
+    startParentReconnect: (target) => reconnects.push(target),
+    stopParentReconnect() {},
+    window: {
+      location: {
+        href: "https://example.test/popup.html",
+        origin: "https://example.test",
+      },
+      open: () => (blocked ? null : siteWindow),
+      PopupCore: {
+        connectParent(target) {
+          connections.push(target);
+          return true;
+        },
+      },
+      setTimeout(callback, ms) {
+        timers.set(++nextTimerId, { callback, ms });
+        return nextTimerId;
+      },
+      clearTimeout(timerId) {
+        timers.delete(timerId);
+      },
+    },
+  });
+  vm.runInContext(
+    extract("settleUserFlowImportConnection", "getUserFlowReplayWindowFeatures"),
+    context,
+  );
+  return { connections, context, reconnects, siteWindow, statuses, timers };
+}
+
+test("a directly opened popup reserves and connects the sample's same-origin site before import", async () => {
+  const fixture = createStandaloneSampleImporter();
+
+  assert.equal(vm.runInContext("reserveUserFlowImportTarget()", fixture.context), true);
+  assert.equal(fixture.context.activeParentWindow, null);
+  const ready = vm.runInContext(
+    'prepareUserFlowImportTarget("/sample/start?mode=test")',
+    fixture.context,
+  );
+
+  assert.equal(
+    fixture.siteWindow.location.href,
+    "https://example.test/sample/start?mode=test",
+  );
+  assert.equal(fixture.siteWindow.focusCount, 1);
+  assert.deepEqual(fixture.connections, [fixture.siteWindow]);
+  assert.deepEqual(fixture.reconnects, [fixture.siteWindow]);
+  assert.equal(fixture.timers.size, 1);
+  vm.runInContext("settleUserFlowImportConnection(true)", fixture.context);
+  assert.equal(await ready, true);
+  vm.runInContext("completeUserFlowImportTarget()", fixture.context);
+  assert.equal(fixture.siteWindow.closed, false);
+  assert.equal(fixture.context.reservedUserFlowImportWindow, null);
+  assert.equal(fixture.context.userFlowOpenedWindows.has(fixture.siteWindow), true);
+});
+
+test("standalone sample import rejects another origin and cleans up its reserved window", async () => {
+  const fixture = createStandaloneSampleImporter();
+
+  assert.equal(vm.runInContext("reserveUserFlowImportTarget()", fixture.context), true);
+  await assert.rejects(
+    vm.runInContext(
+      'prepareUserFlowImportTarget("https://different.test/sample")',
+      fixture.context,
+    ),
+    /같은 사이트/,
+  );
+  vm.runInContext("cancelUserFlowImportTarget()", fixture.context);
+  assert.equal(fixture.siteWindow.closed, true);
+  assert.equal(fixture.siteWindow.closeCount, 1);
+  assert.equal(fixture.context.userFlowOpenedWindows.size, 0);
+});
+
+test("standalone sample import reports popup blocking before it fetches the sample", () => {
+  const fixture = createStandaloneSampleImporter({ blocked: true });
+
+  assert.equal(vm.runInContext("reserveUserFlowImportTarget()", fixture.context), false);
+  assert.match(fixture.statuses[0], /사이트 창이 차단/);
+  assert.match(fixture.statuses[0], /팝업 및 리디렉션/);
+});
+
+test("sample import callbacks are wired to readiness from the connected site", () => {
+  assert.match(
+    source,
+    /activeParentWindow === reservedUserFlowImportWindow[\s\S]*?settleUserFlowImportConnection\(true\)/,
+  );
+  assert.match(source, /reserveImportTarget: reserveUserFlowImportTarget/);
+  assert.match(source, /prepareImportTarget: prepareUserFlowImportTarget/);
+  assert.match(source, /completeImportTarget: completeUserFlowImportTarget/);
+  assert.match(source, /cancelImportTarget: cancelUserFlowImportTarget/);
+});
+
 test("the real opener returns the new tab and leaves the existing browser open", () => {
   const fixture = createTabOpener();
   assert.equal(fixture.open(), fixture.tab);
@@ -952,14 +1087,24 @@ test("the test button adds the same log repeatedly and ignores disabled or missi
 
   fixture.clickAddTest("second");
   assert.deepEqual(toPlain(fixture.context.userFlowTabs.testSessionIds), ["second"]);
-  assert.deepEqual(fixture.toasts, ["로그 테스트 목록에 추가되었습니다"]);
+  assert.deepEqual(fixture.toasts, ["로그 테스트에 추가됨"]);
 
   fixture.clickAddTest("second");
   fixture.clickAddTest("third", true);
   fixture.clickAddTest("missing");
   assert.deepEqual(toPlain(fixture.context.userFlowTabs.testSessionIds), ["second", "second"]);
   assert.deepEqual(toPlain(fixture.context.userFlowTabs.testEntryIds), ["second", "second::2"]);
-  assert.equal(fixture.toasts.length, 2);
+  assert.deepEqual(fixture.toasts, [
+    "로그 테스트에 추가됨",
+    "로그 테스트에 추가됨 · 2회",
+  ]);
+
+  const resetEntry = [...fixture.timers].find(([, timer]) => timer.ms === 1360);
+  assert.ok(resetEntry);
+  fixture.timers.delete(resetEntry[0]);
+  resetEntry[1].callback();
+  fixture.clickAddTest("second");
+  assert.equal(fixture.toasts.at(-1), "로그 테스트에 추가됨");
 });
 
 test("list view raises its linked window and close-windows closes every popup opened by Data Note", () => {

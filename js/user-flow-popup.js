@@ -62,10 +62,13 @@
   ]);
   const PARENT_CONNECTION_CHECK_MS = 400;
   const PARENT_RECONNECT_TIMEOUT_MS = 60 * 1000;
+  const USER_FLOW_IMPORT_CONNECTION_TIMEOUT_MS = 60 * 1000;
   const USER_FLOW_TEST_REPLAY_ADVANCE_MS = 350;
   const USER_FLOW_DRAG_SCROLL_EDGE_PX = 48;
   const USER_FLOW_DRAG_SCROLL_STEP_PX = 18;
   const USER_FLOW_MOVE_ANIMATION_MS = 260;
+  const USER_FLOW_MOVE_TOAST_VISIBLE_MS = 1200;
+  const USER_FLOW_MOVE_TOAST_CLEAR_MS = 160;
 
   let currentUserFlowState = {};
   let activeUserFlowView = USER_FLOW_VIEW_RECORDINGS;
@@ -79,6 +82,8 @@
   let draggedUserFlowTestEntryId = "";
   let userFlowMoveToastTimer = 0;
   let userFlowMoveToastClearTimer = 0;
+  let userFlowTestAddToastCount = 0;
+  let userFlowTestAddToastResetTimer = 0;
   let replayNavigationRequestedReplay = false;
   let replayNavigationIdleTimer = 0;
   let replayNavigationParentReady = false;
@@ -89,6 +94,9 @@
   let userFlowStatusDotStep = 0;
   let userFlowStatusDotTimer = 0;
   let activeParentWindow = window.opener || null;
+  let reservedUserFlowImportWindow = null;
+  let userFlowImportConnectionResolve = null;
+  let userFlowImportConnectionTimer = 0;
   let userFlowReplayWindow = null;
   const userFlowOpenedWindows = new Set();
   const userFlowSessionWindows = new Map();
@@ -1663,6 +1671,140 @@
     );
   }
 
+  function settleUserFlowImportConnection(isReady) {
+    window.clearTimeout(userFlowImportConnectionTimer);
+    userFlowImportConnectionTimer = 0;
+    const resolve = userFlowImportConnectionResolve;
+    userFlowImportConnectionResolve = null;
+    resolve?.(Boolean(isReady));
+  }
+
+  function reserveUserFlowImportTarget() {
+    if (getActiveParentWindow()) {
+      return true;
+    }
+
+    if (isParentWindowOpen(reservedUserFlowImportWindow)) {
+      return true;
+    }
+
+    const importWindow = window.open("about:blank", "_blank");
+
+    if (!importWindow) {
+      showUserFlowImportStatus(
+        `사이트 창이 차단되었습니다. 현재 팝업 주소의 사이트(${window.location.origin})에서 팝업 및 리디렉션을 허용해주세요.`,
+      );
+      return false;
+    }
+
+    reservedUserFlowImportWindow = importWindow;
+    userFlowOpenedWindows.add(importWindow);
+    return true;
+  }
+
+  async function prepareUserFlowImportTarget(startPage) {
+    const currentParentWindow = getActiveParentWindow();
+
+    if (
+      currentParentWindow &&
+      currentParentWindow !== reservedUserFlowImportWindow
+    ) {
+      return true;
+    }
+
+    const importWindow = reservedUserFlowImportWindow;
+
+    if (!isParentWindowOpen(importWindow)) {
+      throw new Error(
+        "샘플 사이트 창이 닫혔습니다. 팝업을 허용한 뒤 다시 시도해주세요.",
+      );
+    }
+
+    const normalizedStartPage = String(startPage || "").trim();
+
+    if (!normalizedStartPage) {
+      throw new Error("샘플 로그에서 시작 페이지를 찾지 못했습니다.");
+    }
+
+    const importUrl = new URL(normalizedStartPage, window.location.href);
+
+    if (
+      !["http:", "https:"].includes(importUrl.protocol) ||
+      importUrl.origin !== window.location.origin
+    ) {
+      throw new Error("팝업과 같은 사이트의 샘플 로그만 열 수 있습니다.");
+    }
+
+    settleUserFlowImportConnection(false);
+    activeParentWindow = importWindow;
+
+    if (!window.PopupCore?.connectParent?.(importWindow)) {
+      activeParentWindow = null;
+      throw new Error("샘플 사이트 창에 연결하지 못했습니다.");
+    }
+
+    const connectionReady = new Promise((resolve) => {
+      userFlowImportConnectionResolve = resolve;
+      userFlowImportConnectionTimer = window.setTimeout(() => {
+        settleUserFlowImportConnection(false);
+      }, USER_FLOW_IMPORT_CONNECTION_TIMEOUT_MS);
+    });
+
+    startParentReconnect(importWindow);
+    showUserFlowImportStatus("샘플 사이트에 연결하는 중", "ready");
+
+    try {
+      importWindow.location.replace(importUrl.href);
+      importWindow.focus();
+    } catch (error) {
+      settleUserFlowImportConnection(false);
+      throw new Error("샘플 사이트를 열지 못했습니다.");
+    }
+
+    return connectionReady;
+  }
+
+  function completeUserFlowImportTarget() {
+    settleUserFlowImportConnection(true);
+    const importWindow = reservedUserFlowImportWindow;
+    reservedUserFlowImportWindow = null;
+
+    if (!importWindow || importWindow === getActiveParentWindow()) {
+      return;
+    }
+
+    userFlowOpenedWindows.delete(importWindow);
+
+    try {
+      importWindow.close();
+    } catch (error) {
+      // The reserved blank window may already have been detached.
+    }
+  }
+
+  function cancelUserFlowImportTarget() {
+    settleUserFlowImportConnection(false);
+    const importWindow = reservedUserFlowImportWindow;
+    reservedUserFlowImportWindow = null;
+
+    if (!importWindow) {
+      return;
+    }
+
+    userFlowOpenedWindows.delete(importWindow);
+
+    if (activeParentWindow === importWindow) {
+      activeParentWindow = null;
+      stopParentReconnect();
+    }
+
+    try {
+      importWindow.close();
+    } catch (error) {
+      // Keep the original import error when the browser rejects close().
+    }
+  }
+
   function getUserFlowReplayWindowFeatures(
     viewport,
     { offsetX = 0, offsetY = 0 } = {},
@@ -1809,6 +1951,20 @@
     renderedUserFlowSessionSignature = "";
     renderedUserFlowTestSignature = "";
     return true;
+  }
+
+  function showUserFlowTestAddToast() {
+    window.clearTimeout(userFlowTestAddToastResetTimer);
+    userFlowTestAddToastCount += 1;
+    showUserFlowMoveToast(
+      userFlowTestAddToastCount > 1
+        ? `로그 테스트에 추가됨 · ${userFlowTestAddToastCount}회`
+        : "로그 테스트에 추가됨",
+    );
+    userFlowTestAddToastResetTimer = window.setTimeout(() => {
+      userFlowTestAddToastCount = 0;
+      userFlowTestAddToastResetTimer = 0;
+    }, USER_FLOW_MOVE_TOAST_VISIBLE_MS + USER_FLOW_MOVE_TOAST_CLEAR_MS);
   }
 
   function clearUserFlowTestReplayTimers() {
@@ -2363,7 +2519,7 @@
 
       if (addUserFlowTestSession(button.dataset.sessionId)) {
         rerenderUserFlowOrganization();
-        showUserFlowMoveToast("로그 테스트 목록에 추가되었습니다");
+        showUserFlowTestAddToast();
       }
 
       return;
@@ -2880,8 +3036,8 @@
         if (!toast.classList.contains("is-visible")) {
           toast.textContent = "";
         }
-      }, 160);
-    }, 1200);
+      }, USER_FLOW_MOVE_TOAST_CLEAR_MS);
+    }, USER_FLOW_MOVE_TOAST_VISIBLE_MS);
   }
 
   function clearUserFlowSessionDropIndicators(exceptSession = null) {
@@ -3480,6 +3636,10 @@
       activeParentWindow = window.opener;
     }
 
+    if (activeParentWindow === reservedUserFlowImportWindow) {
+      settleUserFlowImportConnection(true);
+    }
+
     markReplayNavigationParentReady();
     sendUserFlowCommand("get-state");
   }
@@ -3514,6 +3674,10 @@
       }
 
       return;
+    }
+
+    if (activeParentWindow === reservedUserFlowImportWindow) {
+      settleUserFlowImportConnection(false);
     }
 
     activeParentWindow = null;
@@ -3556,6 +3720,10 @@
     persistTabs: persistUserFlowTabs,
     rerender: rerenderUserFlowOrganization,
     sendCommand: sendUserFlowCommand,
+    reserveImportTarget: reserveUserFlowImportTarget,
+    prepareImportTarget: prepareUserFlowImportTarget,
+    completeImportTarget: completeUserFlowImportTarget,
+    cancelImportTarget: cancelUserFlowImportTarget,
     showStatus: showUserFlowImportStatus,
     showTabLimit: showUserFlowTabLimit,
     limits: {
@@ -3600,6 +3768,7 @@
       window.clearInterval(parentConnectionCheckTimer);
       clearUserFlowTestReplayTimers();
       stopUserFlowStatusDots();
+      cancelUserFlowImportTarget();
       stopParentReconnect();
     },
     { once: true },
