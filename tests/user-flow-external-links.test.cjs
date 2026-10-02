@@ -30,6 +30,7 @@ test("login and communication links sit in a smaller lower-right action row", ()
     'class="user-flow-external-actions"',
   );
   const loginIndex = popupSource.indexOf('id="userFlowLoginButton"');
+  const productIndex = popupSource.indexOf('id="userFlowProductButton"');
   const resizeIndex = popupSource.indexOf('id="userFlowResizePopupButton"');
   const communicationIndex = popupSource.indexOf(
     'id="userFlowCommunicationButton"',
@@ -42,16 +43,24 @@ test("login and communication links sit in a smaller lower-right action row", ()
   assert.ok(externalActionsIndex > recordIndex);
   assert.ok(resizeIndex > externalActionsIndex);
   assert.ok(loginIndex > resizeIndex);
-  assert.ok(communicationIndex > loginIndex);
+  assert.ok(productIndex > loginIndex);
+  assert.ok(communicationIndex > productIndex);
   assert.match(
     popupSource,
     /id="userFlowResizePopupButton"[\s\S]*?data-popup-window-resize[\s\S]*?>팝업 재배치<\/button>/,
   );
-  assert.doesNotMatch(popupSource, /USER_FLOW_(?:LOGIN|COMMUNICATION|IMPORT)_URL/);
+  assert.doesNotMatch(
+    popupSource,
+    /USER_FLOW_(?:LOGIN|PRODUCT|COMMUNICATION|IMPORT)_URL/,
+  );
   assert.doesNotMatch(importSource, /window\.USER_FLOW_/);
   assert.match(
     importSource,
     /configureExternalLink\(\s*"#userFlowCommunicationButton",\s*pathConfig\.communicationUrl/,
+  );
+  assert.match(
+    importSource,
+    /configureExternalLink\("#userFlowProductButton", pathConfig\.productUrl\)/,
   );
   const externalLinkRule = cssSource.match(
     /\.user-flow-external-link\s*\{([^}]*)\}/,
@@ -90,6 +99,7 @@ test("popup paths are stored in a dedicated root JSON file", () => {
     communicationUrl: "/communication",
     importUrls: [],
     loginUrl: "/login",
+    productUrl: "/product",
   });
   assert.match(importSource, /const PATH_CONFIG_PATH = "\.\/popup-paths\.json";/);
   assert.match(importSource, /fetch\(configUrl\.href,[\s\S]*?cache: "no-store"/);
@@ -125,6 +135,7 @@ test("controller loads the root path config before enabling configured links", a
     "#userFlowCommunicationButton": createElement(),
     "#userFlowImportButton": createElement(),
     "#userFlowLoginButton": createElement(),
+    "#userFlowProductButton": createElement(),
     "#userFlowUrlImportButton": createElement(),
     "#userFlowUrlImportPanel": createElement(),
     "#userFlowUrlImportSelect": createElement(),
@@ -156,17 +167,20 @@ test("controller loads the root path config before enabling configured links", a
 
   controller.attach();
   assert.equal(elements["#userFlowLoginButton"].getAttribute("aria-disabled"), "true");
+  assert.equal(elements["#userFlowProductButton"].getAttribute("aria-disabled"), "true");
   await controller.loadPathConfig();
 
   assert.equal(requests.length, 1);
   assert.equal(requests[0].url, "https://example.test/popup-paths.json");
   assert.equal(requests[0].options.cache, "no-store");
   assert.equal(elements["#userFlowLoginButton"].href, "https://example.test/login");
+  assert.equal(elements["#userFlowProductButton"].href, "https://example.test/product");
   assert.equal(
     elements["#userFlowCommunicationButton"].href,
     "https://example.test/communication",
   );
   assert.equal(elements["#userFlowLoginButton"].getAttribute("aria-disabled"), null);
+  assert.equal(elements["#userFlowProductButton"].getAttribute("aria-disabled"), null);
   assert.equal(elements["#userFlowUrlImportButton"].disabled, true);
 });
 

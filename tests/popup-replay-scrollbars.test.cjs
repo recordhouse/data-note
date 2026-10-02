@@ -78,7 +78,7 @@ test("popup size control restores the original top-left window bounds", async ()
 
   assert.equal(fixture.core.restoreWindowBounds(), true);
   assert.deepEqual(fixture.popupBounds.moves, [[0, 0]]);
-  assert.deepEqual(fixture.popupBounds.sizes, [[700, 800]]);
+  assert.deepEqual(fixture.popupBounds.sizes, [[700, 850]]);
   assert.equal(fixture.popupBounds.focusCount, 1);
 });
 

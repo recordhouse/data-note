@@ -25,6 +25,7 @@
         ? parsedConfig.importUrls
         : [],
       loginUrl: String(parsedConfig?.loginUrl || "").trim(),
+      productUrl: String(parsedConfig?.productUrl || "").trim(),
     });
   }
 
@@ -53,6 +54,7 @@
       communicationUrl: "",
       importUrls: [],
       loginUrl: "",
+      productUrl: "",
     });
     let pathConfigPromise = null;
     let renderedImportUrls = [];
@@ -89,6 +91,7 @@
 
     function configureExternalLinks() {
       configureExternalLink("#userFlowLoginButton", pathConfig.loginUrl);
+      configureExternalLink("#userFlowProductButton", pathConfig.productUrl);
       configureExternalLink(
         "#userFlowCommunicationButton",
         pathConfig.communicationUrl,
@@ -125,6 +128,7 @@
             communicationUrl: "",
             importUrls: [],
             loginUrl: "",
+            productUrl: "",
           });
           configureExternalLinks();
           renderUrlOptions();

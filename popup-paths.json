@@ -1,5 +1,6 @@
 {
   "loginUrl": "/login",
+  "productUrl": "/product",
   "communicationUrl": "/communication",
   "importUrls": []
 }
