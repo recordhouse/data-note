@@ -1702,7 +1702,7 @@
       return true;
     }
 
-    const importWindow = window.open("about:blank", "_blank", "popup=yes");
+    const importWindow = window.open("about:blank", "_blank");
 
     if (!importWindow) {
       showUserFlowImportStatus(
@@ -2653,8 +2653,15 @@
 
     const commandSent = sendUserFlowCommand(command, payload);
 
-    if (commandSent && command === "clear") {
+    if (command === "clear") {
       resetUserFlowOrganization();
+
+      if (!commandSent) {
+        showUserFlowImportStatus(
+          "팝업의 탭 구성을 모두 삭제했습니다. 사이트 로그는 사이트 연결 후 삭제할 수 있습니다.",
+          "ready",
+        );
+      }
     }
   }
 

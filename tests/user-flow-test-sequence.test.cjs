@@ -33,6 +33,7 @@ function createSequence({
   const toasts = [];
   const warnings = [];
   const commandUserAgents = [];
+  let organizationResetCount = 0;
   let activeParent = {
     id: "original",
     closed: false,
@@ -45,6 +46,7 @@ function createSequence({
     console: { warn: (...args) => warnings.push(args) },
     window: {
       location: { origin: "https://example.test" },
+      confirm: () => true,
       PopupCore: {
         connectParent(target) {
           connections.push(target);
@@ -68,6 +70,7 @@ function createSequence({
       sessions: ["first", "second", "third"].map((id) => ({ id, eventCount, environment })),
     },
     userFlowTabs: {
+      tabs: [{ id: "default", name: "Tab 01" }],
       testEntryIds: ["first", "second", "third"],
       testSessionIds: ["first", "second", "third"],
     },
@@ -127,6 +130,9 @@ function createSequence({
     },
     renderUserFlowState() {},
     rerenderUserFlowOrganization() {},
+    resetUserFlowOrganization() {
+      organizationResetCount += 1;
+    },
     persistUserFlowTabs: () => true,
     showUserFlowMoveToast: (message) => toasts.push(message),
     showUserFlowImportStatus: (message) => statuses.push(message),
@@ -173,6 +179,7 @@ function createSequence({
     ready,
     runIdle,
     getActiveParent: () => activeParent,
+    getOrganizationResetCount: () => organizationResetCount,
     clickNewWindow(id = "first", disabled = false) {
       context.controlEvent = {
         target: {
@@ -213,6 +220,18 @@ function createSequence({
           closest: () => ({
             disabled: false,
             dataset: { userFlowCommand: "close-opened-windows" },
+          }),
+        },
+      };
+      vm.runInContext("handleUserFlowControl(controlEvent)", context);
+    },
+    clickClear() {
+      context.controlEvent = {
+        target: {
+          closest: () => ({
+            disabled: false,
+            dataset: { userFlowCommand: "clear" },
+            closest: () => null,
           }),
         },
       };
@@ -869,7 +888,7 @@ test("a directly opened popup reserves and connects the sample's same-origin sit
 
   assert.equal(vm.runInContext("reserveUserFlowImportTarget()", fixture.context), true);
   assert.deepEqual(fixture.opens, [
-    { features: "popup=yes", target: "_blank", url: "about:blank" },
+    { features: undefined, target: "_blank", url: "about:blank" },
   ]);
   assert.equal(fixture.context.activeParentWindow, null);
   const ready = vm.runInContext(
@@ -1169,6 +1188,19 @@ test("the top close-windows control follows export and the clear border is fully
     css,
     /\.user-flow-action\[data-action="clear-all"\]\s*\{[^}]*border-color: #b42345;/,
   );
+});
+
+test("clear removes popup tab organization even when no site is connected", () => {
+  const fixture = createSequence({ sendSucceeds: false });
+
+  fixture.clickClear();
+  assert.equal(fixture.getOrganizationResetCount(), 1);
+  assert.deepEqual(fixture.commands.at(-1), {
+    command: "clear",
+    sessionId: "",
+  });
+  assert.match(fixture.statuses.at(-1), /탭 구성을 모두 삭제/);
+  assert.match(fixture.statuses.at(-1), /사이트 연결 후/);
 });
 
 test("opening a new window never replays until the user clicks replay, even after readiness", () => {
