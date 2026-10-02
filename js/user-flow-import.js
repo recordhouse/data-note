@@ -498,8 +498,7 @@
       return sessionId;
     }
 
-    function ensureArchiveTabs(folderNames) {
-      const tabsState = getTabs();
+    function ensureArchiveTabs(folderNames, tabsState = getTabs()) {
       const tabByName = new Map(
         tabsState.tabs.map((tab) => [tab.name.toLowerCase(), tab]),
       );
@@ -547,11 +546,10 @@
         throw new Error("ZIP 모듈을 불러오지 못했습니다.");
       }
 
-      const state = getState();
-      const tabsState = getTabs();
+      const initialState = getState();
       const importSourceZipName = String(file?.name || "").trim().slice(0, 255);
       const normalizedZipName = importSourceZipName.toLowerCase();
-      const isDuplicateZip = (state.sessions || []).some(
+      const isDuplicateZip = (initialState.sessions || []).some(
         (session) =>
           normalizedZipName &&
           String(session.importSourceZipName || "").trim().toLowerCase() ===
@@ -578,7 +576,7 @@
       }
 
       const reservedIds = new Set(
-        (state.sessions || []).map((session) => session.id),
+        (initialState.sessions || []).map((session) => session.id),
       );
       const importedSessions = [];
       const importedSessionFolders = new Map();
@@ -651,10 +649,43 @@
         throw new Error("상품 시작 사이트에 연결하지 못했습니다.");
       }
 
+      const state = getState();
+      const tabsState = getTabs();
+      const connectedSessionIds = new Set(
+        (state.sessions || []).map((session) => String(session.id || "")),
+      );
+
+      for (let index = importedSessions.length - 1; index >= 0; index -= 1) {
+        if (connectedSessionIds.has(importedSessions[index].id)) {
+          importedSessionFolders.delete(importedSessions[index].id);
+          importedSessions.splice(index, 1);
+        }
+      }
+
+      if (
+        !skipZipNameDuplicateCheck &&
+        normalizedZipName &&
+        (state.sessions || []).some(
+          (session) =>
+            String(session.importSourceZipName || "").trim().toLowerCase() ===
+            normalizedZipName,
+        )
+      ) {
+        throw new Error(`${importSourceZipName} 파일은 이미 가져왔습니다.`);
+      }
+
+      if (
+        archiveSessionCount &&
+        !importedSessions.length &&
+        !skipZipNameDuplicateCheck
+      ) {
+        throw new Error("ZIP 파일의 로그가 이미 목록에 추가되어 있습니다.");
+      }
+
       const previousTabs = JSON.parse(JSON.stringify(tabsState));
 
       try {
-        const tabByName = ensureArchiveTabs(folderNames);
+        const tabByName = ensureArchiveTabs(folderNames, tabsState);
         const tabCounts = getTabCounts(state.sessions || []);
 
         if (archiveManifest.hasNotice) {

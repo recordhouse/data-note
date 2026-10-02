@@ -3618,6 +3618,8 @@
       event.data?.type === MESSAGE_USER_FLOW_STATE &&
       isAllowedParentMessage(event)
     ) {
+      const completesImportConnection =
+        event.source === reservedUserFlowImportWindow;
       stopParentReconnect();
 
       if (replayNavigationSessionId) {
@@ -3630,6 +3632,10 @@
         nextUserFlowState,
       );
       renderUserFlowState(nextUserFlowState);
+
+      if (completesImportConnection) {
+        settleUserFlowImportConnection(true);
+      }
     }
   }
 
@@ -3660,7 +3666,6 @@
 
     if (activeParentWindow === reservedUserFlowImportWindow) {
       focusUserFlowPopup(reservedUserFlowImportWindow);
-      settleUserFlowImportConnection(true);
     }
 
     markReplayNavigationParentReady();

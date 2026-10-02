@@ -939,11 +939,13 @@ test("standalone sample import reports popup blocking before it fetches the samp
   assert.match(fixture.statuses[0], /팝업 및 리디렉션/);
 });
 
-test("sample import callbacks are wired to readiness from the connected site", () => {
+test("product import waits for the connected site's initial log state", () => {
   assert.match(
     source,
-    /activeParentWindow === reservedUserFlowImportWindow[\s\S]*?settleUserFlowImportConnection\(true\)/,
+    /const completesImportConnection =\s*event\.source === reservedUserFlowImportWindow;[\s\S]*?renderUserFlowState\(nextUserFlowState\);[\s\S]*?if \(completesImportConnection\) \{\s*settleUserFlowImportConnection\(true\);/,
   );
+  const parentReadySource = extract("handleParentReady", "pruneClosedUserFlowWindows");
+  assert.doesNotMatch(parentReadySource, /settleUserFlowImportConnection\(true\)/);
   assert.match(source, /reserveImportTarget: reserveUserFlowImportTarget/);
   assert.match(source, /prepareImportTarget: prepareUserFlowImportTarget/);
   assert.match(source, /completeImportTarget: completeUserFlowImportTarget/);

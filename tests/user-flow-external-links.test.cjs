@@ -24,6 +24,7 @@ const pathConfig = JSON.parse(pathConfigSource);
 
 test("login and communication links sit in a smaller lower-right action row", () => {
   const importIndex = popupSource.indexOf('id="userFlowImportButton"');
+  const productImportIndex = popupSource.indexOf('id="userFlowUrlImportButton"');
   const recordIndex = popupSource.indexOf('id="userFlowRecordButton"');
   const externalActionsIndex = popupSource.indexOf(
     'class="user-flow-external-actions"',
@@ -34,6 +35,8 @@ test("login and communication links sit in a smaller lower-right action row", ()
   );
 
   assert.ok(importIndex >= 0);
+  assert.ok(productImportIndex >= 0);
+  assert.ok(productImportIndex < importIndex);
   assert.ok(recordIndex > importIndex);
   assert.ok(externalActionsIndex > recordIndex);
   assert.ok(loginIndex > externalActionsIndex);
@@ -57,6 +60,14 @@ test("login and communication links sit in a smaller lower-right action row", ()
   assert.match(
     cssSource,
     /\.user-flow-external-actions \.user-flow-external-link\s*\{[^}]*min-width: 54px;[^}]*height: 26px;[^}]*font-size: 11px;/,
+  );
+  assert.match(
+    cssSource,
+    /#userFlowUrlImportButton\s*\{[^}]*border-color: #7c3aed;[^}]*color: #6d28d9;/,
+  );
+  assert.doesNotMatch(
+    cssSource.match(/#userFlowUrlImportButton\s*\{([^}]*)\}/)?.[1] || "",
+    /background/,
   );
 });
 
@@ -259,4 +270,96 @@ test("sample URL import closes its reserved window when the sample site cannot c
     "cancel",
   ]);
   assert.equal(fixture.commands.length, 0);
+});
+
+test("ZIP product import keeps each folder mapping after a standalone popup connects", async () => {
+  const initialTabs = {
+    activeTabId: "before-connect",
+    notice: "",
+    sessionOrder: [],
+    sessionTabs: {},
+    tabs: [{ id: "before-connect", name: "연결 전" }],
+    testEntryIds: [],
+    testSessionIds: [],
+  };
+  let tabs = initialTabs;
+  const commands = [];
+  const archiveEntries = [
+    { isDirectory: true, name: "상품 A/" },
+    {
+      isDirectory: false,
+      name: "상품 A/a.json",
+      text: () =>
+        JSON.stringify({
+          session: {
+            events: [{ at: 0, page: "/products/a", type: "click" }],
+            id: "product-a",
+          },
+        }),
+    },
+    { isDirectory: true, name: "상품 B/" },
+    {
+      isDirectory: false,
+      name: "상품 B/b.json",
+      text: () =>
+        JSON.stringify({
+          session: {
+            events: [{ at: 0, page: "/products/b", type: "click" }],
+            id: "product-b",
+          },
+        }),
+    },
+  ];
+  const context = vm.createContext({
+    URL,
+    document: { querySelector: () => null },
+    window: {
+      location: { href: "https://example.test/popup.html" },
+      UserFlowArchive: {
+        readArchive: async () => archiveEntries,
+      },
+    },
+  });
+  vm.runInContext(importSource, context);
+  const controller = context.window.UserFlowImport.createController({
+    getState: () => ({ sessions: [] }),
+    getTabCounts: () => new Map(tabs.tabs.map((tab) => [tab.id, 0])),
+    getTabs: () => tabs,
+    persistTabs: () => true,
+    prepareImportTarget: async () => {
+      tabs = {
+        activeTabId: "connected",
+        notice: "",
+        sessionOrder: [],
+        sessionTabs: {},
+        tabs: [{ id: "connected", name: "연결 후" }],
+        testEntryIds: [],
+        testSessionIds: [],
+      };
+      return true;
+    },
+    sendCommand: (command, payload) => {
+      commands.push({ command, payload });
+      return true;
+    },
+    setTabs: (nextTabs) => {
+      tabs = nextTabs;
+    },
+  });
+  const imported = await controller.importFile({
+    name: "products.zip",
+    size: 1024,
+    type: "application/zip",
+  });
+  const firstProductTab = tabs.tabs.find((tab) => tab.name === "상품 A");
+  const secondProductTab = tabs.tabs.find((tab) => tab.name === "상품 B");
+
+  assert.equal(imported, true);
+  assert.ok(firstProductTab);
+  assert.ok(secondProductTab);
+  assert.equal(tabs.sessionTabs["product-a"], firstProductTab.id);
+  assert.equal(tabs.sessionTabs["product-b"], secondProductTab.id);
+  assert.equal(commands.length, 1);
+  assert.equal(commands[0].command, "import-recordings");
+  assert.equal(commands[0].payload.importData.sessions.length, 2);
 });
