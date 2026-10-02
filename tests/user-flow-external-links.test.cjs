@@ -31,7 +31,6 @@ test("login and communication links sit in a smaller lower-right action row", ()
   );
   const loginIndex = popupSource.indexOf('id="userFlowLoginButton"');
   const productIndex = popupSource.indexOf('id="userFlowProductButton"');
-  const resizeIndex = popupSource.indexOf('id="userFlowResizePopupButton"');
   const communicationIndex = popupSource.indexOf(
     'id="userFlowCommunicationButton"',
   );
@@ -41,14 +40,10 @@ test("login and communication links sit in a smaller lower-right action row", ()
   assert.ok(productImportIndex < importIndex);
   assert.ok(recordIndex > importIndex);
   assert.ok(externalActionsIndex > recordIndex);
-  assert.ok(resizeIndex > externalActionsIndex);
-  assert.ok(loginIndex > resizeIndex);
+  assert.ok(loginIndex > externalActionsIndex);
   assert.ok(productIndex > loginIndex);
   assert.ok(communicationIndex > productIndex);
-  assert.match(
-    popupSource,
-    /id="userFlowResizePopupButton"[\s\S]*?data-popup-window-resize[\s\S]*?>팝업 재배치<\/button>/,
-  );
+  assert.doesNotMatch(popupSource, /userFlowResizePopupButton|data-popup-window-resize|팝업 재배치/);
   assert.doesNotMatch(
     popupSource,
     /USER_FLOW_(?:LOGIN|PRODUCT|COMMUNICATION|IMPORT)_URL/,

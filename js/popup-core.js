@@ -6,7 +6,7 @@
   }
 
   // 변경사항을 배포할 때 마지막 버전 숫자를 올려주세요.
-  const DATA_NOTE_VERSION = "1.0.0+0084";
+  const DATA_NOTE_VERSION = "1.0.0+0085";
   const MESSAGE_READY = "response-mapping-popup-ready";
   const MESSAGE_RENDER = "response-mapping-popup-render";
   const MESSAGE_RENDERED = "response-mapping-popup-rendered";
@@ -290,31 +290,6 @@
     document.dispatchEvent(new CustomEvent(PARENT_READY_EVENT));
   }
 
-  function restorePopupWindowBounds() {
-    if (!isPopupRuntime) {
-      return false;
-    }
-
-    try {
-      window.moveTo(DEFAULT_POPUP_LEFT, DEFAULT_POPUP_TOP);
-      window.resizeTo(DEFAULT_POPUP_WIDTH, DEFAULT_POPUP_HEIGHT);
-      window.focus();
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
-
-  function handlePopupWindowResizeClick(event) {
-    const button = event.target.closest?.("[data-popup-window-resize]");
-
-    if (!button || button.disabled) {
-      return;
-    }
-
-    restorePopupWindowBounds();
-  }
-
   function getParentDocument() {
     try {
       const parentWindow = getPopupParentWindow();
@@ -406,7 +381,6 @@
 
   function initializePopupRuntime() {
     document.addEventListener("click", handleTabClick);
-    document.addEventListener("click", handlePopupWindowResizeClick);
     window.addEventListener("message", handleParentReadyMessage);
     popupReconnectTimer = window.setInterval(
       monitorParentConnection,
@@ -784,7 +758,6 @@
     connectParent: connectParentWindow,
     context,
     getParentWindow: getPopupParentWindow,
-    restoreWindowBounds: restorePopupWindowBounds,
     get ready() {
       return featureReadyPromise;
     },
