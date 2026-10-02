@@ -1679,7 +1679,13 @@
     resolve?.(Boolean(isReady));
   }
 
-  function focusUserFlowPopup() {
+  function focusUserFlowPopup(siteWindow = reservedUserFlowImportWindow) {
+    try {
+      siteWindow?.blur?.();
+    } catch (error) {
+      // The site may be navigating between documents.
+    }
+
     try {
       window.focus();
     } catch (error) {
@@ -1696,7 +1702,7 @@
       return true;
     }
 
-    const importWindow = window.open("about:blank", "_blank");
+    const importWindow = window.open("about:blank", "_blank", "popup=yes");
 
     if (!importWindow) {
       showUserFlowImportStatus(
@@ -1707,7 +1713,7 @@
 
     reservedUserFlowImportWindow = importWindow;
     userFlowOpenedWindows.add(importWindow);
-    focusUserFlowPopup();
+    focusUserFlowPopup(importWindow);
     return true;
   }
 
@@ -1764,7 +1770,7 @@
 
     try {
       importWindow.location.replace(importUrl.href);
-      focusUserFlowPopup();
+      focusUserFlowPopup(importWindow);
     } catch (error) {
       settleUserFlowImportConnection(false);
       throw new Error("샘플 사이트를 열지 못했습니다.");
@@ -3646,7 +3652,7 @@
     }
 
     if (activeParentWindow === reservedUserFlowImportWindow) {
-      focusUserFlowPopup();
+      focusUserFlowPopup(reservedUserFlowImportWindow);
       settleUserFlowImportConnection(true);
     }
 

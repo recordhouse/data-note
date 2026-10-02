@@ -779,11 +779,13 @@ function createStandaloneSampleImporter({ blocked = false } = {}) {
   const connections = [];
   const reconnects = [];
   const statuses = [];
+  const opens = [];
   let popupFocusCount = 0;
   let nextTimerId = 0;
   const siteWindow = {
     closed: false,
     closeCount: 0,
+    blurCount: 0,
     focusCount: 0,
     location: {
       href: "about:blank",
@@ -794,6 +796,9 @@ function createStandaloneSampleImporter({ blocked = false } = {}) {
     close() {
       this.closeCount += 1;
       this.closed = true;
+    },
+    blur() {
+      this.blurCount += 1;
     },
     focus() {
       this.focusCount += 1;
@@ -821,7 +826,10 @@ function createStandaloneSampleImporter({ blocked = false } = {}) {
         href: "https://example.test/popup.html",
         origin: "https://example.test",
       },
-      open: () => (blocked ? null : siteWindow),
+      open(url, target, features) {
+        opens.push({ features, target, url });
+        return blocked ? null : siteWindow;
+      },
       focus() {
         popupFocusCount += 1;
       },
@@ -848,6 +856,7 @@ function createStandaloneSampleImporter({ blocked = false } = {}) {
     connections,
     context,
     getPopupFocusCount: () => popupFocusCount,
+    opens,
     reconnects,
     siteWindow,
     statuses,
@@ -859,6 +868,9 @@ test("a directly opened popup reserves and connects the sample's same-origin sit
   const fixture = createStandaloneSampleImporter();
 
   assert.equal(vm.runInContext("reserveUserFlowImportTarget()", fixture.context), true);
+  assert.deepEqual(fixture.opens, [
+    { features: "popup=yes", target: "_blank", url: "about:blank" },
+  ]);
   assert.equal(fixture.context.activeParentWindow, null);
   const ready = vm.runInContext(
     'prepareUserFlowImportTarget("/sample/start?mode=test")',
@@ -870,6 +882,7 @@ test("a directly opened popup reserves and connects the sample's same-origin sit
     "https://example.test/sample/start?mode=test",
   );
   assert.equal(fixture.siteWindow.focusCount, 0);
+  assert.equal(fixture.siteWindow.blurCount, 2);
   assert.equal(fixture.getPopupFocusCount(), 2);
   assert.deepEqual(fixture.connections, [fixture.siteWindow]);
   assert.deepEqual(fixture.reconnects, [fixture.siteWindow]);
