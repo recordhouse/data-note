@@ -7,12 +7,12 @@ const { performance } = require("node:perf_hooks");
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-test("the default communication wait limit is 2 minutes", () => {
+test("the default communication wait limit is 3 minutes", () => {
   const recorderSource = fs.readFileSync(
     path.join(__dirname, "../js/user-flow-recorder.js"),
     "utf8",
   );
-  assert.match(recorderSource, /const REQUEST_WAIT_TIMEOUT_MS = 120000;/);
+  assert.match(recorderSource, /const REQUEST_WAIT_TIMEOUT_MS = 180000;/);
 });
 
 function createRecorder(t, { fetch, playEvent, events, timeoutCap = Infinity } = {}) {
