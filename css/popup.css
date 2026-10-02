@@ -634,6 +634,11 @@ body.is-user-flow-file-dragging .wrap {
   background: #b42345;
 }
 
+.user-flow-action[data-action="toggle-record"][aria-pressed="true"]:hover:not(:disabled) {
+  background: #971b3a;
+  color: #ffffff;
+}
+
 .user-flow-action:disabled {
   cursor: not-allowed;
   opacity: 0.45;
@@ -1365,6 +1370,11 @@ body.is-user-flow-file-dragging .wrap {
 
 .user-flow-replay[aria-pressed="true"] {
   background: #0f766e;
+  color: #ffffff;
+}
+
+.user-flow-replay[aria-pressed="true"]:hover:not(:disabled) {
+  background: #0b5f59;
   color: #ffffff;
 }
 
