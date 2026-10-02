@@ -779,6 +779,7 @@ function createStandaloneSampleImporter({ blocked = false } = {}) {
   const connections = [];
   const reconnects = [];
   const statuses = [];
+  let popupFocusCount = 0;
   let nextTimerId = 0;
   const siteWindow = {
     closed: false,
@@ -821,6 +822,9 @@ function createStandaloneSampleImporter({ blocked = false } = {}) {
         origin: "https://example.test",
       },
       open: () => (blocked ? null : siteWindow),
+      focus() {
+        popupFocusCount += 1;
+      },
       PopupCore: {
         connectParent(target) {
           connections.push(target);
@@ -840,7 +844,15 @@ function createStandaloneSampleImporter({ blocked = false } = {}) {
     extract("settleUserFlowImportConnection", "getUserFlowReplayWindowFeatures"),
     context,
   );
-  return { connections, context, reconnects, siteWindow, statuses, timers };
+  return {
+    connections,
+    context,
+    getPopupFocusCount: () => popupFocusCount,
+    reconnects,
+    siteWindow,
+    statuses,
+    timers,
+  };
 }
 
 test("a directly opened popup reserves and connects the sample's same-origin site before import", async () => {
@@ -857,7 +869,8 @@ test("a directly opened popup reserves and connects the sample's same-origin sit
     fixture.siteWindow.location.href,
     "https://example.test/sample/start?mode=test",
   );
-  assert.equal(fixture.siteWindow.focusCount, 1);
+  assert.equal(fixture.siteWindow.focusCount, 0);
+  assert.equal(fixture.getPopupFocusCount(), 2);
   assert.deepEqual(fixture.connections, [fixture.siteWindow]);
   assert.deepEqual(fixture.reconnects, [fixture.siteWindow]);
   assert.equal(fixture.timers.size, 1);

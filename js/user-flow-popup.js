@@ -1679,6 +1679,14 @@
     resolve?.(Boolean(isReady));
   }
 
+  function focusUserFlowPopup() {
+    try {
+      window.focus();
+    } catch (error) {
+      // Some browsers decide window focus themselves; importing can continue.
+    }
+  }
+
   function reserveUserFlowImportTarget() {
     if (getActiveParentWindow()) {
       return true;
@@ -1699,6 +1707,7 @@
 
     reservedUserFlowImportWindow = importWindow;
     userFlowOpenedWindows.add(importWindow);
+    focusUserFlowPopup();
     return true;
   }
 
@@ -1755,7 +1764,7 @@
 
     try {
       importWindow.location.replace(importUrl.href);
-      importWindow.focus();
+      focusUserFlowPopup();
     } catch (error) {
       settleUserFlowImportConnection(false);
       throw new Error("샘플 사이트를 열지 못했습니다.");
@@ -3637,6 +3646,7 @@
     }
 
     if (activeParentWindow === reservedUserFlowImportWindow) {
+      focusUserFlowPopup();
       settleUserFlowImportConnection(true);
     }
 
