@@ -1731,14 +1731,14 @@
 
     if (!isParentWindowOpen(importWindow)) {
       throw new Error(
-        "샘플 사이트 창이 닫혔습니다. 팝업을 허용한 뒤 다시 시도해주세요.",
+        "상품 사이트 창이 닫혔습니다. 팝업을 허용한 뒤 다시 시도해주세요.",
       );
     }
 
     const normalizedStartPage = String(startPage || "").trim();
 
     if (!normalizedStartPage) {
-      throw new Error("샘플 로그에서 시작 페이지를 찾지 못했습니다.");
+      throw new Error("상품 로그에서 시작 페이지를 찾지 못했습니다.");
     }
 
     const importUrl = new URL(normalizedStartPage, window.location.href);
@@ -1747,7 +1747,7 @@
       !["http:", "https:"].includes(importUrl.protocol) ||
       importUrl.origin !== window.location.origin
     ) {
-      throw new Error("팝업과 같은 사이트의 샘플 로그만 열 수 있습니다.");
+      throw new Error("팝업과 같은 사이트의 상품 로그만 열 수 있습니다.");
     }
 
     settleUserFlowImportConnection(false);
@@ -1755,7 +1755,7 @@
 
     if (!window.PopupCore?.connectParent?.(importWindow)) {
       activeParentWindow = null;
-      throw new Error("샘플 사이트 창에 연결하지 못했습니다.");
+      throw new Error("상품 사이트 창에 연결하지 못했습니다.");
     }
 
     const connectionReady = new Promise((resolve) => {
@@ -1766,14 +1766,14 @@
     });
 
     startParentReconnect(importWindow);
-    showUserFlowImportStatus("샘플 사이트에 연결하는 중", "ready");
+    showUserFlowImportStatus("상품 사이트에 연결하는 중", "ready");
 
     try {
       importWindow.location.replace(importUrl.href);
       focusUserFlowPopup(importWindow);
     } catch (error) {
       settleUserFlowImportConnection(false);
-      throw new Error("샘플 사이트를 열지 못했습니다.");
+      throw new Error("상품 사이트를 열지 못했습니다.");
     }
 
     return connectionReady;

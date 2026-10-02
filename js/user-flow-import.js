@@ -648,7 +648,7 @@
           getImportStartPage({ sessions: importedSessions }),
         ))
       ) {
-        throw new Error("샘플의 시작 사이트에 연결하지 못했습니다.");
+        throw new Error("상품 시작 사이트에 연결하지 못했습니다.");
       }
 
       const previousTabs = JSON.parse(JSON.stringify(tabsState));
@@ -789,7 +789,7 @@
           importSessionCount &&
           !(await prepareImportTarget(getImportStartPage(importData)))
         ) {
-          throw new Error("샘플의 시작 사이트에 연결하지 못했습니다.");
+          throw new Error("상품 시작 사이트에 연결하지 못했습니다.");
         }
 
         showStatus("가져오는 중", "ready");
