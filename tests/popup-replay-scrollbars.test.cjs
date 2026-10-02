@@ -40,6 +40,7 @@ async function createPopup() {
   const popupDocument = createDocument();
   const listeners = new Map();
   let monitor;
+  const popupBounds = { focusCount: 0, moves: [], sizes: [] };
   popupDocument.currentScript = { src: "https://example.test/js/popup-core.js", dataset: {} };
   popupDocument.querySelector = (selector) => selector === "[data-popup-tab]" ? {} : null;
   popupDocument.addEventListener = () => {};
@@ -51,6 +52,9 @@ async function createPopup() {
     addEventListener: (type, callback) => listeners.set(type, callback),
     setInterval(callback) { monitor = callback; return 1; },
     clearInterval() {},
+    focus() { popupBounds.focusCount += 1; },
+    moveTo(left, top) { popupBounds.moves.push([left, top]); },
+    resizeTo(width, height) { popupBounds.sizes.push([width, height]); },
   };
   class CustomEvent extends Event {
     constructor(type, options = {}) { super(type); this.detail = options.detail; }
@@ -60,6 +64,7 @@ async function createPopup() {
   return {
     core: window.PopupCore,
     originalSite,
+    popupBounds,
     popupDocument,
     monitor: () => monitor(),
     ready(site, origin = "https://example.test") {
@@ -67,6 +72,15 @@ async function createPopup() {
     },
   };
 }
+
+test("popup size control restores the original top-left window bounds", async () => {
+  const fixture = await createPopup();
+
+  assert.equal(fixture.core.restoreWindowBounds(), true);
+  assert.deepEqual(fixture.popupBounds.moves, [[0, 0]]);
+  assert.deepEqual(fixture.popupBounds.sizes, [[700, 800]]);
+  assert.equal(fixture.popupBounds.focusCount, 1);
+});
 
 test("new-window styling hides only page scrollbars without disabling scrolling or nested regions", async () => {
   const fixture = await createPopup();

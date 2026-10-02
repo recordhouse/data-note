@@ -6,7 +6,7 @@
   }
 
   // 변경사항을 배포할 때 마지막 버전 숫자를 올려주세요.
-  const DATA_NOTE_VERSION = "1.0.0+0078";
+  const DATA_NOTE_VERSION = "1.0.0+0082";
   const MESSAGE_READY = "response-mapping-popup-ready";
   const MESSAGE_RENDER = "response-mapping-popup-render";
   const MESSAGE_RENDERED = "response-mapping-popup-rendered";
@@ -16,7 +16,11 @@
   const DEFAULT_POPUP_URL = "./popup.html";
   const DEFAULT_MAPPING_DIRECTORY = "./data/";
   const DEFAULT_POPUP_NAME = "_blank";
-  const DEFAULT_POPUP_FEATURES = "popup=yes,width=700,height=800,left=0,top=0";
+  const DEFAULT_POPUP_WIDTH = 700;
+  const DEFAULT_POPUP_HEIGHT = 800;
+  const DEFAULT_POPUP_LEFT = 0;
+  const DEFAULT_POPUP_TOP = 0;
+  const DEFAULT_POPUP_FEATURES = `popup=yes,width=${DEFAULT_POPUP_WIDTH},height=${DEFAULT_POPUP_HEIGHT},left=${DEFAULT_POPUP_LEFT},top=${DEFAULT_POPUP_TOP}`;
   const MAX_PENDING_RESPONSES = 50;
   const POPUP_RECONNECT_CHECK_MS = 400;
   const REPLAY_WINDOW_SCROLLBAR_STYLE_ID = "data-note-replay-window-scrollbars";
@@ -286,6 +290,31 @@
     document.dispatchEvent(new CustomEvent(PARENT_READY_EVENT));
   }
 
+  function restorePopupWindowBounds() {
+    if (!isPopupRuntime) {
+      return false;
+    }
+
+    try {
+      window.moveTo(DEFAULT_POPUP_LEFT, DEFAULT_POPUP_TOP);
+      window.resizeTo(DEFAULT_POPUP_WIDTH, DEFAULT_POPUP_HEIGHT);
+      window.focus();
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function handlePopupWindowResizeClick(event) {
+    const button = event.target.closest?.("[data-popup-window-resize]");
+
+    if (!button || button.disabled) {
+      return;
+    }
+
+    restorePopupWindowBounds();
+  }
+
   function getParentDocument() {
     try {
       const parentWindow = getPopupParentWindow();
@@ -377,6 +406,7 @@
 
   function initializePopupRuntime() {
     document.addEventListener("click", handleTabClick);
+    document.addEventListener("click", handlePopupWindowResizeClick);
     window.addEventListener("message", handleParentReadyMessage);
     popupReconnectTimer = window.setInterval(
       monitorParentConnection,
@@ -754,6 +784,7 @@
     connectParent: connectParentWindow,
     context,
     getParentWindow: getPopupParentWindow,
+    restoreWindowBounds: restorePopupWindowBounds,
     get ready() {
       return featureReadyPromise;
     },

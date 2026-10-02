@@ -30,6 +30,7 @@ test("login and communication links sit in a smaller lower-right action row", ()
     'class="user-flow-external-actions"',
   );
   const loginIndex = popupSource.indexOf('id="userFlowLoginButton"');
+  const resizeIndex = popupSource.indexOf('id="userFlowResizePopupButton"');
   const communicationIndex = popupSource.indexOf(
     'id="userFlowCommunicationButton"',
   );
@@ -39,8 +40,13 @@ test("login and communication links sit in a smaller lower-right action row", ()
   assert.ok(productImportIndex < importIndex);
   assert.ok(recordIndex > importIndex);
   assert.ok(externalActionsIndex > recordIndex);
-  assert.ok(loginIndex > externalActionsIndex);
+  assert.ok(resizeIndex > externalActionsIndex);
+  assert.ok(loginIndex > resizeIndex);
   assert.ok(communicationIndex > loginIndex);
+  assert.match(
+    popupSource,
+    /id="userFlowResizePopupButton"[\s\S]*?data-popup-window-resize[\s\S]*?>팝업 재배치<\/button>/,
+  );
   assert.doesNotMatch(popupSource, /USER_FLOW_(?:LOGIN|COMMUNICATION|IMPORT)_URL/);
   assert.doesNotMatch(importSource, /window\.USER_FLOW_/);
   assert.match(
@@ -68,6 +74,14 @@ test("login and communication links sit in a smaller lower-right action row", ()
   assert.doesNotMatch(
     cssSource.match(/#userFlowUrlImportButton\s*\{([^}]*)\}/)?.[1] || "",
     /background/,
+  );
+  assert.match(
+    cssSource,
+    /#userFlowImportButton,\s*#userFlowExportAllButton\s*\{[^}]*border-color: #64748b;[^}]*color: #475569;/,
+  );
+  assert.match(
+    cssSource,
+    /\.user-flow-action:hover:not\(:disabled\):not\(\[aria-disabled="true"\]\)\s*\{[^}]*background: #f1f5f9;/,
   );
 });
 

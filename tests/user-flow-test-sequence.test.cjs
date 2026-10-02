@@ -1123,7 +1123,10 @@ test("log-list title actions use rename and export icons while controls expose t
   const css = fs.readFileSync(path.join(__dirname, "../css/popup.css"), "utf8");
   assert.match(css, /\.user-flow-new-window\s*\{\s*border-color: #1266d6;\s*color: #1266d6;\s*\}/);
   assert.match(css, /\.user-flow-replay\s*\{[^}]*background: #ffffff;/);
-  assert.doesNotMatch(css, /\.user-flow-new-window:hover/);
+  assert.match(
+    css,
+    /\.user-flow-action\.user-flow-new-window:hover:not\(:disabled\),[\s\S]*?background: #eff6ff;/,
+  );
   assert.doesNotMatch(css, /\.user-flow-name-action/);
 });
 
