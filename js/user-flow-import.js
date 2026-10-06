@@ -14,7 +14,7 @@
     maxImportBytes: 10 * 1024 * 1024,
     maxImportSessions: 150,
     maxSessions: 150,
-    maxSessionsPerTab: 20,
+    maxSessionsPerTab: 50,
     maxTabs: 20,
   });
 
