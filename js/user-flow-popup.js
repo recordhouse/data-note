@@ -1079,13 +1079,30 @@
         return `
           <article
             class="user-flow-session"
-            draggable="${String(!changeDisabled)}"
+            draggable="false"
             data-state="${isRecordingSession ? "recording" : isReplayingSession ? "replaying" : "idle"}"
             data-test-state="${isTestReplayCurrent ? "queued" : isTestReplayFailed ? "failed" : isTestReplayCompleted ? "completed" : "idle"}"
             data-user-flow-session-id="${escapeHtml(session.id)}"
             data-user-flow-test-entry-id="${escapeHtml(entryId)}"
           >
             ${renderUserFlowSessionReplayProgress(session, isReplayingSession ? flowState : { ...flowState, isReplaying: false }, entryId)}
+            <span
+              class="user-flow-session-drag-handle"
+              draggable="${String(!changeDisabled)}"
+              data-user-flow-session-drag-handle
+              aria-label="${escapeHtml(`${sessionTitle} ${sequence}`)} 순서 이동"
+              aria-disabled="${String(changeDisabled)}"
+              title="끌어서 순서 이동"
+            >
+              <svg viewBox="0 0 16 24" aria-hidden="true" focusable="false">
+                <circle cx="5" cy="6" r="1.5" />
+                <circle cx="11" cy="6" r="1.5" />
+                <circle cx="5" cy="12" r="1.5" />
+                <circle cx="11" cy="12" r="1.5" />
+                <circle cx="5" cy="18" r="1.5" />
+                <circle cx="11" cy="18" r="1.5" />
+              </svg>
+            </span>
             <div class="user-flow-session-main">
               ${sessionSubtitle ? `<span class="user-flow-session-subtitle">${escapeHtml(sessionSubtitle)}</span>` : ""}
               <strong class="user-flow-session-time">
@@ -1457,11 +1474,28 @@
         return `
           <article
             class="user-flow-session"
-            draggable="${String(!changeDisabled)}"
+            draggable="false"
             data-state="${isRecordingSession ? "recording" : isReplayingSession ? "replaying" : "idle"}"
             data-user-flow-session-id="${escapeHtml(session.id)}"
           >
             ${renderUserFlowSessionReplayProgress(session, flowState)}
+            <span
+              class="user-flow-session-drag-handle"
+              draggable="${String(!changeDisabled)}"
+              data-user-flow-session-drag-handle
+              aria-label="${escapeHtml(sessionTitle)} 순서 이동"
+              aria-disabled="${String(changeDisabled)}"
+              title="끌어서 순서 이동"
+            >
+              <svg viewBox="0 0 16 24" aria-hidden="true" focusable="false">
+                <circle cx="5" cy="6" r="1.5" />
+                <circle cx="11" cy="6" r="1.5" />
+                <circle cx="5" cy="12" r="1.5" />
+                <circle cx="11" cy="12" r="1.5" />
+                <circle cx="5" cy="18" r="1.5" />
+                <circle cx="11" cy="18" r="1.5" />
+              </svg>
+            </span>
             <div class="user-flow-session-main">
               ${sessionSubtitle ? `<span class="user-flow-session-subtitle">${escapeHtml(sessionSubtitle)}</span>` : ""}
               <div class="user-flow-session-title-row">
@@ -3073,13 +3107,16 @@
   }
 
   function handleUserFlowSessionDragStart(event) {
-    const session = event.target.closest("[data-user-flow-session-id]");
+    const dragHandle = event.target.closest(
+      "[data-user-flow-session-drag-handle]",
+    );
+    const session = dragHandle?.closest("[data-user-flow-session-id]");
 
     if (
+      !dragHandle ||
+      dragHandle.draggable !== true ||
       !session ||
-      session.draggable !== true ||
-      isUserFlowOrganizationBlocked() ||
-      event.target.closest("button, input, select, textarea, form")
+      isUserFlowOrganizationBlocked()
     ) {
       event.preventDefault();
       return;

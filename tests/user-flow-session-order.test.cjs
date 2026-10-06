@@ -44,7 +44,7 @@ function createOrdering({ view = "test", failSave = false } = {}) {
             ? { userFlowTestEntryId: sessionId }
             : {}),
         },
-        draggable: true,
+        draggable: false,
         closest: (selector) => selector === "[data-user-flow-session-id]" ? session : null,
         getBoundingClientRect: () => ({ top: 120 + index * 90, height: 70 }),
         classList: {
@@ -55,6 +55,14 @@ function createOrdering({ view = "test", failSave = false } = {}) {
             if (enabled) classes.add(name);
             else classes.delete(name);
           },
+        },
+      };
+      session.dragHandle = {
+        draggable: true,
+        closest(selector) {
+          if (selector === "[data-user-flow-session-drag-handle]") return this;
+          if (selector === "[data-user-flow-session-id]") return session;
+          return null;
         },
       };
       return session;
@@ -154,7 +162,8 @@ function createOrdering({ view = "test", failSave = false } = {}) {
     get writes() { return writes; },
     get renders() { return renders; },
     start(id) {
-      const value = event(150, lists[view].sessions.find((session) => session.dataset.userFlowSessionId === id));
+      const session = lists[view].sessions.find((item) => item.dataset.userFlowSessionId === id);
+      const value = event(150, session.dragHandle);
       dispatch("handleUserFlowSessionDragStart", value);
       return value;
     },
@@ -259,14 +268,45 @@ test("reordering is blocked during recording, replay, queued tests, and navigati
 
 test("test rows enable dragging only while editing the order is safe", () => {
   const fixture = createOrdering();
-  assert.match(fixture.markup(), /draggable="true"/);
-  assert.match(fixture.markup({ isRecording: true }), /draggable="false"/);
-  assert.match(fixture.markup({ isReplaying: true }), /draggable="false"/);
+  assert.match(
+    fixture.markup(),
+    /class="user-flow-session"\s+draggable="false"[\s\S]*?class="user-flow-session-drag-handle"\s+draggable="true"/,
+  );
+  assert.match(
+    fixture.markup({ isRecording: true }),
+    /class="user-flow-session-drag-handle"\s+draggable="false"/,
+  );
+  assert.match(
+    fixture.markup({ isReplaying: true }),
+    /class="user-flow-session-drag-handle"\s+draggable="false"/,
+  );
   fixture.context.userFlowTestReplayCurrentSessionId = "first";
-  assert.match(fixture.markup(), /draggable="false"/);
+  assert.match(
+    fixture.markup(),
+    /class="user-flow-session-drag-handle"\s+draggable="false"/,
+  );
   fixture.context.userFlowTestReplayCurrentSessionId = "";
   fixture.context.replayNavigationSessionId = "first";
-  assert.match(fixture.markup(), /draggable="false"/);
+  assert.match(
+    fixture.markup(),
+    /class="user-flow-session-drag-handle"\s+draggable="false"/,
+  );
+});
+
+test("dragging starts only from the dedicated left handle", () => {
+  const fixture = createOrdering();
+  const session = fixture.lists.test.sessions[0];
+  const titleDrag = fixture.event(150, session);
+
+  fixture.context.dragEvent = titleDrag;
+  vm.runInContext("handleUserFlowSessionDragStart(dragEvent)", fixture.context);
+
+  assert.equal(titleDrag.prevented, true);
+  assert.equal(fixture.context.draggedUserFlowSessionId, "");
+
+  const handleDrag = fixture.start("first");
+  assert.equal(handleDrag.prevented, false);
+  assert.equal(fixture.context.draggedUserFlowSessionId, "first");
 });
 
 test("test view buttons stay beside replay, start disabled, and activate for a result window", () => {
