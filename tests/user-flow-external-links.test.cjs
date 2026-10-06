@@ -295,19 +295,8 @@ test("sample URL import closes its reserved window when the sample site cannot c
   assert.equal(fixture.commands.length, 0);
 });
 
-test("ZIP product import keeps each folder mapping after a standalone popup connects", async () => {
-  const initialTabs = {
-    activeTabId: "before-connect",
-    notice: "",
-    sessionOrder: [],
-    sessionTabs: {},
-    tabs: [{ id: "before-connect", name: "연결 전" }],
-    testEntryIds: [],
-    testSessionIds: [],
-  };
-  let tabs = initialTabs;
-  const commands = [];
-  const archiveEntries = [
+function createProductArchiveEntries() {
+  return [
     { isDirectory: true, name: "상품 A/" },
     {
       isDirectory: false,
@@ -333,6 +322,23 @@ test("ZIP product import keeps each folder mapping after a standalone popup conn
         }),
     },
   ];
+}
+
+test("ZIP product import keeps each folder mapping after a standalone popup connects", async () => {
+  const initialTabs = {
+    activeTabId: "before-connect",
+    notice: "",
+    sessionOrder: [],
+    sessionTabs: {},
+    tabs: [{ id: "before-connect", name: "연결 전" }],
+    testEntryIds: [],
+    testSessionIds: [],
+  };
+  let tabs = initialTabs;
+  const commands = [];
+  const protectedSessionIds = [];
+  const releasedSessionIds = [];
+  const archiveEntries = createProductArchiveEntries();
   const context = vm.createContext({
     URL,
     document: { querySelector: () => null },
@@ -349,6 +355,9 @@ test("ZIP product import keeps each folder mapping after a standalone popup conn
     getTabCounts: () => new Map(tabs.tabs.map((tab) => [tab.id, 0])),
     getTabs: () => tabs,
     persistTabs: () => true,
+    protectSessionTabs: (sessionIds) => {
+      protectedSessionIds.push(...sessionIds);
+    },
     prepareImportTarget: async () => {
       tabs = {
         activeTabId: "connected",
@@ -364,6 +373,9 @@ test("ZIP product import keeps each folder mapping after a standalone popup conn
     sendCommand: (command, payload) => {
       commands.push({ command, payload });
       return true;
+    },
+    releaseSessionTabs: (sessionIds) => {
+      releasedSessionIds.push(...sessionIds);
     },
     setTabs: (nextTabs) => {
       tabs = nextTabs;
@@ -382,7 +394,95 @@ test("ZIP product import keeps each folder mapping after a standalone popup conn
   assert.ok(secondProductTab);
   assert.equal(tabs.sessionTabs["product-a"], firstProductTab.id);
   assert.equal(tabs.sessionTabs["product-b"], secondProductTab.id);
+  assert.deepEqual(protectedSessionIds, ["product-a", "product-b"]);
+  assert.deepEqual(releasedSessionIds, []);
   assert.equal(commands.length, 1);
   assert.equal(commands[0].command, "import-recordings");
   assert.equal(commands[0].payload.importData.sessions.length, 2);
+});
+
+test("reimporting a product ZIP repairs existing logs without duplicating them", async () => {
+  const state = {
+    sessions: [
+      { id: "product-a", importSourceZipName: "products.zip" },
+      { id: "product-b", importSourceZipName: "products.zip" },
+    ],
+  };
+  let tabs = {
+    activeTabId: "tab-a",
+    notice: "",
+    sessionOrder: ["product-a", "product-b"],
+    sessionTabs: {
+      "product-a": "tab-a",
+      "product-b": "tab-a",
+    },
+    tabs: [
+      { id: "tab-a", name: "상품 A" },
+      { id: "tab-b", name: "상품 B" },
+    ],
+    testEntryIds: [],
+    testSessionIds: [],
+  };
+  const commands = [];
+  const protectedSessionIds = [];
+  const statuses = [];
+  let renders = 0;
+  const context = vm.createContext({
+    URL,
+    document: { querySelector: () => null },
+    window: {
+      location: { href: "https://example.test/popup.html" },
+      UserFlowArchive: {
+        readArchive: async () => createProductArchiveEntries(),
+      },
+    },
+  });
+  vm.runInContext(importSource, context);
+  const controller = context.window.UserFlowImport.createController({
+    getState: () => state,
+    getTabCounts: () => {
+      const counts = new Map(tabs.tabs.map((tab) => [tab.id, 0]));
+
+      state.sessions.forEach((session) => {
+        const tabId = tabs.sessionTabs[session.id] || tabs.tabs[0].id;
+        counts.set(tabId, Number(counts.get(tabId) || 0) + 1);
+      });
+
+      return counts;
+    },
+    getTabs: () => tabs,
+    persistTabs: () => true,
+    protectSessionTabs: (sessionIds) => {
+      protectedSessionIds.push(...sessionIds);
+    },
+    rerender: () => {
+      renders += 1;
+    },
+    sendCommand: (command, payload) => {
+      commands.push({ command, payload });
+      return true;
+    },
+    setTabs: (nextTabs) => {
+      tabs = nextTabs;
+    },
+    showStatus: (message) => {
+      statuses.push(message);
+    },
+  });
+  const imported = await controller.importFile(
+    {
+      name: "products.zip",
+      size: 1024,
+      type: "application/zip",
+    },
+    { skipZipNameDuplicateCheck: true },
+  );
+
+  assert.equal(imported, true);
+  assert.equal(tabs.sessionTabs["product-a"], "tab-a");
+  assert.equal(tabs.sessionTabs["product-b"], "tab-b");
+  assert.deepEqual(protectedSessionIds, ["product-a", "product-b"]);
+  assert.equal(commands.length, 0);
+  assert.equal(renders, 1);
+  assert.match(statuses.at(-1), /기존 로그 2개의 탭 배치를 복구했습니다/);
 });

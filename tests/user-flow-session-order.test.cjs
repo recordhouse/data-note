@@ -190,6 +190,66 @@ function createOrdering({ view = "test", failSave = false } = {}) {
   };
 }
 
+test("pending product-import tab mappings survive stale site states", () => {
+  let writes = 0;
+  const context = vm.createContext({
+    MAX_USER_FLOW_SESSIONS_PER_TAB: 50,
+    getUserFlowTestEntries: () => [],
+    pendingUserFlowImportMappingTimer: 1,
+    pendingUserFlowImportSessionIds: new Set(["product-a", "product-b"]),
+    persistUserFlowTabs: () => {
+      writes += 1;
+      return true;
+    },
+    userFlowTabs: {
+      activeTabId: "tab-a",
+      sessionOrder: [],
+      sessionTabs: {
+        "product-a": "tab-a",
+        "product-b": "tab-b",
+      },
+      tabs: [
+        { id: "tab-a", name: "상품 A" },
+        { id: "tab-b", name: "상품 B" },
+      ],
+      testEntryIds: [],
+      testSessionIds: [],
+    },
+    window: { clearTimeout() {} },
+  });
+  vm.runInContext(
+    extract("getFirstUserFlowTab", "placeNewRecordingAtTop"),
+    context,
+  );
+
+  vm.runInContext(
+    "reconcileUserFlowTabs([], { removeMissingSessions: true })",
+    context,
+  );
+  assert.deepEqual(plain(context.userFlowTabs.sessionTabs), {
+    "product-a": "tab-a",
+    "product-b": "tab-b",
+  });
+  assert.equal(context.pendingUserFlowImportSessionIds.size, 2);
+  assert.equal(writes, 0);
+
+  context.importedSessions = [{ id: "product-a" }, { id: "product-b" }];
+  vm.runInContext(
+    "reconcileUserFlowTabs(importedSessions, { removeMissingSessions: true })",
+    context,
+  );
+  assert.deepEqual(plain(context.userFlowTabs.sessionTabs), {
+    "product-a": "tab-a",
+    "product-b": "tab-b",
+  });
+  assert.equal(context.pendingUserFlowImportSessionIds.size, 0);
+  assert.deepEqual(plain(context.userFlowTabs.sessionOrder), [
+    "product-a",
+    "product-b",
+  ]);
+  assert.equal(writes, 1);
+});
+
 test("test lists can be dragged to the end without changing normal log order", () => {
   const fixture = createOrdering();
   const originalOrder = plain(fixture.context.userFlowTabs.sessionOrder);

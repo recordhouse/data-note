@@ -63,6 +63,7 @@
   const PARENT_CONNECTION_CHECK_MS = 400;
   const PARENT_RECONNECT_TIMEOUT_MS = 60 * 1000;
   const USER_FLOW_IMPORT_CONNECTION_TIMEOUT_MS = 60 * 1000;
+  const USER_FLOW_IMPORT_MAPPING_TIMEOUT_MS = 60 * 1000;
   const USER_FLOW_TEST_REPLAY_ADVANCE_MS = 350;
   const USER_FLOW_DRAG_SCROLL_EDGE_PX = 48;
   const USER_FLOW_DRAG_SCROLL_STEP_PX = 18;
@@ -116,6 +117,8 @@
   let userFlowTestReplayStarted = false;
   let userFlowTestReplayOpenedWindowCount = 0;
   let userFlowImportController = null;
+  const pendingUserFlowImportSessionIds = new Set();
+  let pendingUserFlowImportMappingTimer = 0;
   let syncingUserFlowTabsFromStorage = false;
   let userFlowTabs = readUserFlowTabs();
 
@@ -447,6 +450,40 @@
     return userFlowTabs.tabs[0] || null;
   }
 
+  function protectUserFlowImportSessionTabs(sessionIds) {
+    (Array.isArray(sessionIds) ? sessionIds : [sessionIds]).forEach(
+      (sessionId) => {
+        const normalizedSessionId = String(sessionId || "").trim();
+
+        if (normalizedSessionId) {
+          pendingUserFlowImportSessionIds.add(normalizedSessionId);
+        }
+      },
+    );
+
+    window.clearTimeout(pendingUserFlowImportMappingTimer);
+    pendingUserFlowImportMappingTimer = pendingUserFlowImportSessionIds.size
+      ? window.setTimeout(() => {
+          pendingUserFlowImportSessionIds.clear();
+          pendingUserFlowImportMappingTimer = 0;
+          renderUserFlowState(currentUserFlowState);
+        }, USER_FLOW_IMPORT_MAPPING_TIMEOUT_MS)
+      : 0;
+  }
+
+  function releaseUserFlowImportSessionTabs(sessionIds) {
+    (Array.isArray(sessionIds) ? sessionIds : [sessionIds]).forEach(
+      (sessionId) => {
+        pendingUserFlowImportSessionIds.delete(String(sessionId || "").trim());
+      },
+    );
+
+    if (!pendingUserFlowImportSessionIds.size) {
+      window.clearTimeout(pendingUserFlowImportMappingTimer);
+      pendingUserFlowImportMappingTimer = 0;
+    }
+  }
+
   function getUserFlowSessionTabId(sessionId) {
     const assignedTabId = userFlowTabs.sessionTabs[sessionId];
     return userFlowTabs.tabs.some((tab) => tab.id === assignedTabId)
@@ -463,6 +500,15 @@
     const tabSessionCounts = new Map(userFlowTabs.tabs.map((tab) => [tab.id, 0]));
     let changed = false;
 
+    sessionIds.forEach((sessionId) => {
+      pendingUserFlowImportSessionIds.delete(sessionId);
+    });
+
+    if (!pendingUserFlowImportSessionIds.size) {
+      window.clearTimeout(pendingUserFlowImportMappingTimer);
+      pendingUserFlowImportMappingTimer = 0;
+    }
+
     if (userFlowTabs.activeTabId !== fallbackTabId) {
       userFlowTabs.activeTabId = fallbackTabId;
       changed = true;
@@ -470,7 +516,10 @@
 
     if (removeMissingSessions) {
       Object.keys(userFlowTabs.sessionTabs).forEach((sessionId) => {
-        if (!sessionIds.has(sessionId)) {
+        if (
+          !sessionIds.has(sessionId) &&
+          !pendingUserFlowImportSessionIds.has(sessionId)
+        ) {
           delete userFlowTabs.sessionTabs[sessionId];
           changed = true;
         }
@@ -3787,6 +3836,8 @@
     getTabCounts: getUserFlowTabCounts,
     getTabSessionCount: getUserFlowTabSessionCount,
     persistTabs: persistUserFlowTabs,
+    protectSessionTabs: protectUserFlowImportSessionTabs,
+    releaseSessionTabs: releaseUserFlowImportSessionTabs,
     rerender: rerenderUserFlowOrganization,
     sendCommand: sendUserFlowCommand,
     reserveImportTarget: reserveUserFlowImportTarget,
@@ -3835,6 +3886,7 @@
     "pagehide",
     () => {
       window.clearInterval(parentConnectionCheckTimer);
+      window.clearTimeout(pendingUserFlowImportMappingTimer);
       clearUserFlowTestReplayTimers();
       stopUserFlowStatusDots();
       cancelUserFlowImportTarget();

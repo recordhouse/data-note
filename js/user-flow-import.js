@@ -37,6 +37,8 @@
     const getTabCounts = options.getTabCounts || (() => new Map());
     const getTabSessionCount = options.getTabSessionCount || (() => 0);
     const persistTabs = options.persistTabs || (() => false);
+    const protectSessionTabs = options.protectSessionTabs || (() => {});
+    const releaseSessionTabs = options.releaseSessionTabs || (() => {});
     const rerender = options.rerender || (() => {});
     const sendCommand = options.sendCommand || (() => false);
     const reserveImportTarget = options.reserveImportTarget || (() => true);
@@ -583,6 +585,7 @@
         (initialState.sessions || []).map((session) => session.id),
       );
       const importedSessions = [];
+      const archiveSessionFolders = new Map();
       const importedSessionFolders = new Map();
       let archiveSessionCount = 0;
 
@@ -614,6 +617,18 @@
             }
 
             archiveSessionCount += 1;
+
+            const requestedSessionId =
+              typeof candidate.id === "string"
+                ? candidate.id.trim().slice(0, 160)
+                : "";
+
+            if (
+              requestedSessionId &&
+              !archiveSessionFolders.has(requestedSessionId)
+            ) {
+              archiveSessionFolders.set(requestedSessionId, folderName);
+            }
 
             if (importedSessions.length >= limits.maxImportSessions) {
               throw new Error(
@@ -666,6 +681,16 @@
         }
       }
 
+      const sessionFolderAssignments = new Map(importedSessionFolders);
+
+      if (skipZipNameDuplicateCheck) {
+        archiveSessionFolders.forEach((folderName, sessionId) => {
+          if (connectedSessionIds.has(sessionId)) {
+            sessionFolderAssignments.set(sessionId, folderName);
+          }
+        });
+      }
+
       if (
         !skipZipNameDuplicateCheck &&
         normalizedZipName &&
@@ -687,6 +712,7 @@
       }
 
       const previousTabs = JSON.parse(JSON.stringify(tabsState));
+      let protectedSessionIds = [];
 
       try {
         const tabByName = ensureArchiveTabs(folderNames, tabsState);
@@ -702,12 +728,27 @@
           );
         }
 
-        importedSessions.forEach((session) => {
-          const folderName = importedSessionFolders.get(session.id);
+        sessionFolderAssignments.forEach((folderName, sessionId) => {
           const tab = tabByName.get(folderName.toLowerCase());
 
           if (!tab) {
             return;
+          }
+
+          if (connectedSessionIds.has(sessionId)) {
+            const assignedTabId = tabsState.tabs.some(
+              (candidateTab) =>
+                candidateTab.id === tabsState.sessionTabs[sessionId],
+            )
+              ? tabsState.sessionTabs[sessionId]
+              : tabsState.tabs[0]?.id || "";
+
+            if (assignedTabId && tabCounts.has(assignedTabId)) {
+              tabCounts.set(
+                assignedTabId,
+                Math.max(0, Number(tabCounts.get(assignedTabId) || 0) - 1),
+              );
+            }
           }
 
           const tabSessionCount = Number(tabCounts.get(tab.id) || 0);
@@ -718,7 +759,7 @@
             );
           }
 
-          tabsState.sessionTabs[session.id] = tab.id;
+          tabsState.sessionTabs[sessionId] = tab.id;
           tabCounts.set(tab.id, tabSessionCount + 1);
         });
 
@@ -728,6 +769,9 @@
           tabsState.activeTabId = firstImportedTab.id;
         }
 
+        protectedSessionIds = Array.from(sessionFolderAssignments.keys());
+        protectSessionTabs(protectedSessionIds);
+
         if (!persistTabs()) {
           throw new Error("가져온 탭 구성을 저장하지 못했습니다.");
         }
@@ -735,9 +779,11 @@
         if (!importedSessions.length) {
           rerender();
           showStatus(
-            archiveSessionCount
-              ? "새로 가져올 로그가 없습니다. 알림과 탭 구성을 적용했습니다."
-              : "빈 탭 폴더를 가져왔습니다.",
+            sessionFolderAssignments.size
+              ? `기존 로그 ${sessionFolderAssignments.size}개의 탭 배치를 복구했습니다.`
+              : archiveSessionCount
+                ? "새로 가져올 로그가 없습니다. 알림과 탭 구성을 적용했습니다."
+                : "빈 탭 폴더를 가져왔습니다.",
             "ready",
           );
           return true;
@@ -762,6 +808,7 @@
 
         return true;
       } catch (error) {
+        releaseSessionTabs(protectedSessionIds);
         setTabs(previousTabs);
         persistTabs();
         throw error;
