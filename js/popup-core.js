@@ -6,7 +6,7 @@
   }
 
   // 변경사항을 배포할 때 마지막 버전 숫자를 올려주세요.
-  const DATA_NOTE_VERSION = "1.0.0+0094";
+  const DATA_NOTE_VERSION = "1.0.0+0095";
   const MESSAGE_READY = "response-mapping-popup-ready";
   const MESSAGE_RENDER = "response-mapping-popup-render";
   const MESSAGE_RENDERED = "response-mapping-popup-rendered";
@@ -16,8 +16,8 @@
   const DEFAULT_POPUP_URL = "./popup.html";
   const DEFAULT_MAPPING_DIRECTORY = "./data/";
   const DEFAULT_POPUP_NAME = "_blank";
-  const DEFAULT_POPUP_WIDTH = 720;
-  const DEFAULT_POPUP_HEIGHT = 850;
+  const DEFAULT_POPUP_WIDTH = 600;
+  const DEFAULT_POPUP_HEIGHT = 900;
   const DEFAULT_POPUP_LEFT = 0;
   const DEFAULT_POPUP_TOP = 0;
   const DEFAULT_POPUP_FEATURES = `popup=yes,width=${DEFAULT_POPUP_WIDTH},height=${DEFAULT_POPUP_HEIGHT},left=${DEFAULT_POPUP_LEFT},top=${DEFAULT_POPUP_TOP}`;
