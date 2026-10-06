@@ -1544,48 +1544,52 @@
                 ${escapeHtml(sessionMeta)}
               </span>
             </div>
-            <div class="user-flow-session-controls">
-              <button
-                class="user-flow-replay user-flow-new-window"
-                type="button"
-                data-user-flow-command="open-session-window"
-                data-session-id="${escapeHtml(session.id)}"
-                title="저장된 화면 크기로 새 창을 엽니다. 재생 버튼을 누르면 이 창에서 재생합니다."
-                ${newWindowDisabled ? "disabled" : ""}
-              >새창</button>
-              <button
-                class="user-flow-replay"
-                type="button"
-                data-user-flow-command="toggle-replay-session"
-                data-session-id="${escapeHtml(session.id)}"
-                aria-pressed="${String(isReplayingSession)}"
-                aria-busy="${String(isNavigatingSession)}"
-                data-navigating="${String(isNavigatingSession)}"
-                ${replayDisabled ? "disabled" : ""}
-              >${isNavigatingSession ? "이동 중" : isReplayingSession ? "재생 중지" : "재생"}</button>
-              <button
-                class="user-flow-window-view"
-                type="button"
-                data-user-flow-command="view-session-window"
-                data-session-id="${escapeHtml(session.id)}"
-                ${viewDisabled ? "disabled" : ""}
-              >보기</button>
-              <button
-                class="user-flow-test-add"
-                type="button"
-                data-user-flow-command="add-test-session"
-                data-session-id="${escapeHtml(session.id)}"
-                aria-label="${escapeHtml(sessionTitle)} 로그 테스트 목록에 추가"
-                ${changeDisabled || isUserFlowTestReplayRunning() || replayNavigationSessionId || userFlowTabs.testSessionIds.length >= MAX_USER_FLOW_SESSIONS ? "disabled" : ""}
-              >테스트</button>
-              <button
-                class="user-flow-delete"
-                type="button"
-                data-user-flow-command="delete-session"
-                data-session-id="${escapeHtml(session.id)}"
-                aria-label="${escapeHtml(sessionTitle)} 로그 삭제"
-                ${changeDisabled ? "disabled" : ""}
-              >삭제</button>
+            <div class="user-flow-session-controls user-flow-session-controls-stacked">
+              <div class="user-flow-session-primary-controls">
+                <button
+                  class="user-flow-replay user-flow-new-window"
+                  type="button"
+                  data-user-flow-command="open-session-window"
+                  data-session-id="${escapeHtml(session.id)}"
+                  title="저장된 화면 크기로 새 창을 엽니다. 재생 버튼을 누르면 이 창에서 재생합니다."
+                  ${newWindowDisabled ? "disabled" : ""}
+                >새창</button>
+                <button
+                  class="user-flow-replay"
+                  type="button"
+                  data-user-flow-command="toggle-replay-session"
+                  data-session-id="${escapeHtml(session.id)}"
+                  aria-pressed="${String(isReplayingSession)}"
+                  aria-busy="${String(isNavigatingSession)}"
+                  data-navigating="${String(isNavigatingSession)}"
+                  ${replayDisabled ? "disabled" : ""}
+                >${isNavigatingSession ? "이동 중" : isReplayingSession ? "재생 중지" : "재생"}</button>
+                <button
+                  class="user-flow-delete"
+                  type="button"
+                  data-user-flow-command="delete-session"
+                  data-session-id="${escapeHtml(session.id)}"
+                  aria-label="${escapeHtml(sessionTitle)} 로그 삭제"
+                  ${changeDisabled ? "disabled" : ""}
+                >삭제</button>
+              </div>
+              <div class="user-flow-session-secondary-controls">
+                <button
+                  class="user-flow-window-view"
+                  type="button"
+                  data-user-flow-command="view-session-window"
+                  data-session-id="${escapeHtml(session.id)}"
+                  ${viewDisabled ? "disabled" : ""}
+                >페이지 보기</button>
+                <button
+                  class="user-flow-test-add"
+                  type="button"
+                  data-user-flow-command="add-test-session"
+                  data-session-id="${escapeHtml(session.id)}"
+                  aria-label="${escapeHtml(sessionTitle)} 로그 테스트 목록에 추가"
+                  ${changeDisabled || isUserFlowTestReplayRunning() || replayNavigationSessionId || userFlowTabs.testSessionIds.length >= MAX_USER_FLOW_SESSIONS ? "disabled" : ""}
+                >로그 테스트 추가</button>
+              </div>
             </div>
           </article>
         `;

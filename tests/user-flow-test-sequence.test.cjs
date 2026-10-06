@@ -1114,8 +1114,12 @@ test("log-list title actions use rename and export icons while controls expose t
   const renderer = extract("renderUserFlowState", "isParentWindowOpen");
   assert.match(renderer, /class="user-flow-replay user-flow-new-window"[\s\S]*?data-user-flow-command="open-session-window"[\s\S]*?>새창<\/button>\s*<button[\s\S]*?data-user-flow-command="toggle-replay-session"/);
   assert.match(renderer, /class="user-flow-session-title-row"[\s\S]*?class="user-flow-title-icon user-flow-name-edit-icon"[\s\S]*?data-user-flow-name-edit[\s\S]*?class="user-flow-title-icon user-flow-export-icon"[\s\S]*?data-user-flow-command="export-recording"/);
-  assert.match(renderer, /class="user-flow-window-view"[\s\S]*?data-user-flow-command="view-session-window"[\s\S]*?>보기<\/button>/);
-  assert.match(renderer, /class="user-flow-test-add"[\s\S]*?data-user-flow-command="add-test-session"[\s\S]*?>테스트<\/button>/);
+  assert.match(renderer, /class="user-flow-window-view"[\s\S]*?data-user-flow-command="view-session-window"[\s\S]*?>페이지 보기<\/button>/);
+  assert.match(renderer, /class="user-flow-test-add"[\s\S]*?data-user-flow-command="add-test-session"[\s\S]*?>로그 테스트 추가<\/button>/);
+  assert.match(
+    renderer,
+    /class="user-flow-session-controls user-flow-session-controls-stacked"[\s\S]*?class="user-flow-session-primary-controls"[\s\S]*?data-user-flow-command="toggle-replay-session"[\s\S]*?data-user-flow-command="delete-session"[\s\S]*?class="user-flow-session-secondary-controls"[\s\S]*?data-user-flow-command="view-session-window"[\s\S]*?data-user-flow-command="add-test-session"/,
+  );
   assert.doesNotMatch(renderer, /class="user-flow-export"|>내보내기<\/button>/);
   assert.doesNotMatch(renderer, /class="user-flow-name-action"/);
   assert.doesNotMatch(extract("renderUserFlowTestSessions", "renderUserFlowNotice"), /open-session-window/);
@@ -1123,6 +1127,14 @@ test("log-list title actions use rename and export icons while controls expose t
   const css = fs.readFileSync(path.join(__dirname, "../css/popup.css"), "utf8");
   assert.match(css, /\.user-flow-new-window\s*\{\s*border-color: #1266d6;\s*color: #1266d6;\s*\}/);
   assert.match(css, /\.user-flow-replay\s*\{[^}]*background: #ffffff;/);
+  assert.match(
+    css,
+    /\.user-flow-window-view,\s*\.user-flow-test-add\s*\{[^}]*min-width: 48px;[^}]*height: 24px;[^}]*border: 1px solid #cbd5e1;[^}]*font-size: 11px;/,
+  );
+  assert.match(
+    css,
+    /\.user-flow-window-view:disabled,\s*\.user-flow-test-add:disabled\s*\{[^}]*border-color: #cbd5e1;[^}]*opacity: 1;/,
+  );
   assert.match(
     css,
     /\.user-flow-action\.user-flow-new-window:hover:not\(:disabled\),[\s\S]*?background: #eff6ff;/,

@@ -1283,16 +1283,30 @@ body.is-user-flow-file-dragging .wrap {
   gap: 6px;
 }
 
+.user-flow-session-controls-stacked {
+  display: grid;
+  justify-items: end;
+  gap: 5px;
+}
+
+.user-flow-session-primary-controls,
+.user-flow-session-secondary-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .user-flow-window-view,
 .user-flow-test-add {
-  min-width: 64px;
-  height: 30px;
-  padding: 4px 8px;
-  border: 1px solid #64748b;
-  border-radius: 5px;
+  min-width: 48px;
+  height: 24px;
+  padding: 2px 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
   background: #ffffff;
-  color: #475569;
-  font-size: 12px;
+  color: #334155;
+  font-size: 11px;
   font-weight: 800;
   cursor: pointer;
 }
@@ -1304,8 +1318,11 @@ body.is-user-flow-file-dragging .wrap {
 
 .user-flow-window-view:disabled,
 .user-flow-test-add:disabled {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  color: #94a3b8;
   cursor: not-allowed;
-  opacity: 0.45;
+  opacity: 1;
 }
 
 .user-flow-name-editor {
@@ -1880,6 +1897,15 @@ body.is-user-flow-file-dragging .wrap {
 
   .user-flow-session-controls {
     grid-column: 2;
+    justify-content: flex-start;
+  }
+
+  .user-flow-session-controls-stacked {
+    justify-items: start;
+  }
+
+  .user-flow-session-primary-controls,
+  .user-flow-session-secondary-controls {
     justify-content: flex-start;
   }
 
