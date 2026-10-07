@@ -863,10 +863,10 @@
         eventCount,
         Math.max(0, Number(flowState.replayCompletedEventCount || 0)),
       );
-      return `전체 시간 ${formatFlowDuration(session.durationMs)} · 남은 시간 ${formatFlowCountdown(flowState.replayRemainingMs)} · 행동 ${completedCount.toLocaleString("ko-KR")}/${eventCount.toLocaleString("ko-KR")}`;
+      return `전체 ${formatFlowDuration(session.durationMs)} · 시간 ${formatFlowCountdown(flowState.replayRemainingMs)} · 로그 ${completedCount.toLocaleString("ko-KR")}/${eventCount.toLocaleString("ko-KR")}`;
     }
 
-    return `${eventCount.toLocaleString("ko-KR")}개 행동 · ${formatFlowDuration(session.durationMs)}`;
+    return `${eventCount.toLocaleString("ko-KR")}개 로그 · ${formatFlowDuration(session.durationMs)}`;
   }
 
   function getUserFlowSessionReplayProgress(session, flowState) {
