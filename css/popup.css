@@ -1266,12 +1266,12 @@ body.is-user-flow-file-dragging .wrap {
 }
 
 .user-flow-session-recorded-at {
-  color: #7b8797;
+  color: #64748b;
   font-size: 10px;
 }
 
 .user-flow-session-meta {
-  color: #64748b;
+  color: #526175;
   font-size: 11px;
 }
 
