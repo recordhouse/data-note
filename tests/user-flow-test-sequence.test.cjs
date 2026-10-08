@@ -808,6 +808,55 @@ test("configured preparation uses the uppercase parenthesized title value before
   assert.equal(fixture.commands[0].waitForNetworkIdle, true);
 });
 
+test("configured preparation falls back to ordinary replay when the title has no matching value", () => {
+  const fixture = createSequence({
+    beforeReplayConfig: {
+      url: "/prepare",
+      selectors: {
+        firstButton: "#first",
+        input: "#input",
+        select: "#select",
+        submitButton: "#submit",
+      },
+    },
+  });
+  const originalTab = fixture.getActiveParent();
+  fixture.context.currentUserFlowState.sessions[0].name = "first";
+  fixture.clickReplay("first");
+
+  assert.equal(fixture.beforeReplayRuns.length, 0);
+  assert.deepEqual(fixture.commands, [{
+    command: "toggle-replay-session",
+    sessionId: "first",
+    waitForNetworkIdle: true,
+  }]);
+  assert.equal(fixture.commandTargets[0], originalTab);
+  assert.equal(fixture.statuses.length, 0);
+});
+
+test("log-test playback also skips preparation when the title has no matching value", () => {
+  const fixture = createSequence({
+    beforeReplayConfig: {
+      url: "/prepare",
+      selectors: {
+        firstButton: "#first",
+        input: "#input",
+        select: "#select",
+        submitButton: "#submit",
+      },
+    },
+  });
+  fixture.context.currentUserFlowState.sessions[0].name = "first";
+  fixture.start("first");
+
+  assert.equal(fixture.beforeReplayRuns.length, 0);
+  assert.equal(fixture.windows.length, 1);
+  assert.equal(fixture.commands.length, 1);
+  assert.equal(fixture.commands[0].sessionId, "first");
+  assert.equal(fixture.commandTargets[0], fixture.windows[0]);
+  assert.equal(fixture.statuses.length, 0);
+});
+
 test("configured preparation keeps log-test playback in its newly opened result window", async () => {
   const fixture = createSequence({
     beforeReplayConfig: {

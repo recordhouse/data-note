@@ -2247,12 +2247,7 @@
     }
 
     if (!titleValue) {
-      failBeforeReplay(
-        sessionId,
-        testEntryId,
-        new Error("로그 제목에서 대문자 영어로 시작하는 괄호 값을 찾지 못했습니다."),
-      );
-      return Boolean(testEntryId);
+      return requestUserFlowReplay(sessionId, options);
     }
 
     let preparationUrl;
