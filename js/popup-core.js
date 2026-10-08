@@ -6,7 +6,7 @@
   }
 
   // 변경사항을 배포할 때 마지막 버전 숫자를 올려주세요.
-  const DATA_NOTE_VERSION = "1.0.0+0099";
+  const DATA_NOTE_VERSION = "1.0.0+0100";
   const MESSAGE_READY = "response-mapping-popup-ready";
   const MESSAGE_RENDER = "response-mapping-popup-render";
   const MESSAGE_RENDERED = "response-mapping-popup-rendered";
@@ -402,6 +402,13 @@
           "user-flow-import.js",
           "userFlowImportSrc",
           "UserFlowImport",
+        ),
+      )
+      .then(() =>
+        loadFeatureScript(
+          "user-flow-before-replay.js",
+          "userFlowBeforeReplaySrc",
+          "UserFlowBeforeReplay",
         ),
       )
       .then(() =>

@@ -47,7 +47,7 @@ async function createPopup() {
   const window = {
     opener: originalSite,
     location: new URL("https://example.test/popup.html"),
-    UserFlowArchive: {}, UserFlowImport: {}, UserFlowPopup: {}, ResponseMappingFeature: {},
+    UserFlowArchive: {}, UserFlowBeforeReplay: {}, UserFlowImport: {}, UserFlowPopup: {}, ResponseMappingFeature: {},
     addEventListener: (type, callback) => listeners.set(type, callback),
     setInterval(callback) { monitor = callback; return 1; },
     clearInterval() {},

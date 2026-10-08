@@ -97,6 +97,7 @@ function createOrdering({ view = "test", failSave = false } = {}) {
     USER_FLOW_DRAG_SCROLL_EDGE_PX: 48,
     USER_FLOW_DRAG_SCROLL_STEP_PX: 18,
     activeUserFlowView: view,
+    beforeReplaySessionId: "",
     draggedUserFlowSessionId: "",
     draggedUserFlowTestEntryId: "",
     replayNavigationSessionId: "",
@@ -449,6 +450,7 @@ test("list tab edit buttons use gear and check SVG icons without changing their 
     },
   };
   const context = vm.createContext({
+    beforeReplaySessionId: "",
     document: { querySelector: () => tabList },
     currentUserFlowState: {},
     editingUserFlowTabId: "",

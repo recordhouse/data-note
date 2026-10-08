@@ -19,7 +19,20 @@
   });
 
   function normalizePathConfig(parsedConfig) {
+    const beforeReplay = window.UserFlowBeforeReplay?.normalizeConfig?.(
+      parsedConfig?.beforeReplay,
+    ) || {
+      url: "",
+      selectors: {
+        select: "",
+        firstButton: "",
+        input: "",
+        submitButton: "",
+      },
+    };
+
     return Object.freeze({
+      beforeReplay,
       communicationUrl: String(parsedConfig?.communicationUrl || "").trim(),
       importUrls: Array.isArray(parsedConfig?.importUrls)
         ? parsedConfig.importUrls
@@ -53,6 +66,7 @@
     let isUrlImporting = false;
     let isPathConfigLoading = true;
     let pathConfig = Object.freeze({
+      beforeReplay: normalizePathConfig({}).beforeReplay,
       communicationUrl: "",
       importUrls: [],
       loginUrl: "",
@@ -127,6 +141,7 @@
         })
         .catch((error) => {
           pathConfig = Object.freeze({
+            beforeReplay: normalizePathConfig({}).beforeReplay,
             communicationUrl: "",
             importUrls: [],
             loginUrl: "",
@@ -1050,6 +1065,7 @@
 
     return Object.freeze({
       attach,
+      getPathConfig: () => pathConfig,
       importFile,
       importUrl: importFromUrl,
       loadPathConfig,

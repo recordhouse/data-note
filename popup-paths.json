@@ -2,5 +2,14 @@
   "loginUrl": "/login",
   "productUrl": "/product",
   "communicationUrl": "/communication",
+  "beforeReplay": {
+    "url": "",
+    "selectors": {
+      "select": "",
+      "firstButton": "",
+      "input": "",
+      "submitButton": ""
+    }
+  },
   "importUrls": []
 }

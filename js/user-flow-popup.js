@@ -85,6 +85,8 @@
   let userFlowMoveToastClearTimer = 0;
   let userFlowTestAddToastCount = 0;
   let userFlowTestAddToastResetTimer = 0;
+  let beforeReplayRunId = 0;
+  let beforeReplaySessionId = "";
   let replayNavigationRequestedReplay = false;
   let replayNavigationIdleTimer = 0;
   let replayNavigationParentReady = false;
@@ -709,7 +711,9 @@
     }
 
     const organizationDisabled = Boolean(
-      currentUserFlowState.isRecording || currentUserFlowState.isReplaying,
+      beforeReplaySessionId ||
+        currentUserFlowState.isRecording ||
+        currentUserFlowState.isReplaying,
     );
     const tabSignature = JSON.stringify({
       activeTabId: userFlowTabs.activeTabId,
@@ -924,6 +928,7 @@
       resumeRecordingSessionId: flowState.resumeRecordingSessionId || "",
       continuedRecordingSourceSessionId:
         flowState.continuedRecordingSourceSessionId || "",
+      beforeReplaySessionId,
       replayNavigationSessionId,
       replaySessionId: flowState.replaySessionId || "",
       sessionOrder: userFlowTabs.sessionOrder,
@@ -1095,7 +1100,8 @@
           flowState.replaySessionId === session.id &&
           (!isUserFlowTestReplayRunning() || isCurrentTestEntry);
         const isNavigatingSession =
-          replayNavigationSessionId === session.id &&
+          (beforeReplaySessionId === session.id ||
+            replayNavigationSessionId === session.id) &&
           (!isUserFlowTestReplayRunning() || isCurrentTestEntry);
         const recordedAt = formatUserFlowRecordedAt(session.recordedAt);
         const sessionName = String(session.name || "").trim();
@@ -1118,12 +1124,12 @@
           (!session.eventCount && !isReplayingSession) ||
           (flowState.isReplaying && !isReplayingSession);
         const replayDisabled =
-          disabled || Boolean(replayNavigationSessionId);
+          disabled || Boolean(beforeReplaySessionId || replayNavigationSessionId);
         const changeDisabled =
           flowState.isRecording ||
           flowState.isReplaying ||
           isUserFlowTestReplayRunning() ||
-          Boolean(replayNavigationSessionId);
+          Boolean(beforeReplaySessionId || replayNavigationSessionId);
         const sessionMeta = getUserFlowSessionMeta(session, flowState, isReplayingSession);
         return `
           <article
@@ -1218,7 +1224,9 @@
     }
 
     const noticeValue = normalizeUserFlowNotice(userFlowTabs.notice);
-    const isBlocked = Boolean(flowState.isRecording || flowState.isReplaying);
+    const isBlocked = Boolean(
+      beforeReplaySessionId || flowState.isRecording || flowState.isReplaying,
+    );
     const isCollapsed = Boolean(userFlowTabs.noticeCollapsed);
     notice.dataset.empty = String(!noticeValue);
     notice.dataset.collapsed = String(isCollapsed);
@@ -1317,7 +1325,10 @@
     let statusText = "저장된 로그가 없습니다";
     let statusState = "idle";
 
-    if (replayNavigationSessionId) {
+    if (beforeReplaySessionId) {
+      statusText = "재생 전 작업을 진행하고 있습니다";
+      statusState = "navigating";
+    } else if (replayNavigationSessionId) {
       statusText = isWaitingForCommunication
         ? "통신 중입니다"
         : "로그 시작 페이지로 이동 중입니다";
@@ -1364,13 +1375,17 @@
       : "";
     recordButton.setAttribute("aria-pressed", String(Boolean(flowState.isRecording)));
     recordButton.disabled = Boolean(
-      flowState.isReplaying || (!flowState.isRecording && !hasUserFlowTabs),
+      beforeReplaySessionId ||
+        flowState.isReplaying ||
+        (!flowState.isRecording && !hasUserFlowTabs),
     );
 
     userFlowImportController?.updateControls();
 
     if (tabAddButton) {
-      tabAddButton.disabled = Boolean(flowState.isRecording || flowState.isReplaying);
+      tabAddButton.disabled = Boolean(
+        beforeReplaySessionId || flowState.isRecording || flowState.isReplaying,
+      );
     }
 
     const hasSessionState = Array.isArray(flowState.sessions);
@@ -1378,7 +1393,10 @@
 
     if (exportAllButton) {
       exportAllButton.disabled = Boolean(
-        flowState.isRecording || flowState.isReplaying || !sessions.length,
+        beforeReplaySessionId ||
+          flowState.isRecording ||
+          flowState.isReplaying ||
+          !sessions.length,
       );
     }
 
@@ -1396,6 +1414,7 @@
       clearAllButton.disabled = Boolean(
         flowState.isRecording ||
           flowState.isReplaying ||
+          beforeReplaySessionId ||
           (!sessions.length && !userFlowTabs.tabs.length),
       );
     }
@@ -1433,6 +1452,7 @@
     }
 
     if (
+      beforeReplaySessionId ||
       flowState.isRecording ||
       flowState.isReplaying ||
       !sessions.some((session) => session.id === editingUserFlowSessionId)
@@ -1473,15 +1493,20 @@
         const sessionTitle = formatUserFlowSessionTitle(session, recordedAt);
         const sessionSubtitle = formatUserFlowSessionSubtitle(session);
         const isEditing = editingUserFlowSessionId === session.id;
-        const isNavigatingSession = replayNavigationSessionId === session.id;
+        const isNavigatingSession =
+          beforeReplaySessionId === session.id ||
+          replayNavigationSessionId === session.id;
         const disabled =
           flowState.isRecording ||
           (!session.eventCount && !isReplayingSession) ||
           (flowState.isReplaying && !isReplayingSession);
-        const replayDisabled = disabled || Boolean(replayNavigationSessionId);
+        const replayDisabled =
+          disabled || Boolean(beforeReplaySessionId || replayNavigationSessionId);
         const newWindowDisabled =
           replayDisabled || flowState.isReplaying || isUserFlowTestReplayRunning();
-        const changeDisabled = flowState.isRecording || flowState.isReplaying;
+        const changeDisabled = Boolean(
+          beforeReplaySessionId || flowState.isRecording || flowState.isReplaying,
+        );
         const linkedWindow = userFlowSessionWindows.get(session.id);
         const viewDisabled = !isParentWindowOpen(linkedWindow);
         const sessionMeta = getUserFlowSessionMeta(session, flowState, isReplayingSession);
@@ -1945,14 +1970,15 @@
 
   function openParentForReplay(
     sessionId,
-    { openInNewWindow = false, positionOffset = 0 } = {},
+    { openInNewWindow = false, positionOffset = 0, targetPage = "" } = {},
   ) {
     const session = (currentUserFlowState.sessions || []).find(
       (item) => item.id === sessionId,
     );
     const startPage = String(session?.startPage || "").trim();
+    const requestedPage = String(targetPage || startPage).trim();
 
-    if (!session?.eventCount || !startPage) {
+    if (!session?.eventCount || !startPage || !requestedPage) {
       showUserFlowImportStatus("재생할 로그의 시작 페이지를 찾지 못했습니다.");
       return false;
     }
@@ -1960,7 +1986,7 @@
     let parentWindow = null;
 
     try {
-      const replayUrl = new URL(startPage, window.location.href);
+      const replayUrl = new URL(requestedPage, window.location.href);
 
       if (replayUrl.origin !== window.location.origin) {
         showUserFlowImportStatus("다른 사이트의 로그 페이지는 열 수 없습니다.");
@@ -2151,6 +2177,189 @@
     }
   }
 
+  function clearBeforeReplayState({ rerender = true } = {}) {
+    beforeReplayRunId += 1;
+
+    if (!beforeReplaySessionId) {
+      return;
+    }
+
+    beforeReplaySessionId = "";
+
+    if (rerender) {
+      rerenderUserFlowOrganization();
+    }
+  }
+
+  function failBeforeReplay(sessionId, testEntryId, error) {
+    const message = String(error?.message || error || "재생 전 작업에 실패했습니다.");
+    const belongsToCurrentTest = Boolean(
+      testEntryId &&
+        userFlowTestReplayCurrentEntryId === testEntryId &&
+        userFlowTestReplayCurrentSessionId === sessionId,
+    );
+    clearBeforeReplayState({ rerender: false });
+
+    if (belongsToCurrentTest) {
+      setUserFlowTestReplayFailed(testEntryId);
+      scheduleNextUserFlowTestReplay();
+      rerenderUserFlowTestReplay();
+    } else {
+      rerenderUserFlowOrganization();
+    }
+
+    showUserFlowImportStatus(`재생 전 작업 실패: ${message}`);
+  }
+
+  function requestPreparedUserFlowReplay(
+    sessionId,
+    options = {},
+  ) {
+    if (currentUserFlowState.isReplaying) {
+      return requestUserFlowReplay(sessionId, options);
+    }
+
+    const beforeReplay = userFlowImportController
+      ?.getPathConfig?.()
+      ?.beforeReplay;
+
+    if (!window.UserFlowBeforeReplay?.isConfigured?.(beforeReplay)) {
+      return requestUserFlowReplay(sessionId, options);
+    }
+
+    if (beforeReplaySessionId || replayNavigationSessionId) {
+      return false;
+    }
+
+    const session = (currentUserFlowState.sessions || []).find(
+      (item) => item.id === sessionId,
+    );
+    const testEntryId = String(options.testEntryId || "");
+    const titleValue = window.UserFlowBeforeReplay.extractValue(session?.name);
+
+    if (!session?.eventCount || !session?.startPage) {
+      failBeforeReplay(
+        sessionId,
+        testEntryId,
+        new Error("재생할 로그의 시작 페이지를 찾지 못했습니다."),
+      );
+      return Boolean(testEntryId);
+    }
+
+    if (!titleValue) {
+      failBeforeReplay(
+        sessionId,
+        testEntryId,
+        new Error("로그 제목에서 대문자 영어로 시작하는 괄호 값을 찾지 못했습니다."),
+      );
+      return Boolean(testEntryId);
+    }
+
+    let preparationUrl;
+
+    try {
+      preparationUrl = window.UserFlowBeforeReplay.resolvePreparationUrl(
+        beforeReplay,
+        window.location.href,
+      );
+    } catch (error) {
+      failBeforeReplay(sessionId, testEntryId, error);
+      return Boolean(testEntryId);
+    }
+
+    const openInNewWindow = options.openInNewWindow === true;
+
+    if (
+      !openInNewWindow &&
+      !isUserFlowTestReplayRunning() &&
+      isParentWindowOpen(userFlowReplayWindow) &&
+      getActiveParentWindow() !== userFlowReplayWindow
+    ) {
+      activeParentWindow = userFlowReplayWindow;
+      window.PopupCore?.connectParent?.(userFlowReplayWindow);
+      startParentReconnect(userFlowReplayWindow);
+    }
+
+    let targetWindow = getActiveParentWindow();
+    const needsNewTarget = openInNewWindow || !targetWindow;
+
+    if (needsNewTarget) {
+      targetWindow = openParentForReplay(sessionId, {
+        openInNewWindow,
+        positionOffset: options.positionOffset || 0,
+        targetPage: preparationUrl.href,
+      });
+
+      if (!targetWindow) {
+        return false;
+      }
+
+      userFlowOpenedWindows.add(targetWindow);
+      userFlowSessionWindows.set(sessionId, targetWindow);
+      renderedUserFlowSessionSignature = "";
+
+      if (openInNewWindow) {
+        userFlowTestReplayWindows.set(testEntryId || sessionId, targetWindow);
+      }
+    } else {
+      userFlowSessionWindows.set(sessionId, targetWindow);
+      renderedUserFlowSessionSignature = "";
+    }
+
+    const runId = beforeReplayRunId + 1;
+    beforeReplayRunId = runId;
+    beforeReplaySessionId = sessionId;
+    rerenderUserFlowOrganization();
+
+    void window.UserFlowBeforeReplay
+      .run({
+        baseUrl: window.location.href,
+        config: beforeReplay,
+        targetWindow,
+        value: titleValue,
+      })
+      .then(() => {
+        if (
+          runId !== beforeReplayRunId ||
+          beforeReplaySessionId !== sessionId ||
+          !isParentWindowOpen(targetWindow)
+        ) {
+          return;
+        }
+
+        let replayUrl;
+
+        try {
+          replayUrl = new URL(session.startPage, window.location.href);
+
+          if (replayUrl.origin !== window.location.origin) {
+            throw new Error("다른 사이트의 로그 페이지는 열 수 없습니다.");
+          }
+        } catch (error) {
+          failBeforeReplay(sessionId, testEntryId, error);
+          return;
+        }
+
+        beforeReplaySessionId = "";
+        activeParentWindow = targetWindow;
+        window.PopupCore?.connectParent?.(targetWindow, {
+          hideScrollbars: openInNewWindow,
+        });
+        startParentReconnect(targetWindow);
+        targetWindow.location.replace(replayUrl.href);
+        startReplayNavigationState(sessionId, {
+          resumeRequestedReplay: !testEntryId,
+        });
+      })
+      .catch((error) => {
+        if (runId === beforeReplayRunId) {
+          failBeforeReplay(sessionId, testEntryId, error);
+        }
+      });
+
+    return true;
+  }
+
   function requestUserFlowReplay(
     sessionId,
     {
@@ -2257,7 +2466,7 @@
 
     rerenderUserFlowTestReplay();
 
-    if (!requestUserFlowReplay(sessionId, {
+    if (!requestPreparedUserFlowReplay(sessionId, {
       openInNewWindow: true,
       positionOffset: userFlowTestReplayOpenedWindowCount * 20,
       testEntryId: testEntry.id,
@@ -2527,6 +2736,7 @@
     let closedCount = 0;
 
     cancelUserFlowTestReplay({ rerender: false });
+    clearBeforeReplayState({ rerender: false });
     clearReplayNavigationState({ rerender: false });
 
     openedWindows.forEach((openedWindow) => {
@@ -2613,6 +2823,7 @@
       if (
         currentUserFlowState.isRecording ||
         currentUserFlowState.isReplaying ||
+        beforeReplaySessionId ||
         replayNavigationSessionId ||
         isUserFlowTestReplayRunning()
       ) {
@@ -2666,6 +2877,7 @@
         !payload.sessionId ||
         currentUserFlowState.isRecording ||
         currentUserFlowState.isReplaying ||
+        beforeReplaySessionId ||
         replayNavigationSessionId ||
         isUserFlowTestReplayRunning()
       ) {
@@ -2719,7 +2931,7 @@
 
     if (command === "toggle-replay-session") {
       cancelUserFlowTestReplay({ rerender: false });
-      requestUserFlowReplay(payload.sessionId, {
+      requestPreparedUserFlowReplay(payload.sessionId, {
         resumeAfterNavigation: true,
         waitForNetworkIdle: true,
       });
@@ -2753,7 +2965,11 @@
   }
 
   function isUserFlowOrganizationBlocked() {
-    return Boolean(currentUserFlowState.isRecording || currentUserFlowState.isReplaying);
+    return Boolean(
+      beforeReplaySessionId ||
+        currentUserFlowState.isRecording ||
+        currentUserFlowState.isReplaying,
+    );
   }
 
   function rerenderUserFlowOrganization() {
@@ -3238,7 +3454,8 @@
   function isUserFlowSessionOrderBlocked() {
     return isUserFlowOrganizationBlocked() || (
       activeUserFlowView === USER_FLOW_VIEW_TEST &&
-      (isUserFlowTestReplayRunning() || Boolean(replayNavigationSessionId))
+      (isUserFlowTestReplayRunning() ||
+        Boolean(beforeReplaySessionId || replayNavigationSessionId))
     );
   }
 
@@ -3798,8 +4015,10 @@
       settleUserFlowImportConnection(false);
     }
 
+    const wasPreparingReplay = Boolean(beforeReplaySessionId);
     activeParentWindow = null;
     stopParentReconnect();
+    clearBeforeReplayState({ rerender: false });
     clearReplayNavigationState({ rerender: false });
 
     if (userFlowTestReplayCurrentSessionId) {
@@ -3807,7 +4026,11 @@
       rerenderUserFlowTestReplay();
     }
 
-    if (currentUserFlowState.isRecording || currentUserFlowState.isReplaying) {
+    if (
+      wasPreparingReplay ||
+      currentUserFlowState.isRecording ||
+      currentUserFlowState.isReplaying
+    ) {
       renderUserFlowState({
         ...currentUserFlowState,
         isRecording: false,
@@ -3828,7 +4051,12 @@
   }
 
   userFlowImportController = window.UserFlowImport.createController({
-    getState: () => currentUserFlowState,
+    getState: () => ({
+      ...currentUserFlowState,
+      isReplaying: Boolean(
+        beforeReplaySessionId || currentUserFlowState.isReplaying,
+      ),
+    }),
     getTabs: () => userFlowTabs,
     setTabs: (tabs) => {
       userFlowTabs = tabs;

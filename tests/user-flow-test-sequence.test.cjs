@@ -17,6 +17,7 @@ function extract(firstFunction, nextFunction) {
 }
 
 function createSequence({
+  beforeReplayConfig = { url: "" },
   sendSucceeds = true,
   eventCount = 1,
   openSucceeds = true,
@@ -33,24 +34,44 @@ function createSequence({
   const toasts = [];
   const warnings = [];
   const commandUserAgents = [];
+  const beforeReplayRuns = [];
   let organizationResetCount = 0;
   let activeParent = {
     id: "original",
     closed: false,
     focusCount: 0,
     navigator: { userAgent: DESKTOP_UA },
+    location: {
+      href: "https://example.test/current",
+      replace(href) { this.href = href; },
+    },
     focus() { this.focusCount += 1; },
   };
   let nextTimer = 0;
   const context = vm.createContext({
     console: { warn: (...args) => warnings.push(args) },
+    URL,
     window: {
-      location: { origin: "https://example.test" },
+      location: {
+        href: "https://example.test/popup.html",
+        origin: "https://example.test",
+      },
       confirm: () => true,
       PopupCore: {
         connectParent(target) {
           connections.push(target);
           activeParent = target;
+        },
+      },
+      UserFlowBeforeReplay: {
+        extractValue(title) {
+          return String(title || "").match(/\(([A-Z][^()]*)\)/)?.[1] || "";
+        },
+        isConfigured: (config) => Boolean(config?.url),
+        resolvePreparationUrl: (config, baseUrl) => new URL(config.url, baseUrl),
+        run(options) {
+          beforeReplayRuns.push(options);
+          return Promise.resolve();
         },
       },
       setTimeout(callback, ms) {
@@ -67,7 +88,13 @@ function createSequence({
     REPLAY_NAVIGATION_IDLE_MS: 500,
     currentUserFlowState: {
       isReplaying: false,
-      sessions: ["first", "second", "third"].map((id) => ({ id, eventCount, environment })),
+      sessions: ["first", "second", "third"].map((id) => ({
+        id,
+        eventCount,
+        environment,
+        name: `${id} (VALUE)`,
+        startPage: `/${id}`,
+      })),
     },
     userFlowTabs: {
       tabs: [{ id: "default", name: "Tab 01" }],
@@ -89,6 +116,8 @@ function createSequence({
     userFlowTestReplayOpenedWindowCount: 0,
     userFlowTestAddToastCount: 0,
     userFlowTestAddToastResetTimer: 0,
+    beforeReplayRunId: 0,
+    beforeReplaySessionId: "",
     renderedUserFlowSessionSignature: "",
     renderedUserFlowTestSignature: "",
     replayNavigationRequestedReplay: false,
@@ -98,6 +127,9 @@ function createSequence({
     replayNavigationSessionId: "",
     userFlowReplayWindow: null,
     activeParentWindow: activeParent,
+    userFlowImportController: {
+      getPathConfig: () => ({ beforeReplay: beforeReplayConfig }),
+    },
     startParentReconnect() {},
     stopParentReconnect() {},
     getActiveParentWindow: () => activeParent,
@@ -111,6 +143,10 @@ function createSequence({
       const tab = {
         sessionId,
         navigator: { userAgent: DESKTOP_UA, userAgentData: { mobile: false } },
+        location: {
+          href: options?.targetPage || `https://example.test/${sessionId}`,
+          replace(href) { this.href = href; },
+        },
         closed: false,
         focusCount: 0,
         closeCount: 0,
@@ -173,6 +209,7 @@ function createSequence({
     openOptions,
     warnings,
     commandUserAgents,
+    beforeReplayRuns,
     statuses,
     toasts,
     timers,
@@ -460,6 +497,7 @@ test("top status ignores response errors and retains replay, waiting, and fatal 
     let displayedStatus;
     const context = vm.createContext({
       flowState: { ...flowState, responseError: "응답 오류: 404 · GET /background" },
+      beforeReplaySessionId: "",
       userFlowTabs: { tabs: [{ id: "default" }] },
       replayNavigationSessionId: navigationSessionId,
       USER_FLOW_ANIMATED_STATUS_STATES: new Set(["communicating", "navigating", "recording", "replaying"]),
@@ -561,8 +599,8 @@ test("a fatal failure before playback starts advances exactly once", () => {
 test("normal and test replay buttons use the same replay function with different window behavior", () => {
   const normalHandler = extract("handleUserFlowControl", "isUserFlowOrganizationBlocked");
   const sequenceHandler = extract("playCurrentUserFlowTestReplay", "scheduleNextUserFlowTestReplay");
-  assert.match(normalHandler, /requestUserFlowReplay\(payload.sessionId, \{[\s\S]*?resumeAfterNavigation: true,[\s\S]*?waitForNetworkIdle: true/);
-  assert.match(sequenceHandler, /requestUserFlowReplay\(sessionId, \{[\s\S]*?openInNewWindow: true,[\s\S]*?positionOffset: userFlowTestReplayOpenedWindowCount \* 20/);
+  assert.match(normalHandler, /requestPreparedUserFlowReplay\(payload.sessionId, \{[\s\S]*?resumeAfterNavigation: true,[\s\S]*?waitForNetworkIdle: true/);
+  assert.match(sequenceHandler, /requestPreparedUserFlowReplay\(sessionId, \{[\s\S]*?openInNewWindow: true,[\s\S]*?positionOffset: userFlowTestReplayOpenedWindowCount \* 20/);
   assert.doesNotMatch(sequenceHandler, /openInNewTab/);
   assert.doesNotMatch(source, /setUserFlowTestReplayError|userFlowTestReplayErrors|user-flow-test-replay-error/);
   const css = fs.readFileSync(path.join(__dirname, "../css/popup.css"), "utf8");
@@ -739,6 +777,66 @@ test("ordinary log replay continues using the original tab", () => {
   assert.equal(originalTab.focusCount, 1);
   assert.equal(fixture.windows.length, 0);
   assert.equal(fixture.context.userFlowTestReplayWindows.size, 0);
+});
+
+test("configured preparation uses the uppercase parenthesized title value before replay", async () => {
+  const fixture = createSequence({
+    beforeReplayConfig: {
+      url: "/prepare",
+      selectors: {
+        firstButton: "#first",
+        input: "#input",
+        select: "#select",
+        submitButton: "#submit",
+      },
+    },
+  });
+  fixture.clickReplay("first");
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(fixture.beforeReplayRuns.length, 1);
+  assert.equal(fixture.beforeReplayRuns[0].value, "VALUE");
+  assert.equal(fixture.commands.length, 0);
+  assert.equal(fixture.getActiveParent().location.href, "https://example.test/first");
+  assert.equal(fixture.context.replayNavigationSessionId, "first");
+
+  fixture.ready();
+  fixture.runIdle();
+  assert.equal(fixture.commands.length, 1);
+  assert.equal(fixture.commands[0].sessionId, "first");
+  assert.equal(fixture.commands[0].waitForNetworkIdle, true);
+});
+
+test("configured preparation keeps log-test playback in its newly opened result window", async () => {
+  const fixture = createSequence({
+    beforeReplayConfig: {
+      url: "/prepare",
+      selectors: {
+        firstButton: "#first",
+        input: "#input",
+        select: "#select",
+        submitButton: "#submit",
+      },
+    },
+  });
+  fixture.start("first");
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(fixture.windows.length, 1);
+  assert.equal(fixture.beforeReplayRuns[0].targetWindow, fixture.windows[0]);
+  assert.equal(
+    fixture.openOptions[0].targetPage,
+    "https://example.test/prepare",
+  );
+  assert.equal(fixture.windows[0].location.href, "https://example.test/first");
+  assert.equal(fixture.commands.length, 0);
+
+  fixture.ready();
+  fixture.runIdle();
+  assert.equal(fixture.commands.length, 1);
+  assert.equal(fixture.commandTargets[0], fixture.windows[0]);
 });
 
 function createTabOpener({
