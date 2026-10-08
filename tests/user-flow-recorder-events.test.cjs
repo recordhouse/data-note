@@ -263,7 +263,7 @@ test("genuinely missing click selectors fail after the short click wait", async 
   const started = fixture.now;
   await assert.rejects(fixture.api.playEvent({ type: "click", selector: "#missing" }), /재생 대상 요소를 찾지 못했습니다.*#missing/);
   assert.ok(fixture.now - started >= 300);
-  assert.ok(fixture.now - started < 5000);
+  assert.ok(fixture.now - started < 3000);
   assert.equal(fixture.body.clickCount, 0);
 });
 
@@ -302,7 +302,7 @@ test("missing click selectors fall back after 300ms to the recorded point, not l
   const started = fixture.now;
   await fixture.api.playEvent(coordinateClick());
   assert.ok(fixture.now - started >= 300);
-  assert.ok(fixture.now - started < 5000);
+  assert.ok(fixture.now - started < 3000);
   assert.deepEqual(fixture.pointQueries, [[100, 400]]);
   assert.equal(button.clickCount, 1);
   assert.equal(button.nativeClickCount, 1);
@@ -529,14 +529,14 @@ test("input, change and scroll events never use coordinate click fallback", asyn
   assert.deepEqual(fixture.played, []);
 });
 
-test("non-click events retain the existing five-second selector wait", async (t) => {
+test("non-click events use the three-second selector wait", async (t) => {
   const fixture = createEvents(t);
   const started = fixture.now;
   await assert.rejects(
     fixture.api.playEvent({ type: "input", selector: "#missing", detail: { value: "test" } }),
     /재생 대상 요소를 찾지 못했습니다/,
   );
-  assert.ok(fixture.now - started >= 5000);
+  assert.ok(fixture.now - started >= 3000);
 });
 
 test("stopping a target wait prevents a later coordinate click", async (t) => {
