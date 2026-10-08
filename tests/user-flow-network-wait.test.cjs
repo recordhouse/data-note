@@ -13,9 +13,16 @@ test("the default communication wait limit is 3 minutes", () => {
     "utf8",
   );
   assert.match(recorderSource, /const REQUEST_WAIT_TIMEOUT_MS = 180000;/);
+  assert.match(recorderSource, /const REQUEST_LONG_RUNNING_IGNORE_MS = 15000;/);
 });
 
-function createRecorder(t, { fetch, playEvent, events, timeoutCap = Infinity } = {}) {
+function createRecorder(t, {
+  fetch,
+  playEvent,
+  events,
+  timeoutCap = Infinity,
+  longRequestIgnoreMs,
+} = {}) {
   const timers = new Set();
   const listeners = new Map();
   const clicks = [];
@@ -83,7 +90,16 @@ function createRecorder(t, { fetch, playEvent, events, timeoutCap = Infinity } =
     console,
   });
   for (const file of ["user-flow-request-tracker.js", "user-flow-recorder.js"]) {
-    vm.runInContext(fs.readFileSync(path.join(__dirname, "../js", file), "utf8"), context);
+    let fileSource = fs.readFileSync(path.join(__dirname, "../js", file), "utf8");
+
+    if (file === "user-flow-recorder.js" && Number.isFinite(longRequestIgnoreMs)) {
+      fileSource = fileSource.replace(
+        "const REQUEST_LONG_RUNNING_IGNORE_MS = 15000;",
+        `const REQUEST_LONG_RUNNING_IGNORE_MS = ${longRequestIgnoreMs};`,
+      );
+    }
+
+    vm.runInContext(fileSource, context);
   }
   t.after(() => {
     for (const timer of timers) {
@@ -176,17 +192,47 @@ test("a request that starts during a scheduled replay delay freezes time and pro
   assert.equal(clicks.length, 1);
 });
 
-test("five identical outstanding requests cannot bypass a test wait", async (t) => {
+test("repeated identical requests are excluded from replay blocking", async (t) => {
   const { recorder, clicks } = createRecorder(t);
   const requestIds = Array.from({ length: 5 }, () => recorder.requestStart("same-request"));
   const replay = recorder.replay("first", { waitForNetworkIdle: true });
   assert.equal(recorder.getState().blockingRequestCount, 0);
   assert.equal(recorder.getState().pendingRequestCount, 5);
-  await delay(70);
-  assert.equal(clicks.length, 0);
-  requestIds.forEach((id) => recorder.requestEnd(id, { status: 200 }));
   await replay;
   assert.equal(clicks.length, 1);
+  assert.equal(recorder.getState().completedReplaySessionId, "first");
+  requestIds.forEach((id) => recorder.requestEnd(id, { status: 200 }));
+});
+
+test("sequential polling is excluded while a public communication wait is active", async (t) => {
+  const { recorder } = createRecorder(t);
+  const waiting = recorder.waitForRequests({ idleMs: 500 });
+
+  for (let index = 0; index < 4; index += 1) {
+    const request = recorder.requestStart("polling-request");
+    recorder.requestEnd(request, { status: 200 });
+  }
+
+  const pendingRequest = recorder.requestStart("polling-request");
+  await waiting;
+  assert.equal(recorder.getState().pendingRequestCount, 1);
+  assert.equal(recorder.getState().blockingRequestCount, 0);
+  recorder.requestEnd(pendingRequest, { status: 200 });
+});
+
+test("a long-running request stops blocking replay after the safety threshold", async (t) => {
+  const { recorder, clicks } = createRecorder(t, { longRequestIgnoreMs: 80 });
+  const request = recorder.requestStart("long-running-request");
+  const replay = recorder.replay("first", { waitForNetworkIdle: true });
+  await delay(60);
+  assert.equal(clicks.length, 0);
+  assert.equal(recorder.getState().blockingRequestCount, 1);
+  await replay;
+  assert.equal(clicks.length, 1);
+  assert.equal(recorder.getState().pendingRequestCount, 1);
+  assert.equal(recorder.getState().blockingRequestCount, 0);
+  assert.equal(recorder.getState().completedReplaySessionId, "first");
+  recorder.requestEnd(request, { status: 200 });
 });
 
 test("stopping a waiting test never executes its first action", async (t) => {

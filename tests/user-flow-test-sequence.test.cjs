@@ -731,6 +731,20 @@ test("new test windows wait for connection and outstanding requests before repla
   assert.equal(fixture.windows.length, 2);
 });
 
+test("ignored background requests do not delay a newly opened test replay", () => {
+  const fixture = createSequence({ autoConnect: false });
+  fixture.start();
+  fixture.ready({
+    pendingRequestCount: 1,
+    blockingRequestCount: 0,
+    isWaitingForRequests: false,
+  });
+  fixture.runIdle();
+
+  assert.equal(fixture.commands.length, 1);
+  assert.equal(fixture.commands[0].sessionId, "first");
+});
+
 test("a blocked window stops the test queue and preserves earlier result windows", () => {
   const fixture = createSequence();
   fixture.start();

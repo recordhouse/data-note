@@ -91,6 +91,7 @@ test("the preparation flow selects the third option, accepts dialogs, fills the 
     UserFlowRecorder: {
       async waitForRequests(options) {
         actions.push(`network:${options.idleMs}`);
+        assert.equal(options.includeIgnoredRequests, false);
         return true;
       },
     },

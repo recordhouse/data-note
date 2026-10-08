@@ -1315,12 +1315,15 @@
     renderUserFlowNotice(flowState);
 
     const hasUserFlowTabs = userFlowTabs.tabs.length > 0;
-    const pendingRequestCount = Math.max(
+    const reportedBlockingRequestCount = Number(flowState.blockingRequestCount);
+    const blockingRequestCount = Math.max(
       0,
-      Number(flowState.pendingRequestCount || 0),
+      Number.isFinite(reportedBlockingRequestCount)
+        ? reportedBlockingRequestCount
+        : Number(flowState.pendingRequestCount || 0),
     );
     const isWaitingForCommunication = Boolean(
-      pendingRequestCount > 0 || flowState.isWaitingForRequests,
+      blockingRequestCount > 0 || flowState.isWaitingForRequests,
     );
     let statusText = "저장된 로그가 없습니다";
     let statusState = "idle";
@@ -2616,12 +2619,15 @@
 
     window.clearTimeout(replayNavigationIdleTimer);
     replayNavigationIdleTimer = 0;
-    const pendingRequestCount = Math.max(
+    const reportedBlockingRequestCount = Number(flowState.blockingRequestCount);
+    const blockingRequestCount = Math.max(
       0,
-      Number(flowState.pendingRequestCount || 0),
+      Number.isFinite(reportedBlockingRequestCount)
+        ? reportedBlockingRequestCount
+        : Number(flowState.pendingRequestCount || 0),
     );
 
-    if (pendingRequestCount > 0 || flowState.isWaitingForRequests) {
+    if (blockingRequestCount > 0 || flowState.isWaitingForRequests) {
       return;
     }
 

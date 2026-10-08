@@ -28,6 +28,7 @@
   const REQUEST_ABORT_POLL_MS = 50;
   const REQUEST_IDLE_MS = 500;
   const REQUEST_REPEAT_RESUME_LIMIT = 5;
+  const REQUEST_LONG_RUNNING_IGNORE_MS = 15000;
   const RECORDING_FORMAT_VERSION = 7;
   const ARCHIVE_MANIFEST_FILE_NAME = "user-flow-manifest.json";
   const MAX_NOTICE_LENGTH = 1000;
@@ -58,9 +59,12 @@
     clients: new Map(),
     notifyTimer: 0,
     pendingRequests: new Map(),
+    pendingRequestStartedAt: new Map(),
+    pendingRequestIgnoreTimers: new Map(),
     requestWaiters: new Set(),
     replayRequestRepeatCounts: new Map(),
     ignoredReplayRequests: new Set(),
+    longRunningRequests: new Set(),
   };
   const dirtySessionIds = new Set();
   const deletedSessionIds = new Set();
@@ -572,10 +576,14 @@
   }
 
   function getBlockingRequestCount() {
+    ignoreLongRunningRequests();
     let requestCount = 0;
 
     state.pendingRequests.forEach((count, requestId) => {
-      if (!state.ignoredReplayRequests.has(requestId)) {
+      if (
+        !state.ignoredReplayRequests.has(requestId) &&
+        !state.longRunningRequests.has(requestId)
+      ) {
         requestCount += count;
       }
     });
@@ -587,21 +595,50 @@
     return getBlockingRequestCount() > 0;
   }
 
+  function ignoreLongRunningRequests() {
+    const now = performance.now();
+    let changed = false;
+
+    state.pendingRequests.forEach((count, requestId) => {
+      const startedAt = state.pendingRequestStartedAt.get(requestId);
+
+      if (
+        count > 0 &&
+        Number.isFinite(startedAt) &&
+        now - startedAt >= REQUEST_LONG_RUNNING_IGNORE_MS &&
+        !state.longRunningRequests.has(requestId)
+      ) {
+        state.longRunningRequests.add(requestId);
+        changed = true;
+        console.info(
+          `UserFlowRecorder: ${requestId} 통신이 ${REQUEST_LONG_RUNNING_IGNORE_MS / 1000}초 이상 지속되어 재생 대기에서 제외합니다.`,
+        );
+      }
+    });
+
+    return changed;
+  }
+
   function clearReplayRequestTracking() {
     state.replayRequestRepeatCounts.clear();
     state.ignoredReplayRequests.clear();
   }
 
   function initializeReplayRequestTracking() {
+    const previouslyIgnoredRequests = new Set(state.ignoredReplayRequests);
     clearReplayRequestTracking();
 
     state.pendingRequests.forEach((count, requestId) => {
       state.replayRequestRepeatCounts.set(requestId, count);
 
-      if (count >= REQUEST_REPEAT_RESUME_LIMIT) {
+      if (
+        count >= REQUEST_REPEAT_RESUME_LIMIT ||
+        previouslyIgnoredRequests.has(requestId)
+      ) {
         state.ignoredReplayRequests.add(requestId);
       }
     });
+    ignoreLongRunningRequests();
   }
 
   function normalizeRequestId(requestId) {
@@ -613,6 +650,30 @@
     Array.from(state.requestWaiters).forEach((finish) => finish(completed));
   }
 
+  function clearPendingRequestIgnoreTimer(requestId) {
+    const timer = state.pendingRequestIgnoreTimers.get(requestId);
+
+    if (!timer) {
+      return;
+    }
+
+    window.clearTimeout(timer);
+    state.pendingRequestIgnoreTimers.delete(requestId);
+  }
+
+  function schedulePendingRequestIgnore(requestId) {
+    clearPendingRequestIgnoreTimer(requestId);
+    const timer = window.setTimeout(() => {
+      state.pendingRequestIgnoreTimers.delete(requestId);
+
+      if (ignoreLongRunningRequests()) {
+        settleRequestWaiters(true);
+        notifyClients({ immediate: true });
+      }
+    }, REQUEST_LONG_RUNNING_IGNORE_MS);
+    state.pendingRequestIgnoreTimers.set(requestId, timer);
+  }
+
   function requestStart(requestId) {
     const normalizedId = normalizeRequestId(requestId);
     const requestCount = state.pendingRequests.get(normalizedId) || 0;
@@ -620,7 +681,12 @@
 
     state.pendingRequests.set(normalizedId, requestCount + 1);
 
-    if (state.isReplaying) {
+    if (!requestCount) {
+      state.pendingRequestStartedAt.set(normalizedId, performance.now());
+      schedulePendingRequestIgnore(normalizedId);
+    }
+
+    if (state.isReplaying || state.requestWaiters.size > 0) {
       const repeatCount =
         (state.replayRequestRepeatCounts.get(normalizedId) || 0) + 1;
       state.replayRequestRepeatCounts.set(normalizedId, repeatCount);
@@ -704,6 +770,14 @@
       state.pendingRequests.set(normalizedId, requestCount - 1);
     } else {
       state.pendingRequests.delete(normalizedId);
+      state.pendingRequestStartedAt.delete(normalizedId);
+      state.longRunningRequests.delete(normalizedId);
+      clearPendingRequestIgnoreTimer(normalizedId);
+
+      if (!state.isReplaying && !state.requestWaiters.size) {
+        state.replayRequestRepeatCounts.delete(normalizedId);
+        state.ignoredReplayRequests.delete(normalizedId);
+      }
     }
 
     const responseError = getResponseErrorMessage(responseInfo, normalizedId);
@@ -722,12 +796,17 @@
     if (
       !state.pendingRequests.size &&
       !state.replayRequestRepeatCounts.size &&
-      !state.ignoredReplayRequests.size
+      !state.ignoredReplayRequests.size &&
+      !state.longRunningRequests.size
     ) {
       return false;
     }
 
     state.pendingRequests.clear();
+    state.pendingRequestStartedAt.clear();
+    state.pendingRequestIgnoreTimers.forEach((timer) => window.clearTimeout(timer));
+    state.pendingRequestIgnoreTimers.clear();
+    state.longRunningRequests.clear();
     clearReplayRequestTracking();
     settleRequestWaiters(false);
     notifyClients();
@@ -783,6 +862,20 @@
         state.requestWaiters.delete(check);
         window.clearTimeout(timeoutTimer);
         window.clearInterval(checkTimer);
+
+        if (!state.isReplaying && !state.requestWaiters.size) {
+          state.replayRequestRepeatCounts.forEach((_count, requestId) => {
+            if (!state.pendingRequests.has(requestId)) {
+              state.replayRequestRepeatCounts.delete(requestId);
+            }
+          });
+          state.ignoredReplayRequests.forEach((requestId) => {
+            if (!state.pendingRequests.has(requestId)) {
+              state.ignoredReplayRequests.delete(requestId);
+            }
+          });
+        }
+
         resolve(requestsCompleted);
       }
 
@@ -835,7 +928,7 @@
           0,
           REQUEST_WAIT_TIMEOUT_MS - (performance.now() - waitStartedAt),
         ),
-        includeIgnoredRequests: waitForNetworkIdle,
+        includeIgnoredRequests: false,
         idleMs: waitForNetworkIdle ? REQUEST_IDLE_MS : 0,
         shouldAbort: () => state.replayAbort || state.replayRunId !== replayRunId,
       });
@@ -860,7 +953,7 @@
       }
 
       await waitForRenderFrame();
-    } while (waitForNetworkIdle && getPendingRequestCount() > 0);
+    } while (waitForNetworkIdle && hasBlockingRequests());
 
     if (state.replayRunId !== replayRunId) {
       return false;
@@ -879,7 +972,7 @@
     { waitForNetworkIdle = false } = {},
   ) {
     while (!state.replayAbort && state.replayRunId === replayRunId) {
-      if (waitForNetworkIdle && getPendingRequestCount() > 0) {
+      if (waitForNetworkIdle && hasBlockingRequests()) {
         if (!(await waitForReplayRequests(replayRunId, { waitForNetworkIdle: true }))) {
           return false;
         }
@@ -1397,7 +1490,7 @@
         }
 
         if (!(await waitForReplayRequests(replayRunId, {
-          waitForNetworkIdle: waitForNetworkIdle && getPendingRequestCount() > 0,
+          waitForNetworkIdle: waitForNetworkIdle && hasBlockingRequests(),
         }))) {
           break;
         }

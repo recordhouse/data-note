@@ -261,7 +261,7 @@
     );
     const completed = await recorder.waitForRequests({
       idleMs,
-      includeIgnoredRequests: true,
+      includeIgnoredRequests: false,
       timeoutMs,
     });
 
