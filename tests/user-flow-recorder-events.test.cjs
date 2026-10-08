@@ -258,11 +258,12 @@ test("ordinary dynamic elements still wait for their selector before replay", as
   assert.ok(fixture.queries.length >= 4);
 });
 
-test("genuinely missing element selectors still fail after the existing wait", async (t) => {
+test("genuinely missing click selectors fail after the short click wait", async (t) => {
   const fixture = createEvents(t);
   const started = fixture.now;
   await assert.rejects(fixture.api.playEvent({ type: "click", selector: "#missing" }), /재생 대상 요소를 찾지 못했습니다.*#missing/);
-  assert.ok(fixture.now - started >= 5000);
+  assert.ok(fixture.now - started >= 300);
+  assert.ok(fixture.now - started < 5000);
   assert.equal(fixture.body.clickCount, 0);
 });
 
@@ -294,13 +295,14 @@ test("new clicks record viewport coordinates and scroll context alongside local 
   });
 });
 
-test("missing selectors fall back after five seconds to the recorded point, not local percentages", async (t) => {
+test("missing click selectors fall back after 300ms to the recorded point, not local percentages", async (t) => {
   const fixture = createEvents(t);
   const button = fixture.button("replacement");
   fixture.pointAt(button);
   const started = fixture.now;
   await fixture.api.playEvent(coordinateClick());
-  assert.ok(fixture.now - started >= 5000);
+  assert.ok(fixture.now - started >= 300);
+  assert.ok(fixture.now - started < 5000);
   assert.deepEqual(fixture.pointQueries, [[100, 400]]);
   assert.equal(button.clickCount, 1);
   assert.equal(button.nativeClickCount, 1);
@@ -525,6 +527,16 @@ test("input, change and scroll events never use coordinate click fallback", asyn
   }
   assert.deepEqual(fixture.pointQueries, []);
   assert.deepEqual(fixture.played, []);
+});
+
+test("non-click events retain the existing five-second selector wait", async (t) => {
+  const fixture = createEvents(t);
+  const started = fixture.now;
+  await assert.rejects(
+    fixture.api.playEvent({ type: "input", selector: "#missing", detail: { value: "test" } }),
+    /재생 대상 요소를 찾지 못했습니다/,
+  );
+  assert.ok(fixture.now - started >= 5000);
 });
 
 test("stopping a target wait prevents a later coordinate click", async (t) => {

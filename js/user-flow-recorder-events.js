@@ -9,6 +9,7 @@
   const PERCENT_PRECISION = 6;
   const SCROLL_SAMPLE_MS = 80;
   const TARGET_WAIT_MS = 5000;
+  const CLICK_TARGET_WAIT_MS = 300;
   const SENSITIVE_AUTOCOMPLETE = new Set([
     "cc-csc",
     "cc-number",
@@ -408,11 +409,16 @@
 
     async function waitForTarget(
       selector,
-      { elementOnly = false, shouldAbort = () => false } = {},
+      {
+        elementOnly = false,
+        shouldAbort = () => false,
+        timeoutMs = TARGET_WAIT_MS,
+      } = {},
     ) {
       const startedAt = performance.now();
+      const waitMs = Math.max(0, Number(timeoutMs) || 0);
 
-      while (performance.now() - startedAt < TARGET_WAIT_MS) {
+      while (performance.now() - startedAt < waitMs) {
         if (shouldAbort()) {
           return null;
         }
@@ -694,6 +700,10 @@
       let target = await waitForTarget(recordedEvent.selector, {
         elementOnly: true,
         shouldAbort,
+        timeoutMs:
+          recordedEvent.type === "click"
+            ? CLICK_TARGET_WAIT_MS
+            : TARGET_WAIT_MS,
       });
 
       if (shouldAbort()) {
