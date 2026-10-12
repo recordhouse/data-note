@@ -10,6 +10,7 @@
   const DEFAULT_NETWORK_TIMEOUT_MS = 180000;
   const DEFAULT_NETWORK_IDLE_MS = 500;
   const DEFAULT_PAGE_SETTLE_MS = 800;
+  const MAX_REPLAY_START_DELAY_MS = 60000;
   const POLL_INTERVAL_MS = 50;
 
   function normalizeSelector(value) {
@@ -18,7 +19,14 @@
 
   function normalizeConfig(config) {
     const selectors = config?.selectors || {};
+    const parsedReplayStartDelayMs = Number(config?.replayStartDelayMs);
     return Object.freeze({
+      replayStartDelayMs: Number.isFinite(parsedReplayStartDelayMs)
+        ? Math.min(
+            MAX_REPLAY_START_DELAY_MS,
+            Math.max(0, Math.round(parsedReplayStartDelayMs)),
+          )
+        : 0,
       url: String(config?.url || "").trim(),
       selectors: Object.freeze({
         select: normalizeSelector(selectors.select),
@@ -342,6 +350,10 @@
         idleMs: networkIdleMs,
         timeoutMs: networkTimeoutMs,
       });
+
+      if (normalizedConfig.replayStartDelayMs > 0) {
+        await delay(normalizedConfig.replayStartDelayMs);
+      }
     } finally {
       restoreDialogs();
     }

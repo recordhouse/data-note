@@ -22,6 +22,7 @@
     const beforeReplay = window.UserFlowBeforeReplay?.normalizeConfig?.(
       parsedConfig?.beforeReplay,
     ) || {
+      replayStartDelayMs: 0,
       url: "",
       selectors: {
         select: "",

@@ -54,6 +54,26 @@ test("the preparation page must use the popup's origin", () => {
   );
 });
 
+test("the replay start delay is normalized to a safe millisecond range", () => {
+  const beforeReplay = createModule();
+  assert.equal(
+    beforeReplay.normalizeConfig({ replayStartDelayMs: 1250 }).replayStartDelayMs,
+    1250,
+  );
+  assert.equal(
+    beforeReplay.normalizeConfig({ replayStartDelayMs: -1 }).replayStartDelayMs,
+    0,
+  );
+  assert.equal(
+    beforeReplay.normalizeConfig({ replayStartDelayMs: 999999 }).replayStartDelayMs,
+    60000,
+  );
+  assert.equal(
+    beforeReplay.normalizeConfig({ replayStartDelayMs: "invalid" }).replayStartDelayMs,
+    0,
+  );
+});
+
 test("the preparation flow selects the third option, accepts dialogs, fills the title value and submits", async () => {
   const beforeReplay = createModule();
   const actions = [];
@@ -122,6 +142,7 @@ test("the preparation flow selects the third option, accepts dialogs, fills the 
     baseUrl: "https://example.test/popup.html",
     config: {
       url: "/prepare",
+      replayStartDelayMs: 1,
       selectors: {
         firstButton: "#first",
         input: "#input",

@@ -4,6 +4,7 @@
   "communicationUrl": "/communication",
   "beforeReplay": {
     "url": "",
+    "replayStartDelayMs": 1000,
     "selectors": {
       "select": "",
       "firstButton": "",
