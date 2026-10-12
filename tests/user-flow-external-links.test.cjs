@@ -93,7 +93,7 @@ test("popup paths are stored in a dedicated root JSON file", () => {
   assert.deepEqual(pathConfig, {
     beforeReplay: {
       actionDelayMs: 500,
-      replayStartDelayMs: 1000,
+      replayStartDelayMs: 5000,
       selectors: {
         firstButton: "",
         input: "",
@@ -403,6 +403,10 @@ test("ZIP product import keeps each folder mapping after a standalone popup conn
   assert.equal(imported, true);
   assert.ok(firstProductTab);
   assert.ok(secondProductTab);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(tabs.tabs.map((tab) => tab.name))),
+    ["상품 A", "상품 B", "연결 후"],
+  );
   assert.equal(tabs.sessionTabs["product-a"], firstProductTab.id);
   assert.equal(tabs.sessionTabs["product-b"], secondProductTab.id);
   assert.deepEqual(protectedSessionIds, ["product-a", "product-b"]);

@@ -554,9 +554,17 @@
           name,
         };
 
-        tabsState.tabs.push(tab);
         tabByName.set(name.toLowerCase(), tab);
       });
+
+      const importedTabs = normalizedFolderNames
+        .map((name) => tabByName.get(name.toLowerCase()))
+        .filter(Boolean);
+      const importedTabIds = new Set(importedTabs.map((tab) => tab.id));
+      tabsState.tabs = [
+        ...importedTabs,
+        ...tabsState.tabs.filter((tab) => !importedTabIds.has(tab.id)),
+      ];
 
       return tabByName;
     }
