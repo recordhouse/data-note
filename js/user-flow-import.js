@@ -15,7 +15,7 @@
     maxImportSessions: 150,
     maxSessions: 150,
     maxSessionsPerTab: 50,
-    maxTabs: 20,
+    maxTabs: 50,
   });
 
   function normalizePathConfig(parsedConfig) {

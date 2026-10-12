@@ -78,6 +78,7 @@
   const hideRuntimeStatus = recorderVisuals?.hideRuntimeStatus || (() => {});
   const hideScreenMask = recorderVisuals?.hideScreenMask || (() => {});
   const showClickPulse = recorderVisuals?.showClickPulse || (() => {});
+  const showReplayAction = recorderVisuals?.showReplayAction || (() => {});
   const showRuntimeStatus = recorderVisuals?.showRuntimeStatus || (() => {});
   const showScreenMask = recorderVisuals?.showScreenMask || (() => {});
   const recorderEvents = window.UserFlowRecorderEvents?.create({
@@ -87,6 +88,7 @@
     isReplaying: () => state.isReplaying,
     recordEvent: pushEvent,
     showClickPulse,
+    showReplayAction,
   });
 
   if (!recorderEvents) {

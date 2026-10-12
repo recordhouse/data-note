@@ -63,3 +63,20 @@ test("recording and replay colors are visible only through the shared dot mask",
   assert.match(source, /rgba\(0, 190, 112, 0\) var\(--user-flow-screen-mask-edge\)/);
   assert.doesNotMatch(source, /--user-flow-screen-mask-dot-color/);
 });
+
+test("replay action feedback reuses one lightweight overlay and matches replay colors", () => {
+  assert.match(
+    source,
+    /\.user-flow-click-pulse\[data-mode="replaying"\][\s\S]*?--user-flow-action-primary: #00be70;[\s\S]*?--user-flow-action-secondary: #00b2d6;/,
+  );
+  assert.match(source, /\.user-flow-action-feedback\s*\{[\s\S]*?rgba\(0, 190, 112,[\s\S]*?rgba\(0, 178, 214,/);
+  assert.match(source, /function showReplayAction\(target, kind,/);
+  assert.match(source, /let actionFeedback = null;/);
+  assert.match(source, /if \(!feedback \|\| !feedback\.isConnected\)/);
+  assert.match(source, /feedback\.dataset\.kind = normalizedKind;/);
+  assert.doesNotMatch(source, /\.user-flow-click-pulse::after/);
+  assert.match(
+    source,
+    /if \(kind === "scroll"\)[\s\S]*?left: Math\.max\(8, Math\.round\(viewportWidth \/ 2 - 13\)\)[\s\S]*?top: Math\.max\(8, Math\.round\(viewportHeight \/ 2 - 20\)\)/,
+  );
+});

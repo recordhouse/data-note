@@ -6,7 +6,8 @@
   }
 
   const VISUAL_STYLE_ID = "user-flow-recorder-visual-style";
-  const CLICK_PULSE_MS = 420;
+  const CLICK_PULSE_MS = 520;
+  const ACTION_FEEDBACK_MS = 480;
   const SCREEN_MASK_TRANSITION_MS = 160;
   const VISUAL_CSS = `
     @property --user-flow-screen-mask-strong-stop {
@@ -28,27 +29,166 @@
     }
 
     .user-flow-click-pulse {
+      --user-flow-action-primary: #00be70;
+      --user-flow-action-secondary: #00b2d6;
       position: fixed;
       z-index: 2147482999;
-      width: 18px;
-      height: 18px;
-      border: 2px solid #1266d6;
+      width: 16px;
+      height: 16px;
+      border: 1.5px solid var(--user-flow-action-primary);
       border-radius: 50%;
-      background: rgba(18, 102, 214, 0.12);
+      background: color-mix(in srgb, var(--user-flow-action-primary) 15%, transparent);
+      box-shadow: 0 0 18px color-mix(in srgb, var(--user-flow-action-secondary) 24%, transparent);
       pointer-events: none;
-      transform: translate(-50%, -50%) scale(0.72);
-      animation: user-flow-click-pulse ${CLICK_PULSE_MS}ms ease-out forwards;
+      transform: translate(-50%, -50%) scale(0.55);
+      animation: user-flow-click-pulse ${CLICK_PULSE_MS}ms cubic-bezier(0.16, 0.72, 0.24, 1) forwards;
+    }
+
+    .user-flow-click-pulse[data-mode="recording"] {
+      --user-flow-action-primary: #ff184e;
+      --user-flow-action-secondary: #8b3df6;
+    }
+
+    .user-flow-click-pulse[data-mode="replaying"] {
+      --user-flow-action-primary: #00be70;
+      --user-flow-action-secondary: #00b2d6;
     }
 
     @keyframes user-flow-click-pulse {
       0% {
-        opacity: 0.9;
-        transform: translate(-50%, -50%) scale(0.72);
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.55);
+      }
+
+      18% {
+        opacity: 0.92;
+      }
+
+      62% {
+        opacity: 0.54;
       }
 
       100% {
         opacity: 0;
-        transform: translate(-50%, -50%) scale(1.9);
+        transform: translate(-50%, -50%) scale(2.25);
+      }
+    }
+
+    .user-flow-action-feedback {
+      position: fixed;
+      z-index: 2147482998;
+      box-sizing: border-box;
+      min-width: 12px;
+      min-height: 12px;
+      border: 1.5px solid rgba(0, 190, 112, 0.72);
+      border-radius: 7px;
+      background: linear-gradient(
+        100deg,
+        rgba(0, 190, 112, 0.04),
+        rgba(0, 178, 214, 0.14),
+        rgba(0, 190, 112, 0.03)
+      );
+      box-shadow:
+        0 0 0 3px rgba(0, 178, 214, 0.08),
+        0 4px 16px rgba(0, 190, 112, 0.12);
+      opacity: 0;
+      overflow: hidden;
+      pointer-events: none;
+      transform: scale(0.985);
+      transform-origin: center;
+    }
+
+    .user-flow-action-feedback.is-active {
+      animation: user-flow-action-feedback ${ACTION_FEEDBACK_MS}ms ease-out forwards;
+    }
+
+    .user-flow-action-feedback[data-kind="input"]::after,
+    .user-flow-action-feedback[data-kind="change"]::after {
+      position: absolute;
+      top: 22%;
+      right: 7px;
+      bottom: 22%;
+      width: 2px;
+      border-radius: 2px;
+      background: #00b2d6;
+      box-shadow: 0 0 6px rgba(0, 178, 214, 0.48);
+      content: "";
+      animation: user-flow-input-caret 360ms ease-in-out 2;
+    }
+
+    .user-flow-action-feedback[data-kind="scroll"] {
+      border-color: rgba(0, 178, 214, 0.64);
+      background: rgba(255, 255, 255, 0.72);
+      box-shadow:
+        0 0 0 3px rgba(0, 190, 112, 0.08),
+        0 5px 14px rgba(0, 80, 72, 0.12);
+    }
+
+    .user-flow-action-feedback[data-kind="scroll"]::after {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 7px;
+      height: 7px;
+      border-right: 2px solid #00be70;
+      border-bottom: 2px solid #00be70;
+      content: "";
+      transform: translate(-50%, -60%) rotate(45deg);
+      animation: user-flow-scroll-cue 420ms ease-out forwards;
+    }
+
+    .user-flow-action-feedback[data-direction="up"]::after {
+      transform: translate(-50%, -40%) rotate(225deg);
+    }
+
+    .user-flow-action-feedback[data-direction="left"]::after {
+      transform: translate(-40%, -50%) rotate(135deg);
+    }
+
+    .user-flow-action-feedback[data-direction="right"]::after {
+      transform: translate(-60%, -50%) rotate(-45deg);
+    }
+
+    .user-flow-action-feedback[data-compact="true"] {
+      width: 26px !important;
+      height: 40px !important;
+      border-radius: 13px;
+    }
+
+    @keyframes user-flow-action-feedback {
+      0% {
+        opacity: 0;
+        transform: scale(0.985);
+      }
+
+      22% {
+        opacity: 0.9;
+        transform: scale(1);
+      }
+
+      100% {
+        opacity: 0;
+        transform: scale(1.012);
+      }
+    }
+
+    @keyframes user-flow-input-caret {
+      50% {
+        opacity: 0.18;
+      }
+    }
+
+    @keyframes user-flow-scroll-cue {
+      from {
+        opacity: 0.28;
+      }
+
+      55% {
+        opacity: 1;
+      }
+
+      to {
+        opacity: 0;
       }
     }
 
@@ -486,6 +626,8 @@
     let runtimeStatus = null;
     let runtimeStatusFrame = 0;
     let runtimeStatusTimer = 0;
+    let actionFeedback = null;
+    let actionFeedbackTimer = 0;
     let screenMask = null;
     let screenMaskFrame = 0;
     let screenMaskTimer = 0;
@@ -502,7 +644,7 @@
       (document.head || document.body)?.append(style);
     }
 
-    function showClickPulse(clientX, clientY) {
+    function showClickPulse(clientX, clientY, mode = "") {
       if (!document.body) {
         return;
       }
@@ -510,11 +652,116 @@
       const pulse = document.createElement("span");
       pulse.className = "user-flow-click-pulse";
       pulse.setAttribute(ignoreAttribute, "true");
+      pulse.dataset.mode = mode === "recording" || mode === "replaying"
+        ? mode
+        : isRecording()
+          ? "recording"
+          : "replaying";
       pulse.style.left = `${Math.round(clientX)}px`;
       pulse.style.top = `${Math.round(clientY)}px`;
       document.body.append(pulse);
 
       window.setTimeout(() => pulse.remove(), CLICK_PULSE_MS);
+    }
+
+    function getActionFeedbackBox(target, kind) {
+      const viewportWidth = Math.max(0, Number(window.innerWidth) || 0);
+      const viewportHeight = Math.max(0, Number(window.innerHeight) || 0);
+
+      if (kind === "scroll") {
+        return {
+          compact: true,
+          height: 40,
+          left: Math.max(8, Math.round(viewportWidth / 2 - 13)),
+          top: Math.max(8, Math.round(viewportHeight / 2 - 20)),
+          width: 26,
+        };
+      }
+
+      const usesViewportCue =
+        target === window ||
+        target === document ||
+        target === document.body ||
+        target === document.documentElement;
+
+      if (usesViewportCue) {
+        return {
+          compact: true,
+          height: 40,
+          left: Math.max(8, viewportWidth - 42),
+          top: Math.max(8, Math.round(viewportHeight / 2 - 20)),
+          width: 26,
+        };
+      }
+
+      let rect;
+
+      try {
+        rect = target?.getBoundingClientRect?.();
+      } catch (error) {
+        return null;
+      }
+
+      if (!rect || rect.width <= 0 || rect.height <= 0) {
+        return null;
+      }
+
+      const padding = 3;
+      const left = Math.max(2, rect.left - padding);
+      const top = Math.max(2, rect.top - padding);
+      const right = Math.min(viewportWidth - 2, rect.right + padding);
+      const bottom = Math.min(viewportHeight - 2, rect.bottom + padding);
+
+      return {
+        compact: false,
+        height: Math.max(12, bottom - top),
+        left,
+        top,
+        width: Math.max(12, right - left),
+      };
+    }
+
+    function showReplayAction(target, kind, { direction = "down" } = {}) {
+      if (!document.body || !isReplaying()) {
+        return;
+      }
+
+      const normalizedKind = ["input", "change", "scroll"].includes(kind)
+        ? kind
+        : "change";
+      const box = getActionFeedbackBox(target, normalizedKind);
+
+      if (!box) {
+        return;
+      }
+
+      let feedback = actionFeedback;
+
+      if (!feedback || !feedback.isConnected) {
+        feedback = document.createElement("span");
+        feedback.className = "user-flow-action-feedback";
+        feedback.setAttribute(ignoreAttribute, "true");
+        feedback.setAttribute("aria-hidden", "true");
+        document.body.append(feedback);
+        actionFeedback = feedback;
+      }
+
+      window.clearTimeout(actionFeedbackTimer);
+      feedback.classList.remove("is-active");
+      feedback.dataset.kind = normalizedKind;
+      feedback.dataset.compact = String(box.compact);
+      feedback.dataset.direction = ["up", "down", "left", "right"].includes(direction)
+        ? direction
+        : "down";
+      feedback.style.left = `${Math.round(box.left)}px`;
+      feedback.style.top = `${Math.round(box.top)}px`;
+      feedback.style.width = `${Math.round(box.width)}px`;
+      feedback.style.height = `${Math.round(box.height)}px`;
+      void feedback.offsetWidth;
+      feedback.classList.add("is-active");
+      actionFeedbackTimer = window.setTimeout(() => {
+        feedback.classList.remove("is-active");
+      }, ACTION_FEEDBACK_MS);
     }
 
     function showRuntimeStatus(mode, statusState = "active") {
@@ -648,6 +895,7 @@
       hideRuntimeStatus,
       hideScreenMask,
       showClickPulse,
+      showReplayAction,
       showRuntimeStatus,
       showScreenMask,
     });

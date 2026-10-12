@@ -11,6 +11,8 @@ function createEvents(t, { allowCoordinateClickFallback = true } = {}) {
   const scrolls = [];
   const queries = [];
   const pointQueries = [];
+  const clickPulses = [];
+  const replayActions = [];
   const nodes = new Map();
   const storage = new Map();
   let now = 100;
@@ -138,6 +140,8 @@ function createEvents(t, { allowCoordinateClickFallback = true } = {}) {
     allowCoordinateClickFallback,
     recordEvent: (event) => recorded.push(event),
     isRecording: () => true,
+    showClickPulse: (...args) => clickPulses.push(args),
+    showReplayAction: (target, kind, detail) => replayActions.push({ target, kind, detail }),
   });
   t.after(() => {
     for (const timer of timers) {
@@ -147,6 +151,7 @@ function createEvents(t, { allowCoordinateClickFallback = true } = {}) {
   });
   return {
     api, body, html, window, document, recorded, played, scrolls, queries, pointQueries,
+    clickPulses, replayActions,
     get now() { return now; },
     queryWith: (callback) => { queryOverride = callback; },
     pointAt: (target) => { pointTarget = target; },
@@ -200,6 +205,38 @@ test("new root clicks replay on their original body or html element", async (t) 
   assert.deepEqual(fixture.played, [fixture.body, fixture.html]);
   assert.equal(fixture.body.dispatched[0].clientX, 100);
   assert.equal(fixture.body.dispatched[0].clientY, 400);
+});
+
+test("replay interactions use replay-colored clicks and lightweight input and scroll feedback", async (t) => {
+  const fixture = createEvents(t);
+  const button = fixture.button("button");
+  const input = fixture.input("field");
+  fixture.recordClick(button);
+  await fixture.api.playEvent({
+    type: "click",
+    selector: "#button",
+    pointer: { clientX: 100, clientY: 400 },
+  });
+  await fixture.api.playEvent({
+    type: "input",
+    selector: "#field",
+    detail: { value: "hello" },
+  });
+  await fixture.api.playEvent({
+    type: "scroll",
+    selector: "__window__",
+    scrollYPercent: 50,
+  });
+
+  assert.deepEqual(fixture.clickPulses, [
+    [100, 400, "recording"],
+    [100, 400, "replaying"],
+  ]);
+  assert.equal(fixture.replayActions[0].target, input);
+  assert.equal(fixture.replayActions[0].kind, "input");
+  assert.equal(fixture.replayActions[1].target, fixture.window);
+  assert.equal(fixture.replayActions[1].kind, "scroll");
+  assert.equal(fixture.replayActions[1].detail.direction, "down");
 });
 
 test("legacy window-marker clicks replay on body instead of failing", async (t) => {

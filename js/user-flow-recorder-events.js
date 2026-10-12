@@ -31,6 +31,10 @@
       typeof options.showClickPulse === "function"
         ? options.showClickPulse
         : () => {};
+    const renderReplayAction =
+      typeof options.showReplayAction === "function"
+        ? options.showReplayAction
+        : () => {};
     const scrollLastAt = new Map();
     const scrollTimers = new Map();
 
@@ -264,7 +268,7 @@
       }
 
       if (isRecording() && !isReplaying()) {
-        renderClickPulse(event.clientX, event.clientY);
+        renderClickPulse(event.clientX, event.clientY, "recording");
       }
 
       const targetRect = target.getBoundingClientRect();
@@ -482,6 +486,8 @@
       }
 
       if (target === window) {
+        const previousLeft = Number(window.scrollX) || 0;
+        const previousTop = Number(window.scrollY) || 0;
         const { maxX, maxY } = getWindowScrollBounds();
         const left = getPositionFromPercent(
           recordedEvent.scrollXPercent,
@@ -503,6 +509,9 @@
         } catch (error) {
           window.scrollTo(left, top);
         }
+        renderReplayAction(window, "scroll", {
+          direction: getScrollDirection(previousLeft, previousTop, left, top),
+        });
         return;
       }
 
@@ -511,6 +520,8 @@
       }
 
       const { maxLeft, maxTop } = getElementScrollBounds(target);
+      const previousLeft = Number(target.scrollLeft) || 0;
+      const previousTop = Number(target.scrollTop) || 0;
       const left = getPositionFromPercent(
         recordedEvent.scrollLeftPercent,
         maxLeft,
@@ -529,6 +540,9 @@
             top,
             behavior: "smooth",
           });
+          renderReplayAction(target, "scroll", {
+            direction: getScrollDirection(previousLeft, previousTop, left, top),
+          });
           return;
         } catch (error) {
           // Fall through for browsers that only support numeric scrollTo arguments.
@@ -537,6 +551,20 @@
 
       target.scrollLeft = left;
       target.scrollTop = top;
+      renderReplayAction(target, "scroll", {
+        direction: getScrollDirection(previousLeft, previousTop, left, top),
+      });
+    }
+
+    function getScrollDirection(fromLeft, fromTop, toLeft, toTop) {
+      const horizontalDistance = Number(toLeft) - Number(fromLeft);
+      const verticalDistance = Number(toTop) - Number(fromTop);
+
+      if (Math.abs(horizontalDistance) > Math.abs(verticalDistance)) {
+        return horizontalDistance < 0 ? "left" : "right";
+      }
+
+      return verticalDistance < 0 ? "up" : "down";
     }
 
     function playClick(target, recordedEvent, pointerPosition = null) {
@@ -572,7 +600,7 @@
         pointerType: pointer.pointerType || "mouse",
       };
 
-      renderClickPulse(clientX, clientY);
+      renderClickPulse(clientX, clientY, "replaying");
 
       for (const eventType of ["pointerdown", "mousedown", "pointerup", "mouseup"]) {
         const isPointerEvent = eventType.startsWith("pointer");
@@ -604,6 +632,7 @@
           cancelable: true,
         }),
       );
+      renderReplayAction(target, recordedEvent.type);
     }
 
     function isCheckableInput(element) {
