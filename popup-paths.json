@@ -5,7 +5,7 @@
   "beforeReplay": {
     "url": "",
     "actionDelayMs": 500,
-    "replayStartDelayMs": 1000,
+    "replayStartDelayMs": 5000,
     "selectors": {
       "select": "",
       "firstButton": "",
