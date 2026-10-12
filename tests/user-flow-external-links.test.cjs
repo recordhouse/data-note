@@ -92,6 +92,7 @@ test("login and communication links sit in a smaller lower-right action row", ()
 test("popup paths are stored in a dedicated root JSON file", () => {
   assert.deepEqual(pathConfig, {
     beforeReplay: {
+      actionDelayMs: 500,
       replayStartDelayMs: 1000,
       selectors: {
         firstButton: "",

@@ -10,6 +10,7 @@
   const DEFAULT_NETWORK_TIMEOUT_MS = 180000;
   const DEFAULT_NETWORK_IDLE_MS = 500;
   const DEFAULT_PAGE_SETTLE_MS = 800;
+  const MAX_ACTION_DELAY_MS = 10000;
   const MAX_REPLAY_START_DELAY_MS = 60000;
   const POLL_INTERVAL_MS = 50;
 
@@ -19,8 +20,15 @@
 
   function normalizeConfig(config) {
     const selectors = config?.selectors || {};
+    const parsedActionDelayMs = Number(config?.actionDelayMs);
     const parsedReplayStartDelayMs = Number(config?.replayStartDelayMs);
     return Object.freeze({
+      actionDelayMs: Number.isFinite(parsedActionDelayMs)
+        ? Math.min(
+            MAX_ACTION_DELAY_MS,
+            Math.max(0, Math.round(parsedActionDelayMs)),
+          )
+        : 0,
       replayStartDelayMs: Number.isFinite(parsedReplayStartDelayMs)
         ? Math.min(
             MAX_REPLAY_START_DELAY_MS,
@@ -312,6 +320,7 @@
       (element) => Boolean(element?.options?.[2] && !element.disabled),
     );
     selectThirdOption(targetWindow, selectElement);
+    await delay(normalizedConfig.actionDelayMs);
 
     const restoreDialogs = interceptDialogs(targetWindow);
 
@@ -324,6 +333,7 @@
         (element) => Boolean(element && !element.disabled),
       );
       firstButton.click();
+      await delay(normalizedConfig.actionDelayMs);
 
       const inputElement = await waitForElement(
         targetWindow,
@@ -335,6 +345,7 @@
       inputElement.click();
       inputElement.focus?.();
       setInputValue(targetWindow, inputElement, normalizedValue);
+      await delay(normalizedConfig.actionDelayMs);
 
       const submitButton = await waitForElement(
         targetWindow,
@@ -344,6 +355,7 @@
         (element) => Boolean(element && !element.disabled),
       );
       submitButton.click();
+      await delay(normalizedConfig.actionDelayMs);
 
       await waitForStablePage(targetWindow, pageTimeoutMs, pageSettleMs);
       await waitForNetworkIdle(targetWindow, {
