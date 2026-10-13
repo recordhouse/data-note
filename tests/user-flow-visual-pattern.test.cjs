@@ -74,6 +74,19 @@ test("replay action feedback reuses one lightweight overlay and matches replay c
   assert.match(source, /let actionFeedback = null;/);
   assert.match(source, /if \(!feedback \|\| !feedback\.isConnected\)/);
   assert.match(source, /feedback\.dataset\.kind = normalizedKind;/);
+  assert.match(
+    source,
+    /\.user-flow-action-feedback\[data-kind="scroll"\]\.is-active\s*\{[\s\S]*?animation: none;[\s\S]*?opacity: 0\.9;/,
+  );
+  assert.match(
+    source,
+    /const isScrollFeedback = normalizedKind === "scroll";[\s\S]*?if \(!isScrollFeedback\) \{[\s\S]*?feedback\.classList\.remove\("is-active"\);/,
+  );
+  assert.match(
+    source,
+    /isScrollFeedback \? SCROLL_FEEDBACK_IDLE_MS : ACTION_FEEDBACK_MS/,
+  );
+  assert.doesNotMatch(source, /@keyframes user-flow-scroll-cue/);
   assert.doesNotMatch(source, /\.user-flow-click-pulse::after/);
   assert.match(
     source,

@@ -8,6 +8,7 @@
   const VISUAL_STYLE_ID = "user-flow-recorder-visual-style";
   const CLICK_PULSE_MS = 520;
   const ACTION_FEEDBACK_MS = 480;
+  const SCROLL_FEEDBACK_IDLE_MS = 280;
   const SCREEN_MASK_TRANSITION_MS = 160;
   const VISUAL_CSS = `
     @property --user-flow-screen-mask-strong-stop {
@@ -122,6 +123,15 @@
       box-shadow:
         0 0 0 3px rgba(0, 190, 112, 0.08),
         0 5px 14px rgba(0, 80, 72, 0.12);
+      transition:
+        opacity 180ms ease,
+        transform 220ms ease;
+    }
+
+    .user-flow-action-feedback[data-kind="scroll"].is-active {
+      animation: none;
+      opacity: 0.9;
+      transform: scale(1);
     }
 
     .user-flow-action-feedback[data-kind="scroll"]::after {
@@ -133,8 +143,9 @@
       border-right: 2px solid #00be70;
       border-bottom: 2px solid #00be70;
       content: "";
+      opacity: 0.92;
       transform: translate(-50%, -60%) rotate(45deg);
-      animation: user-flow-scroll-cue 420ms ease-out forwards;
+      transition: transform 180ms ease;
     }
 
     .user-flow-action-feedback[data-direction="up"]::after {
@@ -175,20 +186,6 @@
     @keyframes user-flow-input-caret {
       50% {
         opacity: 0.18;
-      }
-    }
-
-    @keyframes user-flow-scroll-cue {
-      from {
-        opacity: 0.28;
-      }
-
-      55% {
-        opacity: 1;
-      }
-
-      to {
-        opacity: 0;
       }
     }
 
@@ -747,7 +744,12 @@
       }
 
       window.clearTimeout(actionFeedbackTimer);
-      feedback.classList.remove("is-active");
+      const isScrollFeedback = normalizedKind === "scroll";
+
+      if (!isScrollFeedback) {
+        feedback.classList.remove("is-active");
+      }
+
       feedback.dataset.kind = normalizedKind;
       feedback.dataset.compact = String(box.compact);
       feedback.dataset.direction = ["up", "down", "left", "right"].includes(direction)
@@ -757,11 +759,15 @@
       feedback.style.top = `${Math.round(box.top)}px`;
       feedback.style.width = `${Math.round(box.width)}px`;
       feedback.style.height = `${Math.round(box.height)}px`;
-      void feedback.offsetWidth;
+
+      if (!isScrollFeedback) {
+        void feedback.offsetWidth;
+      }
+
       feedback.classList.add("is-active");
       actionFeedbackTimer = window.setTimeout(() => {
         feedback.classList.remove("is-active");
-      }, ACTION_FEEDBACK_MS);
+      }, isScrollFeedback ? SCROLL_FEEDBACK_IDLE_MS : ACTION_FEEDBACK_MS);
     }
 
     function showRuntimeStatus(mode, statusState = "active") {
