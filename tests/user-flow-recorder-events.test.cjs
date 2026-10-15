@@ -295,12 +295,12 @@ test("ordinary dynamic elements still wait for their selector before replay", as
   assert.ok(fixture.queries.length >= 4);
 });
 
-test("genuinely missing click selectors fail after the short click wait", async (t) => {
+test("genuinely missing click selectors fail after the three-second click wait", async (t) => {
   const fixture = createEvents(t);
   const started = fixture.now;
   await assert.rejects(fixture.api.playEvent({ type: "click", selector: "#missing" }), /재생 대상 요소를 찾지 못했습니다.*#missing/);
-  assert.ok(fixture.now - started >= 300);
-  assert.ok(fixture.now - started < 3000);
+  assert.ok(fixture.now - started >= 3000);
+  assert.ok(fixture.now - started < 3100);
   assert.equal(fixture.body.clickCount, 0);
 });
 
@@ -332,14 +332,14 @@ test("new clicks record viewport coordinates and scroll context alongside local 
   });
 });
 
-test("missing click selectors fall back after 300ms to the recorded point, not local percentages", async (t) => {
+test("missing click selectors fall back after three seconds to the recorded point, not local percentages", async (t) => {
   const fixture = createEvents(t);
   const button = fixture.button("replacement");
   fixture.pointAt(button);
   const started = fixture.now;
   await fixture.api.playEvent(coordinateClick());
-  assert.ok(fixture.now - started >= 300);
-  assert.ok(fixture.now - started < 3000);
+  assert.ok(fixture.now - started >= 3000);
+  assert.ok(fixture.now - started < 3100);
   assert.deepEqual(fixture.pointQueries, [[100, 400]]);
   assert.equal(button.clickCount, 1);
   assert.equal(button.nativeClickCount, 1);

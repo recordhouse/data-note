@@ -9,7 +9,7 @@
   const PERCENT_PRECISION = 6;
   const SCROLL_SAMPLE_MS = 80;
   const TARGET_WAIT_MS = 3000;
-  const CLICK_TARGET_WAIT_MS = 300;
+  const CLICK_TARGET_WAIT_MS = 3000;
   const SENSITIVE_AUTOCOMPLETE = new Set([
     "cc-csc",
     "cc-number",
