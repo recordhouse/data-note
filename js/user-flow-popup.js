@@ -603,6 +603,25 @@
     }
   }
 
+  function getRecordingSessionToPlaceAtTop(flowState) {
+    const sessionId = String(flowState?.activeRecordingSessionId || "");
+
+    if (!flowState?.isRecording || !sessionId) {
+      return "";
+    }
+
+    const sourceSessionId = String(
+      flowState.continuedRecordingSourceSessionId || "",
+    );
+    const isFirstSession = userFlowTabs.sessionOrder[0] === sessionId;
+    const isInSourceTab =
+      !sourceSessionId ||
+      getUserFlowSessionTabId(sessionId) ===
+        getUserFlowSessionTabId(sourceSessionId);
+
+    return isFirstSession && isInSourceTab ? "" : sessionId;
+  }
+
   function placeNewRecordingAtTop(sessionId, sourceSessionId = "") {
     const normalizedSessionId = String(sessionId || "");
 
@@ -1423,12 +1442,7 @@
     }
 
     const previousSessionPositions = captureUserFlowSessionPositions();
-    const newRecordingSessionId =
-      flowState.isRecording &&
-      flowState.activeRecordingSessionId &&
-      !userFlowTabs.sessionOrder.includes(flowState.activeRecordingSessionId)
-        ? flowState.activeRecordingSessionId
-        : "";
+    const newRecordingSessionId = getRecordingSessionToPlaceAtTop(flowState);
     reconcileUserFlowTabs(sessions, { removeMissingSessions: hasSessionState });
     const addedRecordingSessionId = placeNewRecordingAtTop(
       newRecordingSessionId,

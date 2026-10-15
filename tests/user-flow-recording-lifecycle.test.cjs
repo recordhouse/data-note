@@ -403,7 +403,7 @@ test("imported viewport sizes are normalized and malformed metadata does not rej
 
 test("continued log goes to the top of its original tab without being added to tests", () => {
   const source = fs.readFileSync(path.join(__dirname, "../js/user-flow-popup.js"), "utf8");
-  const start = source.indexOf("  function placeNewRecordingAtTop(");
+  const start = source.indexOf("  function getRecordingSessionToPlaceAtTop(");
   const end = source.indexOf("  function getOrderedUserFlowSessions(", start);
   assert.ok(start >= 0 && end > start);
   let writes = 0;
@@ -419,12 +419,25 @@ test("continued log goes to the top of its original tab without being added to t
     persistUserFlowTabs: () => { writes += 1; },
   });
   vm.runInContext(source.slice(start, end), context);
+  context.flowState = {
+    activeRecordingSessionId: "continued",
+    continuedRecordingSourceSessionId: "original",
+    isRecording: true,
+  };
+  assert.equal(
+    vm.runInContext("getRecordingSessionToPlaceAtTop(flowState)", context),
+    "continued",
+  );
   vm.runInContext('placeNewRecordingAtTop("continued", "original")', context);
   assert.deepEqual(toPlain(tabs.sessionOrder), ["continued", "other", "original"]);
   assert.equal(tabs.sessionTabs.continued, "source-tab");
   assert.equal(tabs.activeTabId, "source-tab");
   assert.deepEqual(tabs.testSessionIds, ["original"]);
   assert.equal(writes, 1);
+  assert.equal(
+    vm.runInContext("getRecordingSessionToPlaceAtTop(flowState)", context),
+    "",
+  );
   vm.runInContext('placeNewRecordingAtTop("", "original")', context);
   assert.equal(writes, 1);
 });
